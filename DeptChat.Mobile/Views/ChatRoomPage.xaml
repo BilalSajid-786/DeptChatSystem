@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             x:Class="DeptChat.Mobile.Views.ChatRoomPage"
+             Title="{Binding DisplayTitle}"
+             BackgroundColor="#E5DDD5">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Log Out" Command="{Binding LogoutCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- 1. In-App Cross-Department Toast Banner -->
+        <Border Grid.Row="0" 
+                IsVisible="{Binding ShowInAppToast}" 
+                BackgroundColor="#1E293B" 
+                Padding="16,10" 
+                Margin="10,6"
+                StrokeShape="RoundRectangle 8">
+            <Grid ColumnDefinitions="*, Auto">
+                <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
+                <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#94A3B8" Padding="6,0" HeightRequest="30" />
+            </Grid>
+        </Border>
+
+        <!-- 2. Scrollable Messages Area -->
+        <CollectionView x:Name="MessagesCollectionView"
+                        Grid.Row="1"
+                        ItemsSource="{Binding Messages}"
+                        Margin="12,6"
+                        ItemSizingStrategy="MeasureAllItems">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChatMessageItem">
+                    <Grid Padding="0,4" HorizontalOptions="FillAndExpand">
+                        <Border HorizontalOptions="{Binding Alignment}"
+                                BackgroundColor="{Binding BubbleColor}"
+                                Stroke="#CBD5E1"
+                                StrokeThickness="0.5"
+                                StrokeShape="RoundRectangle 12"
+                                Padding="12,8"
+                                MaximumWidthRequest="290">
+
+                            <VerticalStackLayout Spacing="4">
+                                <!-- Regular Text Message -->
+                                <Label Text="{Binding Content}" FontSize="15" TextColor="#0F172A">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsVoiceMessage}" Value="True">
+                                            <Setter Property="IsVisible" Value="False" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+
+                                <!-- WhatsApp-style Voice Message Player -->
+                                <Grid ColumnDefinitions="42, *" ColumnSpacing="10" WidthRequest="220" VerticalOptions="Center" Padding="2,2">
+                                    <Grid.Triggers>
+                                        <DataTrigger TargetType="Grid" Binding="{Binding IsVoiceMessage}" Value="False">
+                                            <Setter Property="IsVisible" Value="False" />
+                                        </DataTrigger>
+                                    </Grid.Triggers>
+
+                                    <!-- Circular Play/Pause Button -->
+                                    <Button Grid.Column="0"
+                                            Text="{Binding PlayButtonIcon}"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=TogglePlayVoiceCommand}"
+                                            CommandParameter="{Binding .}"
+                                            BackgroundColor="{Binding PlayButtonColor}"
+                                            TextColor="White"
+                                            WidthRequest="42"
+                                            HeightRequest="42"
+                                            CornerRadius="21"
+                                            Padding="0"
+                                            FontSize="16"
+                                            FontAttributes="Bold"
+                                            VerticalOptions="Center" />
+
+                                    <!-- Waveform Progress Scrubber & Duration -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
+                                        <!-- Scrubber / Progress Bar -->
+                                        <ProgressBar Progress="{Binding PlaybackProgress}"
+                                                     ProgressColor="#059669"
+                                                     BackgroundColor="#CBD5E1"
+                                                     HeightRequest="4"
+                                                     VerticalOptions="Center" />
+
+                                        <!-- Duration + Mic Badge -->
+                                        <Grid ColumnDefinitions="*, Auto">
+                                            <Label Grid.Column="0" 
+                                                   Text="{Binding CurrentPlaybackTime}" 
+                                                   FontSize="12" 
+                                                   TextColor="#64748B" 
+                                                   FontAttributes="Bold" 
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="1" 
+                                                   Text="🎙️" 
+                                                   FontSize="12" 
+                                                   VerticalOptions="Center" />
+                                        </Grid>
+                                    </VerticalStackLayout>
+                                </Grid>
+
+                                <!-- Metadata Footer (Time + Status Tick) -->
+                                <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
+                                    <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#64748B" />
+                                    <Label Text="{Binding StatusIcon}" 
+                                           TextColor="{Binding StatusColor}" 
+                                           FontSize="11" 
+                                           IsVisible="{Binding IsOutgoing}" 
+                                           FontAttributes="Bold" />
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- 3. Bottom Input Bar (Text + Voice Recording) -->
+        <Border Grid.Row="2" BackgroundColor="#F1F5F9" Padding="10,8" StrokeThickness="0">
+            <Grid>
+                <!-- Normal Mode: Text Input + Mic + Send -->
+                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="6" VerticalOptions="Center">
+                    <Grid.Triggers>
+                        <DataTrigger TargetType="Grid" Binding="{Binding IsRecordingVoice}" Value="True">
+                            <Setter Property="IsVisible" Value="False" />
+                        </DataTrigger>
+                    </Grid.Triggers>
+
+                    <!-- Text Entry Box -->
+                    <Border Grid.Column="0" BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 20" Padding="12,0">
+                        <Entry Text="{Binding InputMessage}" 
+                               Placeholder="Type a message..." 
+                               PlaceholderColor="#94A3B8" 
+                               TextColor="#0F172A"
+                               VerticalOptions="Center"
+                               HeightRequest="42"
+                               Focused="OnMessageEntryFocused" />
+                    </Border>
+
+                    <!-- Microphone Button -->
+                    <Button Grid.Column="1" 
+                            Text="🎙️" 
+                            Command="{Binding StartVoiceRecordingCommand}" 
+                            BackgroundColor="#E2E8F0" 
+                            TextColor="#0F172A" 
+                            FontSize="18" 
+                            CornerRadius="21" 
+                            WidthRequest="42" 
+                            HeightRequest="42" 
+                            Padding="0" 
+                            VerticalOptions="Center" />
+
+                    <!-- Send Button -->
+                    <Button Grid.Column="2" 
+                            Text="➤" 
+                            Command="{Binding SendMessageCommand}" 
+                            BackgroundColor="#059669" 
+                            TextColor="White" 
+                            FontSize="18" 
+                            FontAttributes="Bold"
+                            CornerRadius="21" 
+                            WidthRequest="42" 
+                            HeightRequest="42" 
+                            Padding="0" 
+                            VerticalOptions="Center" />
+                </Grid>
+
+                <!-- Recording Mode: 🔴 Recording 0:05 + Cancel + Send Voice -->
+                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="8" VerticalOptions="Center" IsVisible="{Binding IsRecordingVoice}">
+                    <Border Grid.Column="0" BackgroundColor="#FEE2E2" Stroke="#FCA5A5" StrokeThickness="1" StrokeShape="RoundRectangle 20" Padding="16,0">
+                        <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                            <Label Text="🔴" FontSize="14" VerticalOptions="Center" />
+                            <Label Text="Recording..." FontSize="13" TextColor="#B91C1C" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Label Text="{Binding RecordingDurationText}" FontSize="13" TextColor="#991B1B" FontAttributes="Bold" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <!-- Cancel Voice Button -->
+                    <Button Grid.Column="1" 
+                            Text="🗑️" 
+                            Command="{Binding CancelVoiceRecordingCommand}" 
+                            BackgroundColor="#F1F5F9" 
+                            TextColor="#EF4444" 
+                            FontSize="18" 
+                            CornerRadius="21" 
+                            WidthRequest="42" 
+                            HeightRequest="42" 
+                            Padding="0" 
+                            VerticalOptions="Center" />
+
+                    <!-- Send Voice Button -->
+                    <Button Grid.Column="2" 
+                            Text="➤" 
+                            Command="{Binding SendVoiceRecordingCommand}" 
+                            BackgroundColor="#059669" 
+                            TextColor="White" 
+                            FontSize="18" 
+                            FontAttributes="Bold"
+                            CornerRadius="21" 
+                            WidthRequest="42" 
+                            HeightRequest="42" 
+                            Padding="0" 
+                            VerticalOptions="Center" />
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</ContentPage>

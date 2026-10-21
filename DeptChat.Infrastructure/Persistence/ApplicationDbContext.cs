@@ -1,0 +1,143 @@
+using DeptChat.Domain.Entities;
+using DeptChat.Shared.Enums;
+using Microsoft.EntityFrameworkCore;
+
+namespace DeptChat.Infrastructure.Persistence;
+
+public class ApplicationDbContext : DbContext
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    {
+    }
+
+    public DbSet<User> Users => Set<User>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<DepartmentManager> DepartmentManagers => Set<DepartmentManager>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<Message> Messages => Set<Message>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        // =====================================================================
+        // 1. DepartmentManager (Many-to-Many Composite Key)
+        // =====================================================================
+        modelBuilder.Entity<DepartmentManager>()
+            .HasKey(dm => new { dm.DepartmentId, dm.UserId });
+
+        modelBuilder.Entity<DepartmentManager>()
+            .HasOne(dm => dm.Department)
+            .WithMany(d => d.Managers)
+            .HasForeignKey(dm => dm.DepartmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<DepartmentManager>()
+            .HasOne(dm => dm.User)
+            .WithMany(u => u.DepartmentAssignments)
+            .HasForeignKey(dm => dm.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // =====================================================================
+        // 2. Conversation Configuration (One direct room per User per Dept)
+        // =====================================================================
+        modelBuilder.Entity<Conversation>()
+            .HasIndex(c => new { c.DepartmentId, c.CreatedByUserId })
+            .IsUnique(); // Guarantees a user has at most one room per department
+
+        modelBuilder.Entity<Conversation>()
+            .HasOne(c => c.Department)
+            .WithMany(d => d.Conversations)
+            .HasForeignKey(c => c.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Conversation>()
+            .HasOne(c => c.CreatedByUser)
+            .WithMany(u => u.CreatedConversations)
+            .HasForeignKey(c => c.CreatedByUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // =====================================================================
+        // 3. Message Configuration (Deduplication & Monotonic Sequences)
+        // =====================================================================
+        modelBuilder.Entity<Message>()
+            .HasIndex(m => new { m.ConversationId, m.ClientGeneratedId })
+            .IsUnique(); // Guarantees ZERO duplicate bubbles on flaky network retries
+
+        modelBuilder.Entity<Message>()
+            .HasIndex(m => new { m.ConversationId, m.SequenceNumber }); // High-speed delta sync index
+
+        modelBuilder.Entity<Message>()
+            .HasOne(m => m.Conversation)
+            .WithMany(c => c.Messages)
+            .HasForeignKey(m => m.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // =====================================================================
+        // 4. SEED DATA (Admin, Manager, and Default Departments)
+        // =====================================================================
+        var adminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var managerId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+        var complaintsDeptId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var itDeptId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var billingDeptId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        // Seed Users
+        modelBuilder.Entity<User>().HasData(
+            new User
+            {
+                Id = adminId,
+                FullName = "System Admin",
+                Email = "admin@deptchat.com",
+                PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:U/DqBR8Pec8uVGI+nbX02p0SRXsy8UjaWvogXMTsRd4=", // Password: Admin123!
+                Role = UserRole.Admin,
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            new User
+            {
+                Id = managerId,
+                FullName = "Alex Manager",
+                Email = "manager@deptchat.com",
+                PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:BfR+wSV3hUcPqCjeqhx9dCRNyQv+DVJF+EufQ/AMMI8=", // Password: Manager123!
+                Role = UserRole.Manager,
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+        );
+
+        // Seed Departments
+        modelBuilder.Entity<Department>().HasData(
+            new Department
+            {
+                Id = complaintsDeptId,
+                Name = "Complaints & Feedback",
+                Description = "Customer complaints, damaged deliveries, and service disputes",
+                IsActive = true
+            },
+            new Department
+            {
+                Id = itDeptId,
+                Name = "IT Support",
+                Description = "Password resets, VPN, email access, and hardware help",
+                IsActive = true
+            },
+            new Department
+            {
+                Id = billingDeptId,
+                Name = "Billing & Accounts",
+                Description = "Invoices, payment receipts, and refund requests",
+                IsActive = true
+            }
+        );
+
+        // Assign Alex Manager to Complaints & Feedback
+        modelBuilder.Entity<DepartmentManager>().HasData(
+            new DepartmentManager
+            {
+                DepartmentId = complaintsDeptId,
+                UserId = managerId
+            }
+        );
+    }
+}

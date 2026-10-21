@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="DeptChat.Application/DeptChat.Application.csproj" />
+  <Project Path="DeptChat.Domain/DeptChat.Domain.csproj" />
+  <Project Path="DeptChat.Infrastructure/DeptChat.Infrastructure.csproj" />
+  <Project Path="DeptChat.Mobile/DeptChat.Mobile.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+  <Project Path="DeptChat.Shared/DeptChat.Shared.csproj" />
+  <Project Path="DeptChat.WebApi/DeptChat.WebApi.csproj" />
+</Solution>

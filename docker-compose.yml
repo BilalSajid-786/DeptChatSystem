@@ -1,0 +1,22 @@
+﻿version: '3.8'
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: deptchat_sql
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong@Password123
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: deptchat_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  sql_data:

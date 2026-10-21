@@ -1,0 +1,45 @@
+## Visual Studio & Build Outputs
+[Bb]in/
+[Oo]bj/
+[Tt]est[Rr]esults/
+[Bb]uild[Ll]og.*
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.idea/
+.vscode/
+
+## .NET MAUI & Mobile Outputs
+*.apk
+*.aab
+*.keystore
+*.jks
+*.mobileprovision
+
+## Database & Local State
+*.db
+*.db3
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+## Secrets & Credentials
+*firebase-admin-key*.json
+!*firebase-admin-key.template.json
+*service-account*.json
+appsettings.Production.json
+
+## Large binaries & external tools (cloudflared, ngrok)
+tools/
+*.zip
+*.log
+
+## OS Generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store

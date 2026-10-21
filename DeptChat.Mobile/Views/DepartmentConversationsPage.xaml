@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             x:Class="DeptChat.Mobile.Views.DepartmentConversationsPage"
+             Title="{Binding DepartmentName}"
+             BackgroundColor="#F8FAFC">
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Refresh" Command="{Binding LoadConversationsCommand}" />
+        <ToolbarItem Text="Log Out" Command="{Binding LogoutCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Header Banner -->
+        <Border Grid.Row="0" BackgroundColor="#1E293B" Padding="16,14" StrokeThickness="0">
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                    <!-- Back Button -->
+                    <Button Grid.Column="0"
+                            Text="← Back"
+                            Command="{Binding BackCommand}"
+                            BackgroundColor="#334155"
+                            TextColor="White"
+                            FontSize="12"
+                            FontAttributes="Bold"
+                            CornerRadius="8"
+                            HeightRequest="36"
+                            Padding="12,0"
+                            VerticalOptions="Center" />
+
+                    <!-- Title & Subtitle -->
+                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                        <Label Text="{Binding DepartmentName}" TextColor="White" FontSize="18" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding SubtitleText}" TextColor="#38BDF8" FontSize="12" FontAttributes="Bold" />
+                    </VerticalStackLayout>
+
+                    <!-- Refresh Button -->
+                    <Button Grid.Column="2"
+                            Text="🔄"
+                            Command="{Binding LoadConversationsCommand}"
+                            BackgroundColor="#334155"
+                            TextColor="White"
+                            FontSize="14"
+                            CornerRadius="8"
+                            HeightRequest="36"
+                            WidthRequest="36"
+                            Padding="0"
+                            VerticalOptions="Center" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- Main Body -->
+        <Grid Grid.Row="1">
+            <!-- 1. In-App Cross-Department Toast Banner -->
+            <Border VerticalOptions="Start"
+                    ZIndex="10"
+                    IsVisible="{Binding ShowInAppToast}" 
+                    BackgroundColor="#1E293B" 
+                    Padding="16,10" 
+                    Margin="12,8"
+                    StrokeShape="RoundRectangle 8">
+                <Grid ColumnDefinitions="*, Auto">
+                    <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
+                    <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#94A3B8" Padding="6,0" HeightRequest="30" />
+                </Grid>
+            </Border>
+
+            <!-- Empty State -->
+            <VerticalStackLayout IsVisible="{Binding IsEmpty}"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="12"
+                                 Padding="32">
+                <Border BackgroundColor="#E2E8F0" StrokeShape="RoundRectangle 40" WidthRequest="80" HeightRequest="80" HorizontalOptions="Center">
+                    <Label Text="📭" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Label Text="No Customer Conversations Yet"
+                       FontSize="18"
+                       FontAttributes="Bold"
+                       TextColor="#0F172A"
+                       HorizontalOptions="Center" />
+                <Label Text="When users send inquiries to this department, their chat rooms will appear here live."
+                       FontSize="13"
+                       TextColor="#64748B"
+                       HorizontalTextAlignment="Center"
+                       HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
+            <!-- Conversations List -->
+            <CollectionView IsVisible="{Binding HasConversations}"
+                            ItemsSource="{Binding Conversations}"
+                            Margin="16,12">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ConversationListItem">
+                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,5" Padding="14">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentConversationsViewModel}}, Path=SelectConversationCommand}" 
+                                                      CommandParameter="{Binding .}" />
+                            </Border.GestureRecognizers>
+
+                            <Grid ColumnDefinitions="46, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                                <!-- User Avatar -->
+                                <Border Grid.Column="0" 
+                                        BackgroundColor="#E0F2FE" 
+                                        Stroke="#BAE6FD"
+                                        StrokeShape="RoundRectangle 23" 
+                                        WidthRequest="46" 
+                                        HeightRequest="46" 
+                                        HorizontalOptions="Center" 
+                                        VerticalOptions="Center">
+                                    <Label Text="{Binding UserInitials}" 
+                                           FontSize="18" 
+                                           FontAttributes="Bold" 
+                                           TextColor="#0284C7" 
+                                           HorizontalOptions="Center" 
+                                           VerticalOptions="Center" />
+                                </Border>
+
+                                <!-- User Name, Last Message, Timestamp -->
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="3">
+                                    <Grid ColumnDefinitions="*, Auto">
+                                        <Label Grid.Column="0" 
+                                               Text="{Binding CreatedByUserName}" 
+                                               FontSize="15" 
+                                               FontAttributes="Bold" 
+                                               TextColor="#0F172A" 
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Grid.Column="1" 
+                                               Text="{Binding TimeFormatted}" 
+                                               FontSize="11" 
+                                               TextColor="#94A3B8" 
+                                               HorizontalOptions="End" />
+                                    </Grid>
+
+                                    <Label Text="{Binding LastMessagePreview}" 
+                                           FontSize="13" 
+                                           TextColor="#64748B" 
+                                           LineBreakMode="TailTruncation" 
+                                           MaxLines="1" />
+                                </VerticalStackLayout>
+
+                                <!-- Unread Badge & Chevron -->
+                                <HorizontalStackLayout Grid.Column="2" Spacing="6" VerticalOptions="Center">
+                                    <Border IsVisible="{Binding HasUnread}"
+                                            BackgroundColor="#EF4444" 
+                                            StrokeShape="RoundRectangle 10" 
+                                            Padding="7,2" 
+                                            VerticalOptions="Center">
+                                        <Label Text="{Binding UnreadCount}" TextColor="White" FontSize="11" FontAttributes="Bold" />
+                                    </Border>
+                                    <Label Text="›" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+    </Grid>
+
+</ContentPage>

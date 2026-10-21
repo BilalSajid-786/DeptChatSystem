@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DeptChat Mobile App - Live Interactive UI Preview</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    .phone-container {
+      width: 375px;
+      height: 720px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 12px #1e293b, 0 0 0 14px #334155;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen p-6 flex flex-col items-center justify-center font-sans">
+
+  <!-- Top Controls Bar -->
+  <div class="mb-5 flex flex-wrap gap-3 items-center justify-center bg-white px-5 py-3 rounded-2xl shadow-sm border border-slate-200">
+    <div class="flex items-center gap-2">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Perspective:</span>
+      <button id="btnRoleUser" onclick="switchRole('User')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow-sm">
+        📱 User View (John Doe)
+      </button>
+      <button id="btnRoleManager" onclick="switchRole('Manager')" class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition">
+        👔 Manager View (Complaints)
+      </button>
+    </div>
+    <div class="h-4 w-px bg-slate-200"></div>
+    <button onclick="simulateCrossDeptAlert()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 transition flex items-center gap-1.5">
+      🔔 Simulate Cross-Department Alert
+    </button>
+  </div>
+
+  <!-- Mobile Phone Mockup -->
+  <div class="phone-container bg-slate-50 rounded-[44px] overflow-hidden flex flex-col relative border-4 border-slate-800">
+    
+    <!-- Phone Status Bar -->
+    <div class="bg-slate-900 text-white px-7 pt-3 pb-1 flex justify-between items-center text-xs select-none">
+      <span class="font-bold text-[11px]">9:41</span>
+      <!-- Notch / Camera -->
+      <div class="w-20 h-4 bg-black rounded-full mx-auto"></div>
+      <div class="flex items-center gap-1.5 text-[10px]">
+        <span>5G</span>
+        <span>100%</span>
+      </div>
+    </div>
+
+    <!-- SCREEN 1: DEPARTMENTS DIRECTORY -->
+    <div id="screenDepartments" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Header Banner -->
+      <div class="bg-slate-900 text-white p-5 border-b border-slate-800 shadow-sm">
+        <div class="flex justify-between items-center">
+          <div>
+            <h1 class="text-xl font-bold tracking-tight">Support Channels</h1>
+            <p id="deptSubtitle" class="text-xs text-slate-400 mt-0.5">Select a department to chat directly with staff</p>
+          </div>
+          <div class="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm font-bold text-blue-400">
+            JD
+          </div>
+        </div>
+      </div>
+
+      <!-- Department List -->
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll">
+        
+        <!-- Department 1: Complaints -->
+        <div onclick="openChat('Complaints & Feedback', '⚠️', 'Room-1')" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-400 cursor-pointer transition transform active:scale-95 flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-xl shrink-0">
+            ⚠️
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900 truncate">Complaints & Feedback</h3>
+              <span class="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-sm">2</span>
+            </div>
+            <p class="text-xs text-slate-500 truncate mt-0.5">Damaged delivery, service issues, or returns</p>
+          </div>
+        </div>
+
+        <!-- Department 2: IT Support -->
+        <div onclick="openChat('IT Support', '💻', 'Room-2')" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-400 cursor-pointer transition transform active:scale-95 flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-xl shrink-0">
+            💻
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900 truncate">IT Support</h3>
+            </div>
+            <p class="text-xs text-slate-500 truncate mt-0.5">Password resets, VPN, email, and hardware</p>
+          </div>
+        </div>
+
+        <!-- Department 3: Billing -->
+        <div onclick="openChat('Billing & Accounts', '💳', 'Room-3')" class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-400 cursor-pointer transition transform active:scale-95 flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-xl shrink-0">
+            💳
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900 truncate">Billing & Accounts</h3>
+              <span class="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full shadow-sm">1</span>
+            </div>
+            <p class="text-xs text-slate-500 truncate mt-0.5">Invoice queries, refunds, and payment receipts</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Nav Bar -->
+      <div class="bg-white border-t border-slate-200 px-6 py-3 flex justify-around text-slate-400 text-xs">
+        <button class="flex flex-col items-center gap-1 text-blue-600 font-semibold">
+          <span>💬</span>
+          <span>Channels</span>
+        </button>
+        <button class="flex flex-col items-center gap-1 hover:text-slate-600">
+          <span>⚙️</span>
+          <span>Settings</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- SCREEN 2: DIRECT CHAT ROOM -->
+    <div id="screenChatRoom" class="flex-1 flex flex-col overflow-hidden hidden" style="background-color: #ECE5DD;">
+      
+      <!-- Chat Header -->
+      <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between shadow-sm border-b border-slate-800">
+        <div class="flex items-center gap-2.5">
+          <button onclick="goBackToDepartments()" class="p-1 -ml-1 text-slate-300 hover:text-white font-bold text-lg">
+            ←
+          </button>
+          <div id="chatRoomIcon" class="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-sm">
+            ⚠️
+          </div>
+          <div>
+            <h2 id="chatRoomTitle" class="text-sm font-bold text-white leading-tight">Complaints & Feedback</h2>
+            <div class="flex items-center gap-1.5">
+              <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+              <span class="text-[11px] text-emerald-400 font-medium">Staff Online</span>
+            </div>
+          </div>
+        </div>
+        <button class="text-slate-400 hover:text-white text-lg">⋮</button>
+      </div>
+
+      <!-- In-App Cross-Department Toast Banner -->
+      <div id="toastBanner" class="hidden m-2 p-2.5 bg-slate-900 text-white rounded-xl shadow-lg border border-slate-700 flex items-center justify-between text-xs">
+        <div class="flex items-center gap-2 truncate">
+          <span class="text-amber-400">🔔</span>
+          <span id="toastText" class="truncate font-medium">IT Support: "We have reset your VPN password."</span>
+        </div>
+        <button onclick="dismissToast()" class="text-slate-400 hover:text-white px-1.5 font-bold">✕</button>
+      </div>
+
+      <!-- Messages Feed -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll">
+        
+        <!-- Incoming message from Staff -->
+        <div class="flex flex-col items-start max-w-[80%]">
+          <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-2 border border-slate-200 shadow-sm text-slate-800 text-sm">
+            <span class="text-[10px] font-bold text-blue-600 block mb-0.5">Complaints Staff</span>
+            <span>Hello John! We received your complaint regarding order #8491. How can we resolve this for you today?</span>
+            <div class="text-[10px] text-slate-400 text-right mt-1">10:14 AM</div>
+          </div>
+        </div>
+
+        <!-- Outgoing message from User -->
+        <div class="flex flex-col items-end max-w-[80%] ml-auto">
+          <div class="bg-[#DCF8C6] rounded-2xl rounded-tr-sm px-3.5 py-2 border border-emerald-200 shadow-sm text-slate-800 text-sm">
+            <span>Hi, the package arrived with the outer box damaged and the screen has a crack.</span>
+            <div class="flex items-center justify-end gap-1 text-[10px] text-slate-500 mt-1">
+              <span>10:16 AM</span>
+              <span class="text-emerald-600 font-bold">✓✓</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Chat Input Bar -->
+      <div class="bg-slate-100 p-2.5 border-t border-slate-300 flex items-center gap-2">
+        <input id="inputMessage" 
+               type="text" 
+               placeholder="Type a message..." 
+               onkeydown="if(event.key==='Enter') sendMessage()"
+               class="flex-1 bg-white border border-slate-300 rounded-full px-4 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner">
+        
+        <button onclick="sendMessage()" class="w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white flex items-center justify-center font-bold text-sm shadow-md transition shrink-0">
+          ➤
+        </button>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let currentRole = 'User';
+
+    function switchRole(role) {
+      currentRole = role;
+      const btnUser = document.getElementById('btnRoleUser');
+      const btnMgr = document.getElementById('btnRoleManager');
+      const subtitle = document.getElementById('deptSubtitle');
+
+      if (role === 'User') {
+        btnUser.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition bg-blue-600 text-white shadow-sm';
+        btnMgr.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition';
+        subtitle.innerText = 'Select a department to chat directly with staff';
+      } else {
+        btnMgr.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition bg-purple-600 text-white shadow-sm';
+        btnUser.className = 'px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition';
+        subtitle.innerText = 'Active assigned departments you manage';
+      }
+    }
+
+    function openChat(name, icon, roomId) {
+      document.getElementById('screenDepartments').classList.add('hidden');
+      document.getElementById('screenChatRoom').classList.remove('hidden');
+      document.getElementById('chatRoomTitle').innerText = name;
+      document.getElementById('chatRoomIcon').innerText = icon;
+      
+      const feed = document.getElementById('chatMessages');
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function goBackToDepartments() {
+      document.getElementById('screenChatRoom').classList.add('hidden');
+      document.getElementById('screenDepartments').classList.remove('hidden');
+    }
+
+    function simulateCrossDeptAlert() {
+      const banner = document.getElementById('toastBanner');
+      const text = document.getElementById('toastText');
+      
+      banner.classList.remove('hidden');
+      text.innerText = 'IT Support: "We have reset your VPN password."';
+    }
+
+    function dismissToast() {
+      document.getElementById('toastBanner').classList.add('hidden');
+    }
+
+    function sendMessage() {
+      const input = document.getElementById('inputMessage');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const feed = document.getElementById('chatMessages');
+      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // 1. Optimistic UI: Add with Pending ⏳ icon
+      const msgId = 'msg-' + Date.now();
+      const outgoingHtml = `
+        <div id="${msgId}" class="flex flex-col items-end max-w-[80%] ml-auto">
+          <div class="bg-[#DCF8C6] rounded-2xl rounded-tr-sm px-3.5 py-2 border border-emerald-200 shadow-sm text-slate-800 text-sm">
+            <span>${escapeHtml(text)}</span>
+            <div class="flex items-center justify-end gap-1 text-[10px] text-slate-500 mt-1">
+              <span>${time}</span>
+              <span id="status-${msgId}" class="text-slate-400 font-bold">⏳</span>
+            </div>
+          </div>
+        </div>
+      `;
+      feed.insertAdjacentHTML('beforeend', outgoingHtml);
+      input.value = '';
+      feed.scrollTop = feed.scrollHeight;
+
+      // 2. Transmitted -> Sent (✓)
+      setTimeout(() => {
+        const statusEl = document.getElementById(`status-${msgId}`);
+        if (statusEl) {
+          statusEl.innerText = '✓';
+          statusEl.className = 'text-slate-500 font-bold';
+        }
+      }, 700);
+
+      // 3. Delivered (✓✓)
+      setTimeout(() => {
+        const statusEl = document.getElementById(`status-${msgId}`);
+        if (statusEl) {
+          statusEl.innerText = '✓✓';
+          statusEl.className = 'text-emerald-600 font-bold';
+        }
+      }, 1500);
+
+      // 4. Simulated Staff Reply
+      setTimeout(() => {
+        const replyHtml = `
+          <div class="flex flex-col items-start max-w-[80%]">
+            <div class="bg-white rounded-2xl rounded-tl-sm px-3.5 py-2 border border-slate-200 shadow-sm text-slate-800 text-sm">
+              <span class="text-[10px] font-bold text-blue-600 block mb-0.5">Staff</span>
+              <span>We noted that down! A courier will pick up the parcel tomorrow.</span>
+              <div class="text-[10px] text-slate-400 text-right mt-1">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+          </div>
+        `;
+        feed.insertAdjacentHTML('beforeend', replyHtml);
+        feed.scrollTop = feed.scrollHeight;
+      }, 2500);
+    }
+
+    function escapeHtml(string) {
+      return String(string).replace(/[&<>"'`=\/]/g, function (s) {
+        return {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+          '/': '&#x2F;',
+          '`': '&#x60;',
+          '=': '&#x3D;'
+        }[s];
+      });
+    }
+  </script>
+</body>
+</html>

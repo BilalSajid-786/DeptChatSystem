@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "720514910411",
+    "project_id": "deptchat-fd579",
+    "storage_bucket": "deptchat-fd579.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:720514910411:android:e71d31fadae276d247b34e",
+        "android_client_info": {
+          "package_name": "com.companyname.deptchat.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB9neGNdIv0XV7-R2opYWi4PIbLogxafTY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

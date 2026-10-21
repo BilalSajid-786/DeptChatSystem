@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             x:Class="DeptChat.Mobile.Views.DepartmentsPage"
+             Title="Departments"
+             BackgroundColor="#F8FAFC">
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Header Banner with User Info, Add Dept Button & Logout Button -->
+        <Border Grid.Row="0" BackgroundColor="#1E293B" Padding="20,16" StrokeThickness="0">
+            <VerticalStackLayout Spacing="10">
+                <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                        <Label Text="Support Channels" TextColor="White" FontSize="22" FontAttributes="Bold" />
+                        <Label Text="Select a department to start chatting directly" TextColor="#94A3B8" FontSize="12" />
+                    </VerticalStackLayout>
+
+                    <!-- Prominent Logout Button -->
+                    <Button Grid.Column="1"
+                            Text="🚪 Log Out"
+                            Command="{Binding LogoutCommand}"
+                            BackgroundColor="#DC2626"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            FontSize="12"
+                            CornerRadius="8"
+                            HeightRequest="36"
+                            Padding="12,0"
+                            VerticalOptions="Center" />
+                </Grid>
+
+                <!-- Current User Details Badge -->
+                <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                    <Border BackgroundColor="#0F172A" Stroke="#334155" StrokeShape="RoundRectangle 6" Padding="8,4" StrokeThickness="1">
+                        <Label Text="{Binding UserBadge}" TextColor="#38BDF8" FontSize="11" FontAttributes="Bold" />
+                    </Border>
+                    <Label Text="{Binding CurrentUserEmail}" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- Main Content Area: Admin Action Card + Department List -->
+        <Grid Grid.Row="1" RowDefinitions="Auto, *">
+            <!-- Admin Quick Action: Add Department -->
+            <Border Grid.Row="0"
+                    IsVisible="{Binding IsAdmin}"
+                    BackgroundColor="#2563EB"
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 12"
+                    Margin="16,12,16,4"
+                    Padding="16,14">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding OpenAddDepartmentModalCommand}" />
+                </Border.GestureRecognizers>
+                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                    <Border BackgroundColor="#1D4ED8" StrokeShape="RoundRectangle 20" WidthRequest="40" HeightRequest="40" VerticalOptions="Center">
+                        <Label Text="➕" FontSize="18" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                        <Label Text="Add New Department" FontSize="15" FontAttributes="Bold" TextColor="White" />
+                        <Label Text="Create channel visible to all users &amp; managers" FontSize="11" TextColor="#DBEAFE" />
+                    </VerticalStackLayout>
+                    <Label Grid.Column="2" Text="→" FontSize="20" FontAttributes="Bold" TextColor="White" VerticalOptions="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Department Cards List -->
+            <CollectionView Grid.Row="1" ItemsSource="{Binding Departments}" Margin="16,8">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:DepartmentItem">
+                    <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,6" Padding="16">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=SelectDepartmentCommand}" 
+                                                  CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+
+                        <Grid ColumnDefinitions="48, *, Auto, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                            <!-- Department Icon Avatar -->
+                            <Border Grid.Column="0" BackgroundColor="#F1F5F9" StrokeShape="RoundRectangle 24" WidthRequest="48" HeightRequest="48" HorizontalOptions="Center" VerticalOptions="Center">
+                                <Label Text="{Binding Icon}" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+
+                            <!-- Name & Description -->
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                <Label Text="{Binding Name}" FontSize="16" FontAttributes="Bold" TextColor="#0F172A" />
+                                <Label Text="{Binding Description}" FontSize="12" TextColor="#64748B" LineBreakMode="TailTruncation" MaxLines="2" />
+                            </VerticalStackLayout>
+
+                            <!-- Unread Badge Counter -->
+                            <Border Grid.Column="2" 
+                                    IsVisible="{Binding HasUnread}"
+                                    BackgroundColor="#EF4444" 
+                                    StrokeShape="RoundRectangle 12" 
+                                    Padding="8,2" 
+                                    VerticalOptions="Center">
+                                <Label Text="{Binding UnreadCount}" TextColor="White" FontSize="11" FontAttributes="Bold" />
+                            </Border>
+
+                            <!-- Admin Delete Department Button -->
+                            <Button Grid.Column="3"
+                                    Text="🗑️"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=DeleteDepartmentCommand}"
+                                    CommandParameter="{Binding .}"
+                                    IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=IsAdmin}"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#EF4444"
+                                    FontSize="16"
+                                    WidthRequest="38"
+                                    HeightRequest="38"
+                                    Padding="0"
+                                    VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+
+    <!-- Add Department Modal Overlay (Admin Only) -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsAddDepartmentModalVisible}"
+              BackgroundColor="#99000000"
+              HorizontalOptions="FillAndExpand"
+              VerticalOptions="FillAndExpand"
+              ZIndex="999">
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    WidthRequest="340"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="24"
+                    Margin="20">
+                <VerticalStackLayout Spacing="16">
+                    <!-- Title & Close Button -->
+                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <Label Text="➕ New Department" FontSize="18" FontAttributes="Bold" TextColor="#0F172A" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseAddDepartmentModalCommand}"
+                                BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
+                    </Grid>
+
+                    <Label Text="Add a new department channel. By default, it will be visible to all users and managers."
+                           FontSize="12" TextColor="#64748B" />
+
+                    <!-- Department Name Input -->
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Department Name *" FontSize="12" FontAttributes="Bold" TextColor="#334155" />
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+                            <Entry Text="{Binding NewDepartmentName}"
+                                   Placeholder="e.g. Logistics, Sales, HR"
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#0F172A"
+                                   FontSize="14" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Department Description Input -->
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Description" FontSize="12" FontAttributes="Bold" TextColor="#334155" />
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+                            <Editor Text="{Binding NewDepartmentDescription}"
+                                    Placeholder="Describe the department channel..."
+                                    PlaceholderColor="#94A3B8"
+                                    TextColor="#0F172A"
+                                    FontSize="14"
+                                    HeightRequest="75"
+                                    AutoSize="Disabled" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Error Message -->
+                    <Label Text="{Binding AddDepartmentErrorMessage}"
+                           TextColor="#EF4444"
+                           FontSize="12"
+                           IsVisible="{Binding HasAddDepartmentError}" />
+
+                    <!-- Action Buttons -->
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,6,0,0">
+                        <Button Grid.Column="0"
+                                Text="Cancel"
+                                Command="{Binding CloseAddDepartmentModalCommand}"
+                                BackgroundColor="#F1F5F9"
+                                TextColor="#475569"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="42" />
+                        <Button Grid.Column="1"
+                                Text="Create"
+                                Command="{Binding CreateDepartmentCommand}"
+                                IsEnabled="{Binding CanSaveDepartment}"
+                                BackgroundColor="#2563EB"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="42" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </Grid>
+</ContentPage>
