@@ -7,7 +7,7 @@ public class DefaultAudioService : IAudioService
 
     public Task<bool> StartRecordingAsync(string outputPath) => Task.FromResult(false);
     public Task<string?> StopRecordingAsync() => Task.FromResult<string?>(null);
-    public Task<bool> PlayAudioAsync(string filePath, Action? onFinished = null) => Task.FromResult(false);
+    public Task<bool> PlayAudioAsync(string filePath, Action? onFinished = null, int startPositionMs = 0) => Task.FromResult(false);
     public Task StopAudioAsync() => Task.CompletedTask;
     public Task SeekToAsync(double progress) => Task.CompletedTask;
     public int GetDurationMs() => 0;

@@ -150,6 +150,7 @@
                                                         MinimumTrackColor="#00A884"
                                                         MaximumTrackColor="#CBD5E1"
                                                         ThumbColor="#00A884"
+                                                        DragStarted="OnMessageSliderDragStarted"
                                                         DragCompleted="OnMessageSliderDragCompleted"
                                                         HeightRequest="28"
                                                         Margin="0,-3" />
@@ -354,6 +355,7 @@
                                     MinimumTrackColor="#00A884"
                                     MaximumTrackColor="#E2E8F0"
                                     ThumbColor="#00A884"
+                                    DragStarted="OnPreviewSliderDragStarted"
                                     DragCompleted="OnPreviewSliderDragCompleted"
                                     VerticalOptions="Center" />
 

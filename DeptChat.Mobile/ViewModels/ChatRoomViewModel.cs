@@ -21,6 +21,7 @@ public class ChatMessageItem : ObservableObject
     public int VoiceDurationSeconds { get; set; } = 5;
     public string VoiceDurationText { get; set; } = "0:05";
     public string? LocalAudioPath { get; set; }
+    public bool IsDragging { get; set; }
 
     private double _playbackProgress;
     public double PlaybackProgress
@@ -90,6 +91,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private bool _isSubscribed;
     private System.Timers.Timer? _playbackTimer;
     private double _playbackElapsedSeconds;
+    private bool _isPreviewDragging;
 
     private Guid _conversationId = Guid.Empty;
     private readonly TaskCompletionSource<Guid> _convIdTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -274,12 +276,34 @@ public partial class ChatRoomViewModel : ObservableObject
     [ObservableProperty]
     private string _customerName = string.Empty;
 
-    public string ContactTitle => !string.IsNullOrWhiteSpace(CustomerName) ? CustomerName : DepartmentName;
+    public string ContactTitle
+    {
+        get
+        {
+            var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+            if (isCustomer)
+            {
+                return DepartmentName;
+            }
+            return !string.IsNullOrWhiteSpace(CustomerName) ? CustomerName : DepartmentName;
+        }
+    }
     public string AvatarInitial => !string.IsNullOrWhiteSpace(ContactTitle) ? ContactTitle.Substring(0, 1).ToUpper() : "D";
 
-    public string DisplayTitle => !string.IsNullOrWhiteSpace(CustomerName)
-        ? $"{CustomerName} • {DepartmentName}"
-        : DepartmentName;
+    public string DisplayTitle
+    {
+        get
+        {
+            var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+            if (isCustomer)
+            {
+                return DepartmentName;
+            }
+            return !string.IsNullOrWhiteSpace(CustomerName)
+                ? $"{CustomerName} • {DepartmentName}"
+                : DepartmentName;
+        }
+    }
 
     partial void OnDepartmentNameChanged(string value)
     {
@@ -533,7 +557,8 @@ public partial class ChatRoomViewModel : ObservableObject
                         _convIdTcs.TrySetResult(_conversationId);
                         ActiveConversationId = _conversationId;
                         Preferences.Default.Set($"dept_conv_{deptGuid}_{myUserId}", _conversationId.ToString());
-                        if (string.IsNullOrEmpty(CustomerName))
+                        var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+                        if (!isCustomer && conv.CreatedByUserId != myUserId && string.IsNullOrEmpty(CustomerName))
                         {
                             CustomerName = conv.CreatedByUserName;
                         }
@@ -710,17 +735,28 @@ public partial class ChatRoomViewModel : ObservableObject
         OnPropertyChanged(nameof(VoicePreviewPlayIcon));
 
         var totalDuration = Math.Max(1, _recordingSeconds);
-        _previewElapsedSeconds = VoicePreviewProgress * totalDuration;
+        if (VoicePreviewProgress > 0.01 && VoicePreviewProgress < 0.98)
+        {
+            _previewElapsedSeconds = VoicePreviewProgress * totalDuration;
+        }
+        else
+        {
+            VoicePreviewProgress = 0;
+            _previewElapsedSeconds = 0;
+        }
 
         _previewPlaybackTimer?.Stop();
         _previewPlaybackTimer?.Dispose();
         _previewPlaybackTimer = new System.Timers.Timer(100);
         _previewPlaybackTimer.Elapsed += (s, e) =>
         {
-            _previewElapsedSeconds += 0.1;
-            if (_previewElapsedSeconds > totalDuration)
+            if (!_isPreviewDragging)
             {
-                _previewElapsedSeconds = totalDuration;
+                _previewElapsedSeconds += 0.1;
+                if (_previewElapsedSeconds > totalDuration)
+                {
+                    _previewElapsedSeconds = totalDuration;
+                }
             }
             var progress = Math.Clamp(_previewElapsedSeconds / totalDuration, 0.0, 1.0);
             var curSec = (int)_previewElapsedSeconds;
@@ -729,7 +765,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                if (IsVoicePreviewPlaying)
+                if (IsVoicePreviewPlaying && !_isPreviewDragging)
                 {
                     VoicePreviewProgress = progress;
                     VoicePreviewTimeText = $"{m}:{sec:D2} / {RecordingDurationText}";
@@ -738,6 +774,7 @@ public partial class ChatRoomViewModel : ObservableObject
         };
         _previewPlaybackTimer.Start();
 
+        var startOffsetMs = (int)(_previewElapsedSeconds * 1000);
         await _audioService.PlayAudioAsync(_activeRecordingPath, () =>
         {
             MainThread.BeginInvokeOnMainThread(() =>
@@ -750,38 +787,53 @@ public partial class ChatRoomViewModel : ObservableObject
                 VoicePreviewTimeText = $"0:00 / {RecordingDurationText}";
                 OnPropertyChanged(nameof(VoicePreviewPlayIcon));
             });
-        });
+        }, startOffsetMs);
+    }
+
+    public void OnPreviewSliderDragStarted()
+    {
+        _isPreviewDragging = true;
     }
 
     public async Task SeekVoicePreviewAsync(double progress)
     {
-        VoicePreviewProgress = progress;
+        var clamped = Math.Clamp(progress, 0.0, 1.0);
+        VoicePreviewProgress = clamped;
         var totalDuration = Math.Max(1, _recordingSeconds);
-        _previewElapsedSeconds = progress * totalDuration;
+        _previewElapsedSeconds = clamped * totalDuration;
         var curSec = (int)_previewElapsedSeconds;
         var m = curSec / 60;
         var sec = curSec % 60;
         VoicePreviewTimeText = $"{m}:{sec:D2} / {RecordingDurationText}";
 
-        if (_audioService != null)
+        if (_audioService != null && IsVoicePreviewPlaying)
         {
-            await _audioService.SeekToAsync(progress);
+            await _audioService.SeekToAsync(clamped);
         }
+        _isPreviewDragging = false;
+    }
+
+    public void OnMessageSliderDragStarted(ChatMessageItem item)
+    {
+        item.IsDragging = true;
     }
 
     public async Task SeekMessageAudioAsync(ChatMessageItem item, double progress)
     {
-        item.PlaybackProgress = progress;
+        var clamped = Math.Clamp(progress, 0.0, 1.0);
+        item.PlaybackProgress = clamped;
         var totalDuration = Math.Max(1, item.VoiceDurationSeconds);
-        var curSec = (int)(progress * totalDuration);
+        _playbackElapsedSeconds = clamped * totalDuration;
+        var curSec = (int)_playbackElapsedSeconds;
         var m = curSec / 60;
         var sec = curSec % 60;
         item.CurrentPlaybackTime = $"{m}:{sec:D2}";
 
         if (item.IsPlaying && _audioService != null)
         {
-            await _audioService.SeekToAsync(progress);
+            await _audioService.SeekToAsync(clamped);
         }
+        item.IsDragging = false;
     }
 
     [RelayCommand]
@@ -863,8 +915,6 @@ public partial class ChatRoomViewModel : ObservableObject
             _playbackTimer = null;
             await _audioService.StopAudioAsync();
             item.IsPlaying = false;
-            item.PlaybackProgress = 0;
-            item.CurrentPlaybackTime = item.VoiceDurationText;
             _currentlyPlayingItem = null;
             return;
         }
@@ -910,19 +960,30 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             _currentlyPlayingItem = item;
             item.IsPlaying = true;
-            item.PlaybackProgress = 0;
-            _playbackElapsedSeconds = 0;
             var totalDuration = Math.Max(1, item.VoiceDurationSeconds);
+
+            if (item.PlaybackProgress > 0.01 && item.PlaybackProgress < 0.98)
+            {
+                _playbackElapsedSeconds = item.PlaybackProgress * totalDuration;
+            }
+            else
+            {
+                item.PlaybackProgress = 0;
+                _playbackElapsedSeconds = 0;
+            }
 
             _playbackTimer?.Stop();
             _playbackTimer?.Dispose();
             _playbackTimer = new System.Timers.Timer(100);
             _playbackTimer.Elapsed += (s, e) =>
             {
-                _playbackElapsedSeconds += 0.1;
-                if (_playbackElapsedSeconds > totalDuration)
+                if (!item.IsDragging)
                 {
-                    _playbackElapsedSeconds = totalDuration;
+                    _playbackElapsedSeconds += 0.1;
+                    if (_playbackElapsedSeconds > totalDuration)
+                    {
+                        _playbackElapsedSeconds = totalDuration;
+                    }
                 }
                 var progress = Math.Clamp(_playbackElapsedSeconds / totalDuration, 0.0, 1.0);
                 var curSec = (int)_playbackElapsedSeconds;
@@ -932,7 +993,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    if (item.IsPlaying)
+                    if (item.IsPlaying && !item.IsDragging)
                     {
                         item.PlaybackProgress = progress;
                         item.CurrentPlaybackTime = timeText;
@@ -941,6 +1002,7 @@ public partial class ChatRoomViewModel : ObservableObject
             };
             _playbackTimer.Start();
 
+            var startOffsetMs = (int)(_playbackElapsedSeconds * 1000);
             await _audioService.PlayAudioAsync(audioPath, () =>
             {
                 MainThread.BeginInvokeOnMainThread(() =>
@@ -953,7 +1015,7 @@ public partial class ChatRoomViewModel : ObservableObject
                     item.CurrentPlaybackTime = item.VoiceDurationText;
                     _currentlyPlayingItem = null;
                 });
-            });
+            }, startOffsetMs);
         }
     }
 

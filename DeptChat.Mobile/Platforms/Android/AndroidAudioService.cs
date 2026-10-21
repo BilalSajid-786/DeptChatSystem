@@ -73,7 +73,7 @@ public class AndroidAudioService : IAudioService
         return Task.FromResult<string?>(null);
     }
 
-    public Task<bool> PlayAudioAsync(string filePath, Action? onFinished = null)
+    public Task<bool> PlayAudioAsync(string filePath, Action? onFinished = null, int startPositionMs = 0)
     {
         try
         {
@@ -89,6 +89,10 @@ public class AndroidAudioService : IAudioService
             };
 
             _player.Prepare();
+            if (startPositionMs > 0 && startPositionMs < _player.Duration)
+            {
+                _player.SeekTo(startPositionMs);
+            }
             _player.Start();
             return Task.FromResult(true);
         }

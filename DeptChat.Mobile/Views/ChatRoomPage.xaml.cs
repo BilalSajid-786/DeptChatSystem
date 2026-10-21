@@ -47,11 +47,27 @@ public partial class ChatRoomPage : ContentPage
         });
     }
 
+    private void OnPreviewSliderDragStarted(object? sender, EventArgs e)
+    {
+        if (BindingContext is ViewModels.ChatRoomViewModel vm)
+        {
+            vm.OnPreviewSliderDragStarted();
+        }
+    }
+
     private void OnPreviewSliderDragCompleted(object? sender, EventArgs e)
     {
         if (sender is Slider slider && BindingContext is ViewModels.ChatRoomViewModel vm)
         {
             _ = vm.SeekVoicePreviewAsync(slider.Value);
+        }
+    }
+
+    private void OnMessageSliderDragStarted(object? sender, EventArgs e)
+    {
+        if (sender is Slider slider && slider.BindingContext is ViewModels.ChatMessageItem item && BindingContext is ViewModels.ChatRoomViewModel vm)
+        {
+            vm.OnMessageSliderDragStarted(item);
         }
     }
 
