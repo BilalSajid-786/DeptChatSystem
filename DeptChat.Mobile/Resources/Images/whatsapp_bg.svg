@@ -1,0 +1,41 @@
+<svg width="720" height="1280" viewBox="0 0 720 1280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="wa_doodle" width="240" height="240" patternUnits="userSpaceOnUse">
+      <!-- Doodle 1: Chat bubble -->
+      <path d="M20,25 h40 a12,12 0 0 1 12,12 v20 a12,12 0 0 1 -12,12 h-26 l-10,8 v-8 h-4 a12,12 0 0 1 -12,-12 v-20 a12,12 0 0 1 12,-12 z" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.055"/>
+      <!-- Doodle 2: Heart -->
+      <path d="M150,30 c-8,-12 -24,-4 -24,8 c0,14 24,24 24,24 c0,0 24,-10 24,-24 c0,-12 -16,-20 -24,-8 z" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.05"/>
+      <!-- Doodle 3: Coffee Mug -->
+      <path d="M205,35 v18 a8,8 0 0 1 -8,8 h-14 a8,8 0 0 1 -8,-8 v-18 z m18,4 h4 a4,4 0 0 1 4,4 v4 a4,4 0 0 1 -4,4 h-4" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.05"/>
+      <!-- Doodle 4: Music note -->
+      <path d="M50,110 v-25 h16 v25 m-16,-8 h16 m-16,8 a6,6 0 1 1 -6,-6 h6 m16,8 a6,6 0 1 1 -6,-6 h6" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.055"/>
+      <!-- Doodle 5: Paper Plane -->
+      <path d="M140,100 l35,12 l-35,12 l6,-12 z m6,0 l18,6" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.055"/>
+      <!-- Doodle 6: Smiley Face -->
+      <circle cx="210" cy="115" r="16" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.05"/>
+      <circle cx="204" cy="111" r="1.8" fill="#000000" opacity="0.055"/>
+      <circle cx="216" cy="111" r="1.8" fill="#000000" opacity="0.055"/>
+      <path d="M204,118 q6,8 12,0" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.055"/>
+      <!-- Doodle 7: Star -->
+      <polygon points="35,160 38,169 47,169 40,174 43,183 35,178 27,183 30,174 23,169 32,169" fill="none" stroke="#000000" stroke-width="1.5" opacity="0.05"/>
+      <!-- Doodle 8: Camera -->
+      <rect x="95" y="165" width="28" height="20" rx="4" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.05"/>
+      <circle cx="109" cy="175" r="5" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.055"/>
+      <path d="M104,165 l2,-4 h6 l2,4" fill="none" stroke="#000000" stroke-width="1.5" opacity="0.05"/>
+      <!-- Doodle 9: Clock -->
+      <circle cx="175" cy="175" r="14" fill="none" stroke="#000000" stroke-width="1.8" opacity="0.05"/>
+      <path d="M175,166 v9 h6" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.055"/>
+      <!-- Doodle 10: Headphones -->
+      <path d="M30,225 a15,15 0 0 1 30,0 v10 a4,4 0 0 1 -4,4 h-2 a4,4 0 0 1 -4,-4 v-8 m10,8 v8 a4,4 0 0 1 -4,4 h-2 a4,4 0 0 1 -4,-4 v-8" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.05"/>
+      <!-- Doodle 11: Thumb up -->
+      <path d="M120,230 h10 a6,6 0 0 0 6,-6 v-2 a4,4 0 0 0 -4,-4 h-8 l2,-8 a3,3 0 0 0 -3,-4 l-6,10 v14 z" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.05"/>
+      <!-- Doodle 12: Sparkle / Sun -->
+      <circle cx="210" cy="225" r="5" fill="none" stroke="#000000" stroke-width="1.6" opacity="0.05"/>
+      <path d="M210,214 v4 m0,14 v4 m-11,-11 h4 m14,0 h4" fill="none" stroke="#000000" stroke-width="1.4" opacity="0.045"/>
+    </pattern>
+  </defs>
+  <!-- Background Color -->
+  <rect width="100%" height="100%" fill="#EFEAE2"/>
+  <!-- Repeating Wallpaper Pattern -->
+  <rect width="100%" height="100%" fill="url(#wa_doodle)"/>
+</svg>
