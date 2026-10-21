@@ -70,6 +70,7 @@ public class ChatHub : Hub
             }
         }
 
+        await _presenceService.SetUserOnlineAsync(userId, true);
         await base.OnConnectedAsync();
     }
 
@@ -77,6 +78,7 @@ public class ChatHub : Hub
     {
         var userId = GetUserId();
         await _presenceService.ClearPresenceAsync(userId);
+        await _presenceService.SetUserOnlineAsync(userId, false);
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -89,6 +91,7 @@ public class ChatHub : Hub
         var userId = GetUserId();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.SetPresenceAsync(userId, $"room:{conversationId}");
+        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, true);
 
         // Mark all unread messages sent by others in this conversation as Read
         var unreadMessages = await _dbContext.Messages
@@ -119,7 +122,34 @@ public class ChatHub : Hub
         var userId = GetUserId();
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.ClearPresenceAsync(userId);
+        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, false);
         _logger.LogInformation("User {UserId} left room {ConversationId}", userId, conversationId);
+    }
+
+    /// <summary>
+    /// Real-time WhatsApp-style typing indicator.
+    /// </summary>
+    public async Task SendTyping(Guid conversationId, bool isTyping)
+    {
+        var userId = GetUserId();
+        var senderName = Context.User?.Identity?.Name ?? "Someone";
+        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserTyping", conversationId, userId, senderName, isTyping);
+    }
+
+    /// <summary>
+    /// Query presence and last seen timestamp of a user.
+    /// </summary>
+    public async Task<UserPresenceDto> GetPresence(Guid targetUserId, Guid? conversationId = null)
+    {
+        var isOnline = await _presenceService.IsUserOnlineAsync(targetUserId);
+        var lastSeen = await _presenceService.GetLastSeenAsync(targetUserId);
+        bool isInRoom = false;
+        if (conversationId.HasValue)
+        {
+            var currentPresence = await _presenceService.GetPresenceAsync(targetUserId);
+            isInRoom = string.Equals(currentPresence, $"room:{conversationId.Value}", StringComparison.OrdinalIgnoreCase);
+        }
+        return new UserPresenceDto(targetUserId, isOnline, isInRoom, lastSeen);
     }
 
     /// <summary>

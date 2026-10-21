@@ -67,7 +67,9 @@ public class ChatMessageItem : ObservableObject
     }
 
     public LayoutOptions Alignment => IsOutgoing ? LayoutOptions.End : LayoutOptions.Start;
-    public Color BubbleColor => IsOutgoing ? Color.FromArgb("#DCF8C6") : Colors.White;
+    public Color BubbleColor => IsOutgoing ? Color.FromArgb("#E7FFDB") : Colors.White;
+    public CornerRadius BubbleShape => IsOutgoing ? new CornerRadius(14, 14, 2, 14) : new CornerRadius(14, 14, 14, 2);
+    public bool ShowSenderName => !IsOutgoing && !string.IsNullOrWhiteSpace(SenderName);
 }
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
@@ -238,15 +240,90 @@ public partial class ChatRoomViewModel : ObservableObject
     [ObservableProperty]
     private string _customerName = string.Empty;
 
+    public string ContactTitle => !string.IsNullOrWhiteSpace(CustomerName) ? CustomerName : DepartmentName;
+    public string AvatarInitial => !string.IsNullOrWhiteSpace(ContactTitle) ? ContactTitle.Substring(0, 1).ToUpper() : "D";
+
     public string DisplayTitle => !string.IsNullOrWhiteSpace(CustomerName)
         ? $"{CustomerName} • {DepartmentName}"
         : DepartmentName;
 
-    partial void OnDepartmentNameChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
-    partial void OnCustomerNameChanged(string value) => OnPropertyChanged(nameof(DisplayTitle));
+    partial void OnDepartmentNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(DisplayTitle));
+        OnPropertyChanged(nameof(ContactTitle));
+        OnPropertyChanged(nameof(AvatarInitial));
+    }
+
+    partial void OnCustomerNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(DisplayTitle));
+        OnPropertyChanged(nameof(ContactTitle));
+        OnPropertyChanged(nameof(AvatarInitial));
+    }
+
+    [ObservableProperty]
+    private string _presenceStatusText = "online";
+
+    [ObservableProperty]
+    private Color _presenceTextColor = Color.FromArgb("#A7F3D0");
+
+    [ObservableProperty]
+    private bool _isOtherUserOnline = true;
+
+    [ObservableProperty]
+    private bool _isOtherUserTyping;
+
+    public Guid OtherUserId { get; set; } = Guid.Empty;
 
     [ObservableProperty]
     private string _inputMessage = string.Empty;
+
+    public bool HasInputText => !string.IsNullOrWhiteSpace(InputMessage);
+
+    partial void OnInputMessageChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasInputText));
+        HandleTypingDebounce(value);
+    }
+
+    private System.Timers.Timer? _typingTimer;
+    private bool _isCurrentlyTypingSent;
+
+    private void HandleTypingDebounce(string text)
+    {
+        if (_signalRService == null || _conversationId == Guid.Empty) return;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            if (_isCurrentlyTypingSent)
+            {
+                _isCurrentlyTypingSent = false;
+                _ = _signalRService.SendTypingAsync(_conversationId, false);
+            }
+            _typingTimer?.Stop();
+            return;
+        }
+
+        if (!_isCurrentlyTypingSent)
+        {
+            _isCurrentlyTypingSent = true;
+            _ = _signalRService.SendTypingAsync(_conversationId, true);
+        }
+
+        _typingTimer?.Stop();
+        _typingTimer?.Dispose();
+        _typingTimer = new System.Timers.Timer(2500);
+        _typingTimer.AutoReset = false;
+        _typingTimer.Elapsed += (s, e) =>
+        {
+            _isCurrentlyTypingSent = false;
+            if (_conversationId != Guid.Empty && _signalRService != null)
+            {
+                _ = _signalRService.SendTypingAsync(_conversationId, false);
+            }
+        };
+        _typingTimer.Start();
+    }
 
     [ObservableProperty]
     private ObservableCollection<ChatMessageItem> _messages = new();
@@ -307,6 +384,8 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnMessagesRead += HandleMessagesRead;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
+            _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
+            _signalRService.OnUserTyping += HandleUserTyping;
         }
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
@@ -325,6 +404,8 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnMessagesRead -= HandleMessagesRead;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
+            _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
+            _signalRService.OnUserTyping -= HandleUserTyping;
         }
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
@@ -429,6 +510,25 @@ public partial class ChatRoomViewModel : ObservableObject
                 // Sync delta and flush outbox
                 await SyncMissedMessagesAsync();
                 await FlushOutboxAsync();
+
+                // Initial presence check for other user
+                if (OtherUserId == Guid.Empty)
+                {
+                    var otherMsg = Messages.FirstOrDefault(m => !m.IsOutgoing && m.Id != Guid.Empty);
+                    if (otherMsg != null)
+                    {
+                        // Will be resolved from server message
+                    }
+                }
+
+                if (OtherUserId != Guid.Empty && _signalRService != null && _signalRService.IsConnected)
+                {
+                    var presence = await _signalRService.GetPresenceAsync(OtherUserId, _conversationId);
+                    if (presence != null)
+                    {
+                        ApplyPresence(presence);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -655,6 +755,16 @@ public partial class ChatRoomViewModel : ObservableObject
 
     private Task SendMessageInternalAsync(string content, bool isVoice = false, int duration = 0, string? localPath = null)
     {
+        _typingTimer?.Stop();
+        if (_isCurrentlyTypingSent)
+        {
+            _isCurrentlyTypingSent = false;
+            if (_signalRService != null && _conversationId != Guid.Empty)
+            {
+                _ = _signalRService.SendTypingAsync(_conversationId, false);
+            }
+        }
+
         var clientMsgId = Guid.NewGuid().ToString();
 
         // Optimistic UI update: instant speech bubble
@@ -714,9 +824,141 @@ public partial class ChatRoomViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
+    private void ApplyPresence(UserPresenceDto presence)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (presence.IsInRoom || presence.IsOnline)
+            {
+                IsOtherUserOnline = true;
+                PresenceStatusText = "online";
+                PresenceTextColor = Color.FromArgb("#A7F3D0");
+            }
+            else if (presence.LastSeenAt.HasValue)
+            {
+                IsOtherUserOnline = false;
+                var lastSeen = presence.LastSeenAt.Value.ToLocalTime();
+                if (lastSeen.Date == DateTime.Today)
+                    PresenceStatusText = $"last seen today at {lastSeen:h:mm tt}";
+                else if (lastSeen.Date == DateTime.Today.AddDays(-1))
+                    PresenceStatusText = $"last seen yesterday at {lastSeen:h:mm tt}";
+                else
+                    PresenceStatusText = $"last seen {lastSeen:MMM dd} at {lastSeen:h:mm tt}";
+                PresenceTextColor = Color.FromArgb("#D8E2DC");
+            }
+            else
+            {
+                IsOtherUserOnline = false;
+                PresenceStatusText = "offline";
+                PresenceTextColor = Color.FromArgb("#CBD5E1");
+            }
+        });
+    }
+
+    private void HandleUserPresenceChanged(Guid convId, Guid userId, bool isInRoom)
+    {
+        if (convId != _conversationId) return;
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        if (userId == myUserId) return;
+
+        OtherUserId = userId;
+        IsOtherUserOnline = isInRoom;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (isInRoom)
+            {
+                PresenceStatusText = "online";
+                PresenceTextColor = Color.FromArgb("#A7F3D0");
+            }
+            else
+            {
+                PresenceStatusText = $"last seen today at {DateTime.Now:h:mm tt}";
+                PresenceTextColor = Color.FromArgb("#D8E2DC");
+            }
+        });
+    }
+
+    private void HandleUserTyping(Guid convId, Guid userId, string userName, bool isTyping)
+    {
+        if (convId != _conversationId) return;
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        if (userId == myUserId) return;
+
+        OtherUserId = userId;
+        IsOtherUserTyping = isTyping;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (isTyping)
+            {
+                PresenceStatusText = "typing...";
+                PresenceTextColor = Color.FromArgb("#25D366");
+            }
+            else
+            {
+                if (IsOtherUserOnline)
+                {
+                    PresenceStatusText = "online";
+                    PresenceTextColor = Color.FromArgb("#A7F3D0");
+                }
+                else
+                {
+                    PresenceStatusText = $"last seen today at {DateTime.Now:h:mm tt}";
+                    PresenceTextColor = Color.FromArgb("#D8E2DC");
+                }
+            }
+        });
+    }
+
+    [RelayCommand]
+    private async Task AudioCallAsync()
+    {
+        await Shell.Current.DisplayAlert("WhatsApp Voice Call", $"Calling {ContactTitle} via encrypted audio...", "End Call");
+    }
+
+    [RelayCommand]
+    private async Task VideoCallAsync()
+    {
+        await Shell.Current.DisplayAlert("WhatsApp Video Call", $"Calling {ContactTitle} via encrypted HD video...", "End Call");
+    }
+
+    [RelayCommand]
+    private async Task OpenMenuAsync()
+    {
+        var action = await Shell.Current.DisplayActionSheet(ContactTitle, "Cancel", null, "View Contact Info", "Clear Messages", "Log Out");
+        if (action == "Log Out")
+        {
+            await LogoutAsync();
+        }
+        else if (action == "Clear Messages")
+        {
+            Messages.Clear();
+        }
+        else if (action == "View Contact Info")
+        {
+            await Shell.Current.DisplayAlert(ContactTitle, $"Department: {DepartmentName}\nStatus: {PresenceStatusText}", "OK");
+        }
+    }
+
+    [RelayCommand]
+    private async Task AttachFileAsync()
+    {
+        var action = await Shell.Current.DisplayActionSheet("Share Content", "Cancel", null, "📷 Camera", "🖼️ Gallery", "📄 Document", "📍 Location");
+        if (!string.IsNullOrEmpty(action) && action != "Cancel")
+        {
+            await Shell.Current.DisplayAlert("Attachment", $"{action} selected. Instant sharing enabled.", "OK");
+        }
+    }
+
     private void HandleMessageReceived(ChatMessageDto msg)
     {
         if (msg.ConversationId != _conversationId) return;
+
+        if (msg.SenderId != (_authService?.UserId ?? Guid.Empty))
+        {
+            OtherUserId = msg.SenderId;
+        }
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -1020,6 +1262,15 @@ public partial class ChatRoomViewModel : ObservableObject
         }
 
         UnsubscribeFromEvents();
+
+        _typingTimer?.Stop();
+        _typingTimer?.Dispose();
+        _typingTimer = null;
+        if (_isCurrentlyTypingSent && _signalRService != null && _conversationId != Guid.Empty)
+        {
+            _isCurrentlyTypingSent = false;
+            try { await _signalRService.SendTypingAsync(_conversationId, false); } catch { }
+        }
 
         if (_signalRService != null && _conversationId != Guid.Empty)
         {

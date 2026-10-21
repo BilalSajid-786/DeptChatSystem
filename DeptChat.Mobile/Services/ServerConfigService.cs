@@ -3,7 +3,7 @@ namespace DeptChat.Mobile.Services;
 public class ServerConfigService
 {
     public const string LocalWifiUrl = "http://192.168.0.108:5051";
-    public const string CloudflareUrl = "https://enclosed-spyware-upper-junction.trycloudflare.com";
+    public const string CloudflareUrl = "https://unto-intensive-lips-compare.trycloudflare.com";
     public const string DefaultUrl = LocalWifiUrl; // Defaults to Local Wi-Fi (fastest, direct LAN)
     private const string PrefKey = "DeptChat_ServerUrl";
 

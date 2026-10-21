@@ -32,6 +32,8 @@ public class SignalRService
     public event Action<DepartmentDto>? OnDepartmentAdded;
     public event Action<Guid>? OnDepartmentDeleted;
     public event Action? OnReconnected;
+    public event Action<Guid, Guid, bool>? OnUserPresenceChanged;
+    public event Action<Guid, Guid, string, bool>? OnUserTyping;
 
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
@@ -108,6 +110,16 @@ public class SignalRService
         _hubConnection.On<Guid>("DepartmentDeleted", (deptId) =>
         {
             OnDepartmentDeleted?.Invoke(deptId);
+        });
+
+        _hubConnection.On<Guid, Guid, bool>("UserPresenceChanged", (convId, userId, isInRoom) =>
+        {
+            OnUserPresenceChanged?.Invoke(convId, userId, isInRoom);
+        });
+
+        _hubConnection.On<Guid, Guid, string, bool>("UserTyping", (convId, userId, userName, isTyping) =>
+        {
+            OnUserTyping?.Invoke(convId, userId, userName, isTyping);
         });
 
         try
@@ -273,5 +285,30 @@ public class SignalRService
             }
         }
         catch { }
+    }
+
+    public async Task SendTypingAsync(Guid conversationId, bool isTyping)
+    {
+        try
+        {
+            if (IsConnected)
+            {
+                await _hubConnection!.SendAsync("SendTyping", conversationId, isTyping);
+            }
+        }
+        catch { }
+    }
+
+    public async Task<UserPresenceDto?> GetPresenceAsync(Guid targetUserId, Guid? conversationId = null)
+    {
+        try
+        {
+            if (IsConnected)
+            {
+                return await _hubConnection!.InvokeAsync<UserPresenceDto>("GetPresence", targetUserId, conversationId);
+            }
+        }
+        catch { }
+        return null;
     }
 }

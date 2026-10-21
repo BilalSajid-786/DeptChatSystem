@@ -48,3 +48,10 @@ public record InAppNotificationToastDto(
     DateTime SentAt
 );
 
+public record UserPresenceDto(
+    Guid UserId,
+    bool IsOnline,
+    bool IsInRoom,
+    DateTime? LastSeenAt
+);
+

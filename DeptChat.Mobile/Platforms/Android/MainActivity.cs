@@ -2,6 +2,7 @@ using Android.App;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
+using AndroidX.Core.View;
 using Firebase.Messaging;
 
 namespace DeptChat.Mobile;
@@ -17,7 +18,11 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
 
-        Window?.SetSoftInputMode(SoftInput.AdjustResize);
+        if (Window != null)
+        {
+            WindowCompat.SetDecorFitsSystemWindows(Window, true);
+            Window.SetSoftInputMode(SoftInput.AdjustResize);
+        }
 
         // Android 13+ (API 33+) Runtime Notification Permission Request
         if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)

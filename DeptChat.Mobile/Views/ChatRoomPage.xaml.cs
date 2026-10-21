@@ -51,14 +51,13 @@ public partial class ChatRoomPage : ContentPage
     {
         if (e.IsFocused)
         {
-            // Give the keyboard animation time to adjust viewport height
+            // Ensure chat scrolls to the bottom so all messages and the active typing area stay visible
             MainThread.BeginInvokeOnMainThread(async () =>
             {
+                await Task.Delay(150);
+                ScrollToBottom(animate: true);
                 await Task.Delay(250);
-                if (_vm?.Messages.Count > 4)
-                {
-                    ScrollToBottom(animate: true);
-                }
+                ScrollToBottom(animate: true);
             });
         }
     }
@@ -67,7 +66,12 @@ public partial class ChatRoomPage : ContentPage
     {
         base.OnAppearing();
 #if ANDROID
-        Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.Window?.SetSoftInputMode(Android.Views.SoftInput.AdjustResize);
+        if (Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.Window != null)
+        {
+            var window = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity.Window;
+            AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(window, true);
+            window.SetSoftInputMode(Android.Views.SoftInput.AdjustResize);
+        }
 #endif
         if (BindingContext is ViewModels.ChatRoomViewModel vm)
         {

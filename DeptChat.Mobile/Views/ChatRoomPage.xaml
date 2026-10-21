@@ -3,21 +3,114 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
              x:Class="DeptChat.Mobile.Views.ChatRoomPage"
-             Title="{Binding DisplayTitle}"
-             BackgroundColor="#E5DDD5">
+             Shell.NavBarIsVisible="False"
+             SafeAreaEdges="None"
+             BackgroundColor="#EFEAE2">
 
-    <ContentPage.ToolbarItems>
-        <ToolbarItem Text="Log Out" Command="{Binding LogoutCommand}" />
-    </ContentPage.ToolbarItems>
+    <Grid RowDefinitions="Auto, Auto, *, Auto">
 
-    <Grid RowDefinitions="Auto, *, Auto">
+        <!-- 1. WhatsApp Top App Bar -->
+        <Grid Grid.Row="0"
+              BackgroundColor="#075E54"
+              HeightRequest="60"
+              Padding="6,4,8,4"
+              ColumnDefinitions="*, Auto">
 
-        <!-- 1. In-App Cross-Department Toast Banner -->
-        <Border Grid.Row="0" 
+            <!-- Left: Back Arrow + Avatar + Contact Name & Online Status -->
+            <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                <!-- Back Button -->
+                <Button Text="←"
+                        Command="{Binding BackCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="24"
+                        FontAttributes="Bold"
+                        Padding="0"
+                        WidthRequest="30"
+                        HeightRequest="44"
+                        VerticalOptions="Center" />
+
+                <!-- WhatsApp Circular Avatar with Online Indicator -->
+                <Grid WidthRequest="38" HeightRequest="38" VerticalOptions="Center">
+                    <Border BackgroundColor="#00A884"
+                            Stroke="White"
+                            StrokeThickness="1.5"
+                            StrokeShape="RoundRectangle 19"
+                            WidthRequest="38"
+                            HeightRequest="38">
+                        <Label Text="{Binding AvatarInitial}"
+                               TextColor="White"
+                               FontAttributes="Bold"
+                               FontSize="16"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <!-- Small Green Online Dot -->
+                    <Ellipse Fill="#25D366"
+                             Stroke="White"
+                             StrokeThickness="1.5"
+                             WidthRequest="10"
+                             HeightRequest="10"
+                             HorizontalOptions="End"
+                             VerticalOptions="End"
+                             IsVisible="{Binding IsOtherUserOnline}" />
+                </Grid>
+
+                <!-- Contact Title & Status Subtitle -->
+                <VerticalStackLayout Spacing="1" VerticalOptions="Center" Margin="2,0,0,0">
+                    <Label Text="{Binding ContactTitle}"
+                           TextColor="White"
+                           FontAttributes="Bold"
+                           FontSize="16"
+                           LineBreakMode="TailTruncation"
+                           MaximumWidthRequest="170" />
+                    <Label Text="{Binding PresenceStatusText}"
+                           TextColor="{Binding PresenceTextColor}"
+                           FontSize="12"
+                           LineBreakMode="TailTruncation"
+                           MaximumWidthRequest="170" />
+                </VerticalStackLayout>
+            </HorizontalStackLayout>
+
+            <!-- Right: Video Call, Voice Call, 3-dots Menu -->
+            <HorizontalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                <Button Text="📹"
+                        Command="{Binding VideoCallCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="18"
+                        WidthRequest="36"
+                        HeightRequest="44"
+                        Padding="0"
+                        VerticalOptions="Center" />
+                <Button Text="📞"
+                        Command="{Binding AudioCallCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="17"
+                        WidthRequest="36"
+                        HeightRequest="44"
+                        Padding="0"
+                        VerticalOptions="Center" />
+                <Button Text="⋮"
+                        Command="{Binding OpenMenuCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="22"
+                        FontAttributes="Bold"
+                        WidthRequest="28"
+                        HeightRequest="44"
+                        Padding="0"
+                        VerticalOptions="Center" />
+            </HorizontalStackLayout>
+        </Grid>
+
+        <!-- 2. In-App Cross-Department Toast Banner -->
+        <Border Grid.Row="1" 
                 IsVisible="{Binding ShowInAppToast}" 
                 BackgroundColor="#1E293B" 
-                Padding="16,10" 
-                Margin="10,6"
+                Padding="14,8" 
+                Margin="8,4"
                 StrokeShape="RoundRectangle 8">
             <Grid ColumnDefinitions="*, Auto">
                 <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
@@ -25,26 +118,36 @@
             </Grid>
         </Border>
 
-        <!-- 2. Scrollable Messages Area -->
+        <!-- 3. Scrollable WhatsApp Messages Canvas -->
         <CollectionView x:Name="MessagesCollectionView"
-                        Grid.Row="1"
+                        Grid.Row="2"
                         ItemsSource="{Binding Messages}"
-                        Margin="12,6"
+                        Margin="8,4"
                         ItemSizingStrategy="MeasureAllItems">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ChatMessageItem">
-                    <Grid Padding="0,4" HorizontalOptions="FillAndExpand">
+                    <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
                         <Border HorizontalOptions="{Binding Alignment}"
                                 BackgroundColor="{Binding BubbleColor}"
                                 Stroke="#CBD5E1"
-                                StrokeThickness="0.5"
-                                StrokeShape="RoundRectangle 12"
-                                Padding="12,8"
+                                StrokeThickness="0.4"
+                                StrokeShape="{Binding BubbleShape}"
+                                Padding="10,6,10,6"
                                 MaximumWidthRequest="290">
 
-                            <VerticalStackLayout Spacing="4">
+                            <VerticalStackLayout Spacing="3">
+                                <!-- Sender Name (Only shown on incoming departmental messages) -->
+                                <Label Text="{Binding SenderName}"
+                                       FontSize="12"
+                                       TextColor="#075E54"
+                                       FontAttributes="Bold"
+                                       IsVisible="{Binding ShowSenderName}" />
+
                                 <!-- Regular Text Message -->
-                                <Label Text="{Binding Content}" FontSize="15" TextColor="#0F172A">
+                                <Label Text="{Binding Content}"
+                                       FontSize="15"
+                                       TextColor="#111B21"
+                                       LineBreakMode="WordWrap">
                                     <Label.Triggers>
                                         <DataTrigger TargetType="Label" Binding="{Binding IsVoiceMessage}" Value="True">
                                             <Setter Property="IsVisible" Value="False" />
@@ -52,8 +155,8 @@
                                     </Label.Triggers>
                                 </Label>
 
-                                <!-- WhatsApp-style Voice Message Player -->
-                                <Grid ColumnDefinitions="42, *" ColumnSpacing="10" WidthRequest="220" VerticalOptions="Center" Padding="2,2">
+                                <!-- WhatsApp-style Voice Note Player -->
+                                <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="210" VerticalOptions="Center" Padding="2,2">
                                     <Grid.Triggers>
                                         <DataTrigger TargetType="Grid" Binding="{Binding IsVoiceMessage}" Value="False">
                                             <Setter Property="IsVisible" Value="False" />
@@ -67,47 +170,48 @@
                                             CommandParameter="{Binding .}"
                                             BackgroundColor="{Binding PlayButtonColor}"
                                             TextColor="White"
-                                            WidthRequest="42"
-                                            HeightRequest="42"
-                                            CornerRadius="21"
+                                            WidthRequest="38"
+                                            HeightRequest="38"
+                                            CornerRadius="19"
                                             Padding="0"
-                                            FontSize="16"
+                                            FontSize="15"
                                             FontAttributes="Bold"
                                             VerticalOptions="Center" />
 
                                     <!-- Waveform Progress Scrubber & Duration -->
-                                    <VerticalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
+                                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
                                         <!-- Scrubber / Progress Bar -->
                                         <ProgressBar Progress="{Binding PlaybackProgress}"
-                                                     ProgressColor="#059669"
+                                                     ProgressColor="#00A884"
                                                      BackgroundColor="#CBD5E1"
-                                                     HeightRequest="4"
+                                                     HeightRequest="3"
                                                      VerticalOptions="Center" />
 
                                         <!-- Duration + Mic Badge -->
                                         <Grid ColumnDefinitions="*, Auto">
                                             <Label Grid.Column="0" 
                                                    Text="{Binding CurrentPlaybackTime}" 
-                                                   FontSize="12" 
-                                                   TextColor="#64748B" 
+                                                   FontSize="11" 
+                                                   TextColor="#667781" 
                                                    FontAttributes="Bold" 
                                                    VerticalOptions="Center" />
                                             <Label Grid.Column="1" 
                                                    Text="🎙️" 
-                                                   FontSize="12" 
+                                                   FontSize="11" 
                                                    VerticalOptions="Center" />
                                         </Grid>
                                     </VerticalStackLayout>
                                 </Grid>
 
-                                <!-- Metadata Footer (Time + Status Tick) -->
-                                <HorizontalStackLayout HorizontalOptions="End" Spacing="4">
-                                    <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#64748B" />
+                                <!-- Metadata Footer (Timestamp + WhatsApp Delivery Blue Ticks) -->
+                                <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+                                    <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
                                     <Label Text="{Binding StatusIcon}" 
                                            TextColor="{Binding StatusColor}" 
                                            FontSize="11" 
                                            IsVisible="{Binding IsOutgoing}" 
-                                           FontAttributes="Bold" />
+                                           FontAttributes="Bold"
+                                           VerticalOptions="Center" />
                                 </HorizontalStackLayout>
                             </VerticalStackLayout>
                         </Border>
@@ -116,94 +220,167 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <!-- 3. Bottom Input Bar (Text + Voice Recording) -->
-        <Border Grid.Row="2" BackgroundColor="#F1F5F9" Padding="10,8" StrokeThickness="0">
-            <Grid>
-                <!-- Normal Mode: Text Input + Mic + Send -->
-                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="6" VerticalOptions="Center">
-                    <Grid.Triggers>
-                        <DataTrigger TargetType="Grid" Binding="{Binding IsRecordingVoice}" Value="True">
-                            <Setter Property="IsVisible" Value="False" />
-                        </DataTrigger>
-                    </Grid.Triggers>
+        <!-- 4. WhatsApp Bottom Input Area (Floating Capsule + Green FAB) -->
+        <Grid Grid.Row="3"
+              ColumnDefinitions="*, Auto"
+              ColumnSpacing="6"
+              Padding="6,4,6,8"
+              BackgroundColor="Transparent"
+              VerticalOptions="End">
 
-                    <!-- Text Entry Box -->
-                    <Border Grid.Column="0" BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 20" Padding="12,0">
-                        <Entry Text="{Binding InputMessage}" 
-                               Placeholder="Type a message..." 
-                               PlaceholderColor="#94A3B8" 
-                               TextColor="#0F172A"
-                               VerticalOptions="Center"
-                               HeightRequest="42"
-                               Focused="OnMessageEntryFocused" />
-                    </Border>
+            <!-- Capsule Pill (Normal Mode) -->
+            <Border Grid.Column="0"
+                    BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="0.5"
+                    StrokeShape="RoundRectangle 24"
+                    Padding="6,0,8,0"
+                    HeightRequest="48"
+                    VerticalOptions="Center">
+                <Border.Triggers>
+                    <DataTrigger TargetType="Border" Binding="{Binding IsRecordingVoice}" Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Border.Triggers>
 
-                    <!-- Microphone Button -->
-                    <Button Grid.Column="1" 
-                            Text="🎙️" 
-                            Command="{Binding StartVoiceRecordingCommand}" 
-                            BackgroundColor="#E2E8F0" 
-                            TextColor="#0F172A" 
-                            FontSize="18" 
-                            CornerRadius="21" 
-                            WidthRequest="42" 
-                            HeightRequest="42" 
-                            Padding="0" 
+                <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="2" VerticalOptions="Center">
+                    <!-- Emoji Button -->
+                    <Button Grid.Column="0"
+                            Text="😊"
+                            BackgroundColor="Transparent"
+                            TextColor="#8696A0"
+                            FontSize="18"
+                            WidthRequest="32"
+                            HeightRequest="40"
+                            Padding="0"
                             VerticalOptions="Center" />
 
-                    <!-- Send Button -->
-                    <Button Grid.Column="2" 
-                            Text="➤" 
-                            Command="{Binding SendMessageCommand}" 
-                            BackgroundColor="#059669" 
-                            TextColor="White" 
-                            FontSize="18" 
-                            FontAttributes="Bold"
-                            CornerRadius="21" 
-                            WidthRequest="42" 
-                            HeightRequest="42" 
-                            Padding="0" 
-                            VerticalOptions="Center" />
-                </Grid>
+                    <!-- Message Entry Box -->
+                    <Entry Grid.Column="1"
+                           Text="{Binding InputMessage}" 
+                           Placeholder="Message" 
+                           PlaceholderColor="#8696A0" 
+                           TextColor="#111B21"
+                           FontSize="15"
+                           VerticalOptions="Center"
+                           HeightRequest="42"
+                           Focused="OnMessageEntryFocused" />
 
-                <!-- Recording Mode: 🔴 Recording 0:05 + Cancel + Send Voice -->
-                <Grid ColumnDefinitions="*, Auto, Auto" ColumnSpacing="8" VerticalOptions="Center" IsVisible="{Binding IsRecordingVoice}">
-                    <Border Grid.Column="0" BackgroundColor="#FEE2E2" Stroke="#FCA5A5" StrokeThickness="1" StrokeShape="RoundRectangle 20" Padding="16,0">
-                        <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                            <Label Text="🔴" FontSize="14" VerticalOptions="Center" />
-                            <Label Text="Recording..." FontSize="13" TextColor="#B91C1C" FontAttributes="Bold" VerticalOptions="Center" />
-                            <Label Text="{Binding RecordingDurationText}" FontSize="13" TextColor="#991B1B" FontAttributes="Bold" VerticalOptions="Center" />
-                        </HorizontalStackLayout>
-                    </Border>
-
-                    <!-- Cancel Voice Button -->
-                    <Button Grid.Column="1" 
-                            Text="🗑️" 
-                            Command="{Binding CancelVoiceRecordingCommand}" 
-                            BackgroundColor="#F1F5F9" 
-                            TextColor="#EF4444" 
-                            FontSize="18" 
-                            CornerRadius="21" 
-                            WidthRequest="42" 
-                            HeightRequest="42" 
-                            Padding="0" 
+                    <!-- Attachment Paperclip Button -->
+                    <Button Grid.Column="2"
+                            Text="📎"
+                            Command="{Binding AttachFileCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#8696A0"
+                            FontSize="18"
+                            WidthRequest="32"
+                            HeightRequest="40"
+                            Padding="0"
                             VerticalOptions="Center" />
 
-                    <!-- Send Voice Button -->
-                    <Button Grid.Column="2" 
-                            Text="➤" 
-                            Command="{Binding SendVoiceRecordingCommand}" 
-                            BackgroundColor="#059669" 
-                            TextColor="White" 
-                            FontSize="18" 
-                            FontAttributes="Bold"
-                            CornerRadius="21" 
-                            WidthRequest="42" 
-                            HeightRequest="42" 
-                            Padding="0" 
+                    <!-- Camera Button -->
+                    <Button Grid.Column="3"
+                            Text="📷"
+                            Command="{Binding AttachFileCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#8696A0"
+                            FontSize="17"
+                            WidthRequest="32"
+                            HeightRequest="40"
+                            Padding="0"
                             VerticalOptions="Center" />
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
+
+            <!-- Capsule Pill (Recording Mode) -->
+            <Border Grid.Column="0"
+                    BackgroundColor="#FEE2E2"
+                    Stroke="#FCA5A5"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 24"
+                    Padding="14,0"
+                    HeightRequest="48"
+                    VerticalOptions="Center"
+                    IsVisible="{Binding IsRecordingVoice}">
+                <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8" VerticalOptions="Center">
+                    <Label Grid.Column="0" Text="🔴" FontSize="14" VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           Text="{Binding RecordingDurationText, StringFormat='Recording... {0}'}"
+                           TextColor="#991B1B"
+                           FontAttributes="Bold"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="2"
+                            Text="🗑️"
+                            Command="{Binding CancelVoiceRecordingCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#DC2626"
+                            FontSize="18"
+                            WidthRequest="34"
+                            HeightRequest="40"
+                            Padding="0"
+                            VerticalOptions="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Circular WhatsApp Action FAB -->
+            <!-- 1. Microphone FAB when input is empty and not recording -->
+            <Button Grid.Column="1"
+                    Text="🎙️"
+                    Command="{Binding StartVoiceRecordingCommand}"
+                    BackgroundColor="#00A884"
+                    TextColor="White"
+                    FontSize="20"
+                    CornerRadius="24"
+                    WidthRequest="48"
+                    HeightRequest="48"
+                    Padding="0"
+                    VerticalOptions="Center">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding HasInputText}" Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+
+            <!-- 2. Send Text FAB when input has text and not recording -->
+            <Button Grid.Column="1"
+                    Text="➤"
+                    Command="{Binding SendMessageCommand}"
+                    BackgroundColor="#00A884"
+                    TextColor="White"
+                    FontSize="18"
+                    FontAttributes="Bold"
+                    CornerRadius="24"
+                    WidthRequest="48"
+                    HeightRequest="48"
+                    Padding="0"
+                    VerticalOptions="Center"
+                    IsVisible="{Binding HasInputText}">
+                <Button.Triggers>
+                    <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Button.Triggers>
+            </Button>
+
+            <!-- 3. Send Voice FAB when recording -->
+            <Button Grid.Column="1"
+                    Text="➤"
+                    Command="{Binding SendVoiceRecordingCommand}"
+                    BackgroundColor="#00A884"
+                    TextColor="White"
+                    FontSize="18"
+                    FontAttributes="Bold"
+                    CornerRadius="24"
+                    WidthRequest="48"
+                    HeightRequest="48"
+                    Padding="0"
+                    VerticalOptions="Center"
+                    IsVisible="{Binding IsRecordingVoice}" />
+        </Grid>
     </Grid>
 </ContentPage>
