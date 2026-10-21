@@ -8,4 +8,7 @@ public interface IAudioService
     Task<string?> StopRecordingAsync();
     Task<bool> PlayAudioAsync(string filePath, Action? onFinished = null);
     Task StopAudioAsync();
+    Task SeekToAsync(double progress);
+    int GetDurationMs();
+    int GetCurrentPositionMs();
 }

@@ -47,6 +47,22 @@ public partial class ChatRoomPage : ContentPage
         });
     }
 
+    private void OnPreviewSliderDragCompleted(object? sender, EventArgs e)
+    {
+        if (sender is Slider slider && BindingContext is ViewModels.ChatRoomViewModel vm)
+        {
+            _ = vm.SeekVoicePreviewAsync(slider.Value);
+        }
+    }
+
+    private void OnMessageSliderDragCompleted(object? sender, EventArgs e)
+    {
+        if (sender is Slider slider && slider.BindingContext is ViewModels.ChatMessageItem item && BindingContext is ViewModels.ChatRoomViewModel vm)
+        {
+            _ = vm.SeekMessageAudioAsync(item, slider.Value);
+        }
+    }
+
     private void OnMessageEntryFocused(object? sender, FocusEventArgs e)
     {
         if (e.IsFocused)

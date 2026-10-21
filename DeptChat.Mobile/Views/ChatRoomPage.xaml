@@ -96,7 +96,7 @@
                                         StrokeThickness="0.4"
                                         StrokeShape="{Binding BubbleShape}"
                                         Padding="10,6,10,6"
-                                        MaximumWidthRequest="290">
+                                        MaximumWidthRequest="300">
 
                                     <VerticalStackLayout Spacing="3">
                                         <!-- Sender Name (Only shown on incoming departmental messages) -->
@@ -118,8 +118,8 @@
                                             </Label.Triggers>
                                         </Label>
 
-                                        <!-- WhatsApp Voice Note Player -->
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="210" VerticalOptions="Center" Padding="2,2">
+                                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2">
                                             <Grid.Triggers>
                                                 <DataTrigger TargetType="Grid" Binding="{Binding IsVoiceMessage}" Value="False">
                                                     <Setter Property="IsVisible" Value="False" />
@@ -141,17 +141,21 @@
                                                     FontAttributes="Bold"
                                                     VerticalOptions="Center" />
 
-                                            <!-- Waveform Progress Scrubber & Duration -->
-                                            <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
-                                                <!-- Scrubber / Progress Bar -->
-                                                <ProgressBar Progress="{Binding PlaybackProgress}"
-                                                             ProgressColor="#00A884"
-                                                             BackgroundColor="#CBD5E1"
-                                                             HeightRequest="3"
-                                                             VerticalOptions="Center" />
+                                            <!-- Waveform Draggable Scrubber & Duration -->
+                                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                                                <!-- Draggable Slider Scrubber -->
+                                                <Slider Value="{Binding PlaybackProgress}"
+                                                        Minimum="0"
+                                                        Maximum="1"
+                                                        MinimumTrackColor="#00A884"
+                                                        MaximumTrackColor="#CBD5E1"
+                                                        ThumbColor="#00A884"
+                                                        DragCompleted="OnMessageSliderDragCompleted"
+                                                        HeightRequest="28"
+                                                        Margin="0,-3" />
 
                                                 <!-- Duration + Mic Badge -->
-                                                <Grid ColumnDefinitions="*, Auto">
+                                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
                                                     <Label Grid.Column="0" 
                                                            Text="{Binding CurrentPlaybackTime}" 
                                                            FontSize="11" 
@@ -192,7 +196,7 @@
                       BackgroundColor="Transparent"
                       VerticalOptions="End">
 
-                    <!-- Capsule Pill (Normal Mode: Emoji + Entry + Attach + Camera) -->
+                    <!-- Capsule Pill (1. Normal Text Entry Mode) -->
                     <Border Grid.Column="0"
                             BackgroundColor="White"
                             Stroke="#CBD5E1"
@@ -203,6 +207,9 @@
                             VerticalOptions="Center">
                         <Border.Triggers>
                             <DataTrigger TargetType="Border" Binding="{Binding IsRecordingVoice}" Value="True">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Border" Binding="{Binding IsVoicePreviewReady}" Value="True">
                                 <Setter Property="IsVisible" Value="False" />
                             </DataTrigger>
                         </Border.Triggers>
@@ -256,39 +263,112 @@
                         </Grid>
                     </Border>
 
-                    <!-- Capsule Pill (WhatsApp Audio Recording Mode: Live timer + Trash cancel) -->
+                    <!-- Capsule Pill (2. WhatsApp Live Recording Mode: Red dot + Timer + Pause/Listen + Trash) -->
                     <Border Grid.Column="0"
                             BackgroundColor="#FEE2E2"
                             Stroke="#FCA5A5"
                             StrokeThickness="1"
                             StrokeShape="RoundRectangle 24"
-                            Padding="14,0"
+                            Padding="10,0,10,0"
                             HeightRequest="48"
                             VerticalOptions="Center"
                             IsVisible="{Binding IsRecordingVoice}">
-                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8" VerticalOptions="Center">
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="6" VerticalOptions="Center">
                             <Label Grid.Column="0" Text="🔴" FontSize="14" VerticalOptions="Center" />
                             <Label Grid.Column="1"
-                                   Text="{Binding RecordingDurationText, StringFormat='Recording... {0}'}"
+                                   Text="{Binding RecordingDurationText}"
                                    TextColor="#991B1B"
                                    FontAttributes="Bold"
                                    FontSize="14"
                                    VerticalOptions="Center" />
+
+                            <!-- Pause & Review Button: Taps this to stop & listen before sending! -->
                             <Button Grid.Column="2"
-                                    Text="🗑️ Cancel"
+                                    Text="⏸ Listen"
+                                    Command="{Binding PauseAndPreviewVoiceCommand}"
+                                    BackgroundColor="#DC2626"
+                                    TextColor="White"
+                                    FontAttributes="Bold"
+                                    FontSize="12"
+                                    CornerRadius="14"
+                                    HeightRequest="30"
+                                    Padding="8,0"
+                                    VerticalOptions="Center" />
+
+                            <!-- Discard / Trash Button -->
+                            <Button Grid.Column="3"
+                                    Text="🗑️"
                                     Command="{Binding CancelVoiceRecordingCommand}"
                                     BackgroundColor="Transparent"
                                     TextColor="#DC2626"
-                                    FontAttributes="Bold"
-                                    FontSize="13"
-                                    Padding="4,0"
+                                    FontSize="18"
+                                    WidthRequest="30"
                                     HeightRequest="40"
+                                    Padding="0"
                                     VerticalOptions="Center" />
                         </Grid>
                     </Border>
 
+                    <!-- Capsule Pill (3. WhatsApp Audio Preview Mode: Trash + Play/Pause + Draggable Scrubber + Timer) -->
+                    <Border Grid.Column="0"
+                            BackgroundColor="White"
+                            Stroke="#CBD5E1"
+                            StrokeThickness="0.5"
+                            StrokeShape="RoundRectangle 24"
+                            Padding="8,0,10,0"
+                            HeightRequest="48"
+                            VerticalOptions="Center"
+                            IsVisible="{Binding IsVoicePreviewReady}">
+                        <Grid ColumnDefinitions="Auto, Auto, *, Auto" ColumnSpacing="6" VerticalOptions="Center">
+                            <!-- Discard / Trash Button -->
+                            <Button Grid.Column="0"
+                                    Text="🗑️"
+                                    Command="{Binding CancelVoiceRecordingCommand}"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#EF4444"
+                                    FontSize="18"
+                                    WidthRequest="30"
+                                    HeightRequest="40"
+                                    Padding="0"
+                                    VerticalOptions="Center" />
+
+                            <!-- Play / Pause Preview Button -->
+                            <Button Grid.Column="1"
+                                    Text="{Binding VoicePreviewPlayIcon}"
+                                    Command="{Binding TogglePlayVoicePreviewCommand}"
+                                    BackgroundColor="#00A884"
+                                    TextColor="White"
+                                    FontSize="14"
+                                    FontAttributes="Bold"
+                                    CornerRadius="16"
+                                    WidthRequest="32"
+                                    HeightRequest="32"
+                                    Padding="0"
+                                    VerticalOptions="Center" />
+
+                            <!-- Draggable Audio Waveform Slider -->
+                            <Slider Grid.Column="2"
+                                    Value="{Binding VoicePreviewProgress}"
+                                    Minimum="0"
+                                    Maximum="1"
+                                    MinimumTrackColor="#00A884"
+                                    MaximumTrackColor="#E2E8F0"
+                                    ThumbColor="#00A884"
+                                    DragCompleted="OnPreviewSliderDragCompleted"
+                                    VerticalOptions="Center" />
+
+                            <!-- Preview Duration Text -->
+                            <Label Grid.Column="3"
+                                   Text="{Binding VoicePreviewTimeText}"
+                                   TextColor="#475569"
+                                   FontSize="11"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
                     <!-- Circular WhatsApp Action FAB -->
-                    <!-- 1. Microphone FAB when input is empty and not recording -->
+                    <!-- 1. Microphone FAB when input is empty, not recording, and not previewing -->
                     <Button Grid.Column="1"
                             Text="🎙️"
                             Command="{Binding StartVoiceRecordingCommand}"
@@ -307,10 +387,13 @@
                             <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
                                 <Setter Property="IsVisible" Value="False" />
                             </DataTrigger>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
                         </Button.Triggers>
                     </Button>
 
-                    <!-- 2. Send Text FAB when input has text and not recording -->
+                    <!-- 2. Send Text FAB when input has text and not recording/previewing -->
                     <Button Grid.Column="1"
                             Text="➤"
                             Command="{Binding SendMessageCommand}"
@@ -328,10 +411,13 @@
                             <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
                                 <Setter Property="IsVisible" Value="False" />
                             </DataTrigger>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
                         </Button.Triggers>
                     </Button>
 
-                    <!-- 3. Send Voice FAB when recording -->
+                    <!-- 3. Send Voice FAB when recording or previewing -->
                     <Button Grid.Column="1"
                             Text="➤"
                             Command="{Binding SendVoiceRecordingCommand}"
@@ -343,8 +429,19 @@
                             WidthRequest="48"
                             HeightRequest="48"
                             Padding="0"
-                            VerticalOptions="Center"
-                            IsVisible="{Binding IsRecordingVoice}" />
+                            VerticalOptions="Center">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="False">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
                 </Grid>
             </Grid>
         </Grid>

@@ -117,4 +117,22 @@ public class AndroidAudioService : IAudioService
 
         return Task.CompletedTask;
     }
+
+    public Task SeekToAsync(double progress)
+    {
+        try
+        {
+            if (_player != null && _player.Duration > 0)
+            {
+                var targetMs = (int)(Math.Clamp(progress, 0.0, 1.0) * _player.Duration);
+                _player.SeekTo(targetMs);
+            }
+        }
+        catch { }
+
+        return Task.CompletedTask;
+    }
+
+    public int GetDurationMs() => _player?.Duration ?? 0;
+    public int GetCurrentPositionMs() => _player?.CurrentPosition ?? 0;
 }

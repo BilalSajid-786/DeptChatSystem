@@ -366,14 +366,30 @@ public partial class ChatRoomViewModel : ObservableObject
 
     public void TriggerScrollToBottom() => RequestScrollToBottom?.Invoke();
 
-    // Voice message recording states
+    // Voice message recording & preview states
     [ObservableProperty]
     private bool _isRecordingVoice;
 
     [ObservableProperty]
     private string _recordingDurationText = "0:00";
 
+    [ObservableProperty]
+    private bool _isVoicePreviewReady;
+
+    [ObservableProperty]
+    private bool _isVoicePreviewPlaying;
+
+    [ObservableProperty]
+    private double _voicePreviewProgress;
+
+    [ObservableProperty]
+    private string _voicePreviewTimeText = "0:00";
+
+    public string VoicePreviewPlayIcon => IsVoicePreviewPlaying ? "⏸" : "▶";
+
     private System.Timers.Timer? _recordingTimer;
+    private System.Timers.Timer? _previewPlaybackTimer;
+    private double _previewElapsedSeconds;
     private int _recordingSeconds;
     private string? _activeRecordingPath;
     private ChatMessageItem? _currentlyPlayingItem;
@@ -629,8 +645,11 @@ public partial class ChatRoomViewModel : ObservableObject
         if (started)
         {
             IsRecordingVoice = true;
+            IsVoicePreviewReady = false;
+            IsVoicePreviewPlaying = false;
             _recordingSeconds = 0;
             RecordingDurationText = "0:00";
+            VoicePreviewProgress = 0;
 
             _recordingTimer?.Stop();
             _recordingTimer = new System.Timers.Timer(1000);
@@ -649,13 +668,144 @@ public partial class ChatRoomViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task PauseAndPreviewVoiceAsync()
+    {
+        _recordingTimer?.Stop();
+        if (_audioService == null) return;
+
+        var path = await _audioService.StopRecordingAsync();
+        IsRecordingVoice = false;
+
+        if (string.IsNullOrEmpty(path) || !File.Exists(path) || _recordingSeconds <= 0)
+        {
+            IsVoicePreviewReady = false;
+            return;
+        }
+
+        IsVoicePreviewReady = true;
+        IsVoicePreviewPlaying = false;
+        VoicePreviewProgress = 0;
+        VoicePreviewTimeText = $"0:00 / {RecordingDurationText}";
+        OnPropertyChanged(nameof(VoicePreviewPlayIcon));
+    }
+
+    [RelayCommand]
+    private async Task TogglePlayVoicePreviewAsync()
+    {
+        if (_audioService == null || string.IsNullOrEmpty(_activeRecordingPath) || !File.Exists(_activeRecordingPath))
+            return;
+
+        if (IsVoicePreviewPlaying)
+        {
+            _previewPlaybackTimer?.Stop();
+            _previewPlaybackTimer?.Dispose();
+            _previewPlaybackTimer = null;
+            await _audioService.StopAudioAsync();
+            IsVoicePreviewPlaying = false;
+            OnPropertyChanged(nameof(VoicePreviewPlayIcon));
+            return;
+        }
+
+        IsVoicePreviewPlaying = true;
+        OnPropertyChanged(nameof(VoicePreviewPlayIcon));
+
+        var totalDuration = Math.Max(1, _recordingSeconds);
+        _previewElapsedSeconds = VoicePreviewProgress * totalDuration;
+
+        _previewPlaybackTimer?.Stop();
+        _previewPlaybackTimer?.Dispose();
+        _previewPlaybackTimer = new System.Timers.Timer(100);
+        _previewPlaybackTimer.Elapsed += (s, e) =>
+        {
+            _previewElapsedSeconds += 0.1;
+            if (_previewElapsedSeconds > totalDuration)
+            {
+                _previewElapsedSeconds = totalDuration;
+            }
+            var progress = Math.Clamp(_previewElapsedSeconds / totalDuration, 0.0, 1.0);
+            var curSec = (int)_previewElapsedSeconds;
+            var m = curSec / 60;
+            var sec = curSec % 60;
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (IsVoicePreviewPlaying)
+                {
+                    VoicePreviewProgress = progress;
+                    VoicePreviewTimeText = $"{m}:{sec:D2} / {RecordingDurationText}";
+                }
+            });
+        };
+        _previewPlaybackTimer.Start();
+
+        await _audioService.PlayAudioAsync(_activeRecordingPath, () =>
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _previewPlaybackTimer?.Stop();
+                _previewPlaybackTimer?.Dispose();
+                _previewPlaybackTimer = null;
+                IsVoicePreviewPlaying = false;
+                VoicePreviewProgress = 0;
+                VoicePreviewTimeText = $"0:00 / {RecordingDurationText}";
+                OnPropertyChanged(nameof(VoicePreviewPlayIcon));
+            });
+        });
+    }
+
+    public async Task SeekVoicePreviewAsync(double progress)
+    {
+        VoicePreviewProgress = progress;
+        var totalDuration = Math.Max(1, _recordingSeconds);
+        _previewElapsedSeconds = progress * totalDuration;
+        var curSec = (int)_previewElapsedSeconds;
+        var m = curSec / 60;
+        var sec = curSec % 60;
+        VoicePreviewTimeText = $"{m}:{sec:D2} / {RecordingDurationText}";
+
+        if (_audioService != null)
+        {
+            await _audioService.SeekToAsync(progress);
+        }
+    }
+
+    public async Task SeekMessageAudioAsync(ChatMessageItem item, double progress)
+    {
+        item.PlaybackProgress = progress;
+        var totalDuration = Math.Max(1, item.VoiceDurationSeconds);
+        var curSec = (int)(progress * totalDuration);
+        var m = curSec / 60;
+        var sec = curSec % 60;
+        item.CurrentPlaybackTime = $"{m}:{sec:D2}";
+
+        if (item.IsPlaying && _audioService != null)
+        {
+            await _audioService.SeekToAsync(progress);
+        }
+    }
+
+    [RelayCommand]
     private async Task CancelVoiceRecordingAsync()
     {
         _recordingTimer?.Stop();
+        _previewPlaybackTimer?.Stop();
+        _previewPlaybackTimer?.Dispose();
+        _previewPlaybackTimer = null;
+
         IsRecordingVoice = false;
+        IsVoicePreviewReady = false;
+        IsVoicePreviewPlaying = false;
+
         if (_audioService != null)
         {
-            await _audioService.StopRecordingAsync();
+            if (_audioService.IsRecording)
+            {
+                await _audioService.StopRecordingAsync();
+            }
+            if (_audioService.IsPlaying)
+            {
+                await _audioService.StopAudioAsync();
+            }
         }
 
         if (!string.IsNullOrEmpty(_activeRecordingPath) && File.Exists(_activeRecordingPath))
@@ -668,11 +818,28 @@ public partial class ChatRoomViewModel : ObservableObject
     private async Task SendVoiceRecordingAsync()
     {
         _recordingTimer?.Stop();
+        _previewPlaybackTimer?.Stop();
+        _previewPlaybackTimer?.Dispose();
+        _previewPlaybackTimer = null;
+
+        string? path = _activeRecordingPath;
+
+        if (_audioService != null)
+        {
+            if (IsRecordingVoice)
+            {
+                path = await _audioService.StopRecordingAsync();
+            }
+            if (_audioService.IsPlaying)
+            {
+                await _audioService.StopAudioAsync();
+            }
+        }
+
         IsRecordingVoice = false;
+        IsVoicePreviewReady = false;
+        IsVoicePreviewPlaying = false;
 
-        if (_audioService == null) return;
-
-        var path = await _audioService.StopRecordingAsync();
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
             return;
 
@@ -1321,6 +1488,10 @@ public partial class ChatRoomViewModel : ObservableObject
         _playbackTimer?.Stop();
         _playbackTimer?.Dispose();
         _playbackTimer = null;
+
+        _previewPlaybackTimer?.Stop();
+        _previewPlaybackTimer?.Dispose();
+        _previewPlaybackTimer = null;
 
         if (_audioService != null)
         {
