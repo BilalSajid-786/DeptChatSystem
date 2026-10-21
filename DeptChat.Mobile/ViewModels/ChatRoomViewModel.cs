@@ -166,43 +166,77 @@ public partial class ChatRoomViewModel : ObservableObject
             }
 
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
-            if (sync != null && sync.Messages.Count > 0)
+            if (sync != null)
             {
-                MainThread.BeginInvokeOnMainThread(() =>
+                // If server reports 0 messages, but local device has messages, wipe local cache!
+                if (sync.LastSequenceNumber == 0 && sync.Messages.Count == 0 && Messages.Count > 0)
                 {
-                    foreach (var m in sync.Messages)
+                    MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        AddOrUpdateServerMessage(m);
-                        if (_outboxService != null)
-                        {
-                            _ = _outboxService.SaveServerMessageAsync(
-                                convId,
-                                m.Id,
-                                m.ClientGeneratedId,
-                                m.Content,
-                                m.SenderName,
-                                m.SenderId == (_authService?.UserId ?? Guid.Empty),
-                                m.SequenceNumber,
-                                m.Status,
-                                m.SentAt
-                            );
-                        }
+                        Messages.Clear();
+                    });
+                    _lastSequenceNumber = 0;
+                    if (_outboxService != null)
+                    {
+                        _ = _outboxService.ClearConversationMessagesAsync(convId);
                     }
-                    RequestScrollToBottom?.Invoke();
-                });
-
-                if (sync.LastSequenceNumber > _lastSequenceNumber)
-                {
-                    _lastSequenceNumber = sync.LastSequenceNumber;
                 }
-
-                var myUserId = _authService?.UserId ?? Guid.Empty;
-                var unreadIncoming = sync.Messages.Where(m => m.SenderId != myUserId).ToList();
-                if (unreadIncoming.Count > 0 && _signalRService != null && _signalRService.IsConnected)
+                else if (sync.Messages.Count > 0)
                 {
-                    var maxIncomingSeq = unreadIncoming.Max(m => m.SequenceNumber);
-                    _ = _signalRService.MarkAsReadAsync(convId, maxIncomingSeq);
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        foreach (var m in sync.Messages)
+                        {
+                            AddOrUpdateServerMessage(m);
+                            if (_outboxService != null)
+                            {
+                                _ = _outboxService.SaveServerMessageAsync(
+                                    convId,
+                                    m.Id,
+                                    m.ClientGeneratedId,
+                                    m.Content,
+                                    m.SenderName,
+                                    m.SenderId == (_authService?.UserId ?? Guid.Empty),
+                                    m.SequenceNumber,
+                                    m.Status,
+                                    m.SentAt
+                                );
+                            }
+                        }
+                        RequestScrollToBottom?.Invoke();
+                    });
+
+                    if (sync.LastSequenceNumber > _lastSequenceNumber)
+                    {
+                        _lastSequenceNumber = sync.LastSequenceNumber;
+                    }
+
+                    var myUserId = _authService?.UserId ?? Guid.Empty;
+                    var unreadIncoming = sync.Messages.Where(m => m.SenderId != myUserId).ToList();
+                    if (unreadIncoming.Count > 0 && _signalRService != null && _signalRService.IsConnected)
+                    {
+                        var maxIncomingSeq = unreadIncoming.Max(m => m.SequenceNumber);
+                        _ = _signalRService.MarkAsReadAsync(convId, maxIncomingSeq);
+                    }
                 }
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Conversation was wiped/deleted on server
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                Messages.Clear();
+            });
+            _lastSequenceNumber = 0;
+            if (_outboxService != null)
+            {
+                _ = _outboxService.ClearConversationMessagesAsync(convId);
+            }
+            if (Guid.TryParse(DepartmentId, out var deptG))
+            {
+                var myUId = _authService?.UserId ?? Guid.Empty;
+                Preferences.Default.Remove($"dept_conv_{deptG}_{myUId}");
             }
         }
         catch
@@ -469,12 +503,16 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             try
             {
-                if (_conversationId == Guid.Empty && Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)
+                if (Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)
                 {
                     var convs = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
                     var conv = convs.FirstOrDefault();
                     if (conv != null)
                     {
+                        if (_conversationId != Guid.Empty && _conversationId != conv.Id)
+                        {
+                            MainThread.BeginInvokeOnMainThread(() => Messages.Clear());
+                        }
                         _conversationId = conv.Id;
                         _convIdTcs.TrySetResult(_conversationId);
                         ActiveConversationId = _conversationId;
@@ -483,12 +521,11 @@ public partial class ChatRoomViewModel : ObservableObject
                         {
                             CustomerName = conv.CreatedByUserName;
                         }
-                        await LoadLocalMessagesAsync(_conversationId);
+                        if (Messages.Count == 0)
+                        {
+                            await LoadLocalMessagesAsync(_conversationId);
+                        }
                     }
-                }
-                else if (_conversationId != Guid.Empty && Guid.TryParse(DepartmentId, out var deptGuid2))
-                {
-                    Preferences.Default.Set($"dept_conv_{deptGuid2}_{myUserId}", _conversationId.ToString());
                 }
 
                 if (_conversationId == Guid.Empty) return;

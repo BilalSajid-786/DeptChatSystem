@@ -228,7 +228,11 @@ public class ConversationsController : ControllerBase
             .OrderBy(m => m.SequenceNumber)
             .ToListAsync();
 
-        var lastSeq = messages.Count > 0 ? messages.Max(m => m.SequenceNumber) : sinceSequenceNumber;
+        var serverMaxSeq = await _dbContext.Messages
+            .Where(m => m.ConversationId == id)
+            .MaxAsync(m => (long?)m.SequenceNumber) ?? 0;
+
+        var lastSeq = messages.Count > 0 ? messages.Max(m => m.SequenceNumber) : serverMaxSeq;
 
         var messageDtos = messages.Select(m => new ChatMessageDto(
             m.Id,

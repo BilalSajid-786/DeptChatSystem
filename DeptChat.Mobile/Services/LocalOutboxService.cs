@@ -178,4 +178,17 @@ public class LocalOutboxService
             .ThenBy(m => m.Timestamp)
             .ToList();
     }
+
+    public async Task ClearConversationMessagesAsync(Guid conversationId)
+    {
+        await EnsureInitializedAsync();
+        var msgs = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == conversationId)
+            .ToListAsync();
+
+        foreach (var m in msgs)
+        {
+            await _db.DeleteAsync(m);
+        }
+    }
 }
