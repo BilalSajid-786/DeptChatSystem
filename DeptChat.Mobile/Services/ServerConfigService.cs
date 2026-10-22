@@ -3,8 +3,8 @@ namespace DeptChat.Mobile.Services;
 public class ServerConfigService
 {
     public const string LocalWifiUrl = "http://192.168.0.108:5051";
-    public const string CloudflareUrl = "https://unto-intensive-lips-compare.trycloudflare.com";
-    public const string DefaultUrl = LocalWifiUrl; // Defaults to Local Wi-Fi (fastest, direct LAN)
+    public const string CloudflareUrl = "https://practitioners-ribbon-prevent-manufacturing.trycloudflare.com";
+    public const string DefaultUrl = CloudflareUrl;
     private const string PrefKey = "DeptChat_ServerUrl";
 
     public string CurrentUrl
@@ -13,11 +13,13 @@ public class ServerConfigService
         {
             var saved = Preferences.Default.Get(PrefKey, DefaultUrl);
             if (string.IsNullOrWhiteSpace(saved) || 
+                (saved.Contains("trycloudflare.com") && !saved.Contains("practitioners-ribbon-prevent-manufacturing")) ||
                 saved.Contains("warcraft-offline-serving-athens") ||
-                saved.Contains("turning-norfolk-operates-tradition"))
+                saved.Contains("turning-norfolk-operates-tradition") ||
+                saved.Contains("unto-intensive-lips-compare"))
             {
-                Preferences.Default.Set(PrefKey, DefaultUrl);
-                return DefaultUrl;
+                Preferences.Default.Set(PrefKey, CloudflareUrl);
+                return CloudflareUrl;
             }
             return NormalizeUrl(saved);
         }
