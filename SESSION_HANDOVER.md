@@ -188,6 +188,24 @@ The backend is currently running locally and forwarded to the internet:
   - **Tuned SignalR Timeouts**: Lowered `KeepAliveInterval` to 3s and `ClientTimeoutInterval` to 6s on both server and mobile client so that ungraceful network drops fail over in seconds rather than 60+ seconds.
   - **Result**: Swiping the app away changes status from `"online"` to `"last seen today at ..."` on other devices immediately without any delay.
 
+### L. Universal Keyboard Height Adaptation & Auto-Scroll to Latest Message
+- **Problems**:
+  1. On Infinix (XOS) / Transsion / Xiaomi devices, the software keyboard covered the bottom chat input bar because vendor OS window managers ignore native `AdjustResize` and render IME as a floating overlay without resizing the activity content view (which worked on Samsung because Samsung One UI physically resizes the layout).
+  2. Opening any chat sometimes failed to scroll to the very end/latest message (especially for fresh conversations or slower network fetches).
+- **Implementation**:
+  - **Universal Keyboard Observer ([`KeyboardHeightObserver.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Platforms/Android/KeyboardHeightObserver.cs))**:
+    - Uses `ViewTreeObserver.IOnGlobalLayoutListener` with `GetWindowVisibleDisplayFrame(r)` and `GetLocationOnScreen(location)`.
+    - Calculates `diff = (location[1] + contentView.Height) - r.Bottom`.
+    - On Samsung (where the OS window manager already resized `contentView`), `diff <= 100px`, avoiding duplicate padding or jumps.
+    - On Infinix (where the OS failed to resize `contentView`), `diff` accurately detects the exact height of the soft keyboard in pixels and translates to DP.
+    - Automatically lifts [`ChatContentGrid`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/ChatRoomPage.xaml) (`Margin = new Thickness(0, 0, 0, keyboardDp)`) so the bottom input bar floats directly above the keyboard while keeping the wallpaper full-bleed.
+  - **Guaranteed Auto-Scroll to Bottom ([`ChatRoomPage.xaml.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/ChatRoomPage.xaml.cs))**:
+    - Added `ItemsUpdatingScrollMode="KeepLastItemInView"` to `MessagesCollectionView`.
+    - Replaced single delayed smooth scroll with a 4-phase non-animated instant scroll (`ScrollToBottom(animate: false)`): immediate pass + 80ms layout pass + 200ms network batch pass + 400ms safety pass.
+    - Directly commands the native Android `RecyclerView` via `rv.Post(() => rv.ScrollToPosition(lastIndex))`.
+    - Wired `Messages.CollectionChanged` and `IsLoadingMessages` changes to automatically fire `ScrollToBottom` on local DB render, API response completion, or incoming SignalR broadcast.
+    - Excluded `IsLoadingOlderMessages` so reverse pagination does not jump to the bottom.
+
 ---
 
 ## 4. Key Code Locations & Symbols
