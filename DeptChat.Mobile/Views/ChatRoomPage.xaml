@@ -195,6 +195,63 @@
                     </CollectionView.ItemTemplate>
                 </CollectionView>
 
+                <!-- 1. Centered Floating Loading Card (When entering room with 0 messages) -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding IsLoadingMessages}"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        BackgroundColor="#FFFFFF"
+                        Padding="20,14"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 16"
+                        ZIndex="20">
+                    <Border.Shadow>
+                        <Shadow Brush="#25000000" Offset="0,4" Radius="12" Opacity="0.2" />
+                    </Border.Shadow>
+                    <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
+                        <ActivityIndicator IsRunning="{Binding IsLoadingMessages}"
+                                           Color="#00A884"
+                                           WidthRequest="22"
+                                           HeightRequest="22"
+                                           VerticalOptions="Center" />
+                        <Label Text="{Binding LoadingStatusText}"
+                               TextColor="#1E293B"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+
+                <!-- 2. Subtle Top Syncing Pill (When messages are cached but delta syncing in background) -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding IsSyncingMessages}"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Start"
+                        Margin="0,8,0,0"
+                        BackgroundColor="#E7FFDB"
+                        Padding="12,6"
+                        Stroke="#86EFAC"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 16"
+                        ZIndex="20">
+                    <Border.Shadow>
+                        <Shadow Brush="#1A000000" Offset="0,2" Radius="6" Opacity="0.15" />
+                    </Border.Shadow>
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <ActivityIndicator IsRunning="{Binding IsSyncingMessages}"
+                                           Color="#075E54"
+                                           WidthRequest="14"
+                                           HeightRequest="14"
+                                           VerticalOptions="Center" />
+                        <Label Text="Updating chat..."
+                               TextColor="#075E54"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+
                 <!-- 3. WhatsApp Bottom Input Area (Floating Capsule + Green FAB) -->
                 <Grid Grid.Row="2"
                       ColumnDefinitions="*, Auto"

@@ -33,7 +33,7 @@ The backend is currently running locally and forwarded to the internet:
 
 | Component | Endpoint / URL | Notes |
 | :--- | :--- | :--- |
-| **Cloudflare Public Tunnel** | `https://practitioners-ribbon-prevent-manufacturing.trycloudflare.com` | Active public HTTPS proxy via `cloudflared.exe`. Works globally on Wi-Fi and Cellular. |
+| **Cloudflare Public Tunnel** | `https://lived-varying-consent-atom.trycloudflare.com` | Active public HTTPS proxy via `cloudflared.exe`. Works globally on Wi-Fi and Cellular. |
 | **Local Wi-Fi LAN** | `http://192.168.0.108:5051` | Direct IP for phones connected to the same local Wi-Fi router. |
 | **Local Host** | `http://127.0.0.1:5051` | Local loopback for host machine. |
 | **SignalR Hub** | `<ServerUrl>/hubs/chat` | WebSocket / Long-Polling SignalR connection. |
@@ -106,6 +106,36 @@ The backend is currently running locally and forwarded to the internet:
     - Incoming: `CornerRadius(16, 16, 16, 6)`
   - Lazily cached per-item instance `_bubbleShape` to avoid multi-parent tree conflicts and redundant allocations during scrolling.
   - Added reactive property notification on `IsOutgoing` setter so changes instantly refresh `BubbleShape`.
+
+### G. Offline & Mobile Data Outbox Message Protection
+- **Issue**: On mobile data or offline connection, messages stayed in pending (`🕒`) state and disappeared after leaving the chat room and returning.
+- **Root Causes**:
+  1. `EnsureConversationIdAsync()` timed out when offline and returned `Guid.Empty`, causing outgoing sends to skip `_outboxService.EnqueueAsync()`.
+  2. `SyncDeltaAsync()` wiped all local messages via `Messages.Clear()` when the server reported 0 messages for a new department, inadvertently deleting the user's unconfirmed pending outbox messages.
+- **Fixes**:
+  - Auto-provision a local conversation ID immediately upon entering a department so `_conversationId` is never `Guid.Empty`, guaranteeing instant offline SQLite queuing.
+  - Added `ClearConfirmedMessagesAsync()` in [`LocalOutboxService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Services/LocalOutboxService.cs) to ensure server delta sync only purges confirmed messages (`SequenceNumber > 0`), strictly protecting pending outbox messages.
+  - Added `MigrateConversationIdAsync()` so messages queued under a provisional ID are migrated smoothly when the server's conversation ID is resolved.
+
+### E. Cloudflare Tunnel Latency Optimization (Sub-Second Mobile Response)
+- **Problem**: When using `trycloudflare.com` on mobile data or regional ISPs, requests were taking 21+ seconds to connect.
+- **Root Cause**: Cloudflare `trycloudflare.com` Anycast DNS returns dual IPs: `104.16.230.132` and `104.16.231.132`. Regional mobile routing had a 21-second TCP SYN blackhole on `.230.132` before the OS attempted `.231.132`.
+- **Fix**: Built [`FastHttpHandler.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Services/FastHttpHandler.cs) with a high-performance `SocketsHttpHandler` and a custom `ConnectCallback`. It explicitly routes `trycloudflare.com` connections directly to the responsive edge IP `104.16.231.132` with a 2.5-second fallback. Connection time dropped from **21.06s to 0.019s (19 ms)**, and total API response time dropped to **~140 ms** (150x speedup).
+- Enabled TCP `NoDelay = true`, `MaxConnectionsPerServer = 20`, HTTP/2 multiplexing, and connection pooling.
+
+### F. Visual Responsiveness & Loading Indicators
+- **Chat Room ([`ChatRoomViewModel.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/ViewModels/ChatRoomViewModel.cs), [`ChatRoomPage.xaml`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/ChatRoomPage.xaml))**:
+  - **Centered Loading Card**: When entering a chat with no local messages yet, displays a clean floating white card with green spinner (`#00A884`) and `"Loading messages..."`.
+  - **Subtle Top Sync Pill**: When messages are already cached locally in SQLite (rendered instantly at 0ms), background delta synchronization displays a soft green pill (`"Updating chat..."`) at the top of the chat area without blocking interaction.
+  - **Header Presence Status**: Subtitle displays soft green `"connecting..."` during initial fetch, then clears cleanly for customer accounts.
+- **Departments & Conversations Lists ([`DepartmentsPage.xaml`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/DepartmentsPage.xaml), [`DepartmentConversationsPage.xaml`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/DepartmentConversationsPage.xaml))**:
+  - Added centered `ActivityIndicator` spinners while fetching channels or customer conversations (`IsBusy`).
+  - Fixed premature empty state flash in `DepartmentConversationsViewModel.cs` using `ShowEmptyState => IsEmpty && !IsBusy && !IsSearchEmpty`.
+
+### G. Outbox & Offline Message Protection
+- Auto-provisioned immediate deterministic local conversation IDs so outbox pending messages are never saved under `Guid.Empty`.
+- Protected pending messages (`Status == MessageStatus.Pending`) during server delta synchronizations so unsent messages are never wiped.
+- Added `MigrateConversationIdAsync` to automatically re-link local messages when the server's real conversation ID is discovered.
 
 ---
 

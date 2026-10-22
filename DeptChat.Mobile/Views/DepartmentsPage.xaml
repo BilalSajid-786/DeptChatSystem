@@ -115,6 +115,16 @@
                 </DataTemplate>
             </CollectionView.ItemTemplate>
         </CollectionView>
+
+        <!-- Loading Indicator Overlay -->
+        <ActivityIndicator Grid.Row="1"
+                           IsRunning="{Binding IsBusy}"
+                           IsVisible="{Binding IsBusy}"
+                           Color="#2563EB"
+                           WidthRequest="40"
+                           HeightRequest="40"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
     </Grid>
 
     <!-- Add Department Modal Overlay (Admin Only) -->

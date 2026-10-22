@@ -109,8 +109,26 @@
                 </Grid>
             </Border>
 
+            <!-- Loading Indicator -->
+            <VerticalStackLayout IsVisible="{Binding IsBusy}"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="12"
+                                 Padding="32">
+                <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                   Color="#0284C7"
+                                   WidthRequest="36"
+                                   HeightRequest="36"
+                                   HorizontalOptions="Center" />
+                <Label Text="Loading conversations..."
+                       FontSize="14"
+                       FontAttributes="Bold"
+                       TextColor="#64748B"
+                       HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
             <!-- Empty State (No chats exist in this department) -->
-            <VerticalStackLayout IsVisible="{Binding IsEmpty}"
+            <VerticalStackLayout IsVisible="{Binding ShowEmptyState}"
                                  VerticalOptions="Center"
                                  HorizontalOptions="Center"
                                  Spacing="12"

@@ -74,6 +74,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     public bool HasConversations => !IsEmpty && !IsSearchEmpty;
 
+    public bool ShowEmptyState => IsEmpty && !IsBusy && !IsSearchEmpty;
+
     public string SubtitleText
     {
         get
@@ -123,15 +125,22 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         ApplyFilter();
     }
 
+    partial void OnIsBusyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowEmptyState));
+    }
+
     partial void OnIsEmptyChanged(bool value)
     {
         OnPropertyChanged(nameof(HasConversations));
         OnPropertyChanged(nameof(ShowSearchBar));
+        OnPropertyChanged(nameof(ShowEmptyState));
     }
 
     partial void OnIsSearchEmptyChanged(bool value)
     {
         OnPropertyChanged(nameof(HasConversations));
+        OnPropertyChanged(nameof(ShowEmptyState));
     }
 
     [RelayCommand]

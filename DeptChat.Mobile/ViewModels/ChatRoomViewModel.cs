@@ -185,6 +185,13 @@ public partial class ChatRoomViewModel : ObservableObject
         if (convId == Guid.Empty) return;
 
         await _syncLock.WaitAsync();
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (Messages.Count > 0)
+            {
+                IsSyncingMessages = true;
+            }
+        });
         try
         {
             long syncFromSeq;
@@ -277,6 +284,10 @@ public partial class ChatRoomViewModel : ObservableObject
         }
         finally
         {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                IsSyncingMessages = false;
+            });
             _syncLock.Release();
         }
     }
@@ -472,6 +483,16 @@ public partial class ChatRoomViewModel : ObservableObject
     [ObservableProperty]
     private string _inAppToastMessage = string.Empty;
 
+    // Network loading and sync feedback
+    [ObservableProperty]
+    private bool _isLoadingMessages;
+
+    [ObservableProperty]
+    private bool _isSyncingMessages;
+
+    [ObservableProperty]
+    private string _loadingStatusText = "Loading messages...";
+
     public ChatRoomViewModel(
         SignalRService signalRService,
         ChatApiService apiService,
@@ -597,6 +618,22 @@ public partial class ChatRoomViewModel : ObservableObject
             await LoadLocalMessagesAsync(_conversationId);
         }
 
+        var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+        if (Messages.Count == 0)
+        {
+            IsLoadingMessages = true;
+            LoadingStatusText = "Loading messages...";
+            if (isCustomer)
+            {
+                PresenceStatusText = "connecting...";
+                PresenceTextColor = Color.FromArgb("#A7F3D0");
+            }
+        }
+        else
+        {
+            IsSyncingMessages = true;
+        }
+
         // 3. Perform network synchronization in background without blocking the UI
         _ = Task.Run(async () =>
         {
@@ -620,7 +657,6 @@ public partial class ChatRoomViewModel : ObservableObject
                         _convIdTcs.TrySetResult(_conversationId);
                         ActiveConversationId = _conversationId;
                         Preferences.Default.Set($"dept_conv_{deptGuid}_{myUserId}", _conversationId.ToString());
-                        var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
                         if (!isCustomer && conv.CreatedByUserId != myUserId)
                         {
                             OtherUserId = conv.CreatedByUserId;
@@ -678,6 +714,18 @@ public partial class ChatRoomViewModel : ObservableObject
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ChatRoom] Background sync error: {ex.Message}");
+            }
+            finally
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    IsLoadingMessages = false;
+                    IsSyncingMessages = false;
+                    if (isCustomer && PresenceStatusText == "connecting...")
+                    {
+                        PresenceStatusText = string.Empty;
+                    }
+                });
             }
         });
     }
