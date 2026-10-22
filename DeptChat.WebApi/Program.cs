@@ -53,8 +53,8 @@ if (!string.IsNullOrEmpty(redisConnectionString))
 // =============================================================================
 var signalRBuilder = builder.Services.AddSignalR(options =>
 {
-    options.KeepAliveInterval = TimeSpan.FromSeconds(10);
-    options.ClientTimeoutInterval = TimeSpan.FromSeconds(20);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(3);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(6);
     options.MaximumReceiveMessageSize = 10 * 1024 * 1024; // 10 MB for voice notes & attachments
     options.EnableDetailedErrors = true;
 });

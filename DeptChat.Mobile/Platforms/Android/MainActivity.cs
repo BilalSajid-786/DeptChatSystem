@@ -33,6 +33,14 @@ public class MainActivity : MauiAppCompatActivity
             }
         }
 
+        // Start presence monitoring service for instant onTaskRemoved offline broadcast
+        try
+        {
+            var serviceIntent = new Android.Content.Intent(this, typeof(Platforms.Android.AppPresenceService));
+            StartService(serviceIntent);
+        }
+        catch { }
+
         // Fetch and cache the initial FCM device registration token
         try
         {
@@ -42,6 +50,12 @@ public class MainActivity : MauiAppCompatActivity
         {
             // Ignore if Google Play Services is pending initialization
         }
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        Platforms.Android.AppPresenceService.NotifyServerOffline();
     }
 
     private class TokenCompleteListener : Java.Lang.Object, Android.Gms.Tasks.IOnCompleteListener
