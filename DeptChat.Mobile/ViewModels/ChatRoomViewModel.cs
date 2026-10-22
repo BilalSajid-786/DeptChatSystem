@@ -15,7 +15,23 @@ public class ChatMessageItem : ObservableObject
     public string SenderName { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public string TimeFormatted { get; set; } = DateTime.Now.ToString("h:mm tt");
-    public bool IsOutgoing { get; set; }
+    private bool _isOutgoing;
+    public bool IsOutgoing
+    {
+        get => _isOutgoing;
+        set
+        {
+            if (SetProperty(ref _isOutgoing, value))
+            {
+                _bubbleShape = null;
+                OnPropertyChanged(nameof(Alignment));
+                OnPropertyChanged(nameof(BubbleColor));
+                OnPropertyChanged(nameof(BubbleShape));
+                OnPropertyChanged(nameof(PlayButtonColor));
+                OnPropertyChanged(nameof(ShowSenderName));
+            }
+        }
+    }
     public long SequenceNumber { get; set; }
 
     public bool IsVoiceMessage { get; set; }
@@ -70,7 +86,16 @@ public class ChatMessageItem : ObservableObject
 
     public LayoutOptions Alignment => IsOutgoing ? LayoutOptions.End : LayoutOptions.Start;
     public Color BubbleColor => IsOutgoing ? Color.FromArgb("#E7FFDB") : Colors.White;
-    public CornerRadius BubbleShape => IsOutgoing ? new CornerRadius(14, 14, 2, 14) : new CornerRadius(14, 14, 14, 2);
+
+    private Microsoft.Maui.Graphics.IShape? _bubbleShape;
+    public Microsoft.Maui.Graphics.IShape BubbleShape =>
+        _bubbleShape ??= new Microsoft.Maui.Controls.Shapes.RoundRectangle
+        {
+            CornerRadius = IsOutgoing
+                ? new CornerRadius(16, 16, 6, 16)
+                : new CornerRadius(16, 16, 16, 6)
+        };
+
     public bool ShowSenderName => !IsOutgoing && !string.IsNullOrWhiteSpace(SenderName);
 }
 
