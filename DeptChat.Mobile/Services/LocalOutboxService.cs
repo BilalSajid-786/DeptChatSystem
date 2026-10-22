@@ -39,6 +39,13 @@ public class LocalOutboxService
     {
         try
         {
+            const int CurrentCacheVersion = 2;
+            var cachedVer = Preferences.Default.Get("outbox_cache_version", 0);
+            if (cachedVer < CurrentCacheVersion)
+            {
+                await _db.DropTableAsync<LocalOutboxMessage>();
+                Preferences.Default.Set("outbox_cache_version", CurrentCacheVersion);
+            }
             await _db.CreateTableAsync<LocalOutboxMessage>();
             _initTcs.TrySetResult(true);
         }

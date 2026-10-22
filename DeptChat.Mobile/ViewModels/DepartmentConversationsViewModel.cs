@@ -283,7 +283,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     {
         if (item == null) return;
 
-        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}");
+        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}&userId={item.CreatedByUserId}&isOnline={item.IsOnline}");
     }
 
     [RelayCommand]
