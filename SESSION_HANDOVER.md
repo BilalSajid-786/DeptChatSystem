@@ -246,11 +246,24 @@ To publish a signed release APK without requiring a manual keystore:
 dotnet publish F:\Projects\DeptChatSystem\DeptChat.Mobile\DeptChat.Mobile.csproj -f net10.0-android -c Release -p:AndroidPackageFormat=apk -p:AndroidKeyStore=false
 ```
 - **Output APK**: `DeptChat.Mobile\bin\Release\net10.0-android\publish\com.companyname.deptchat.mobile-Signed.apk`
-- **Root Convenience Copy**: `F:\Projects\DeptChatSystem\DeptChat.apk`
+- **Root Convenience Copy**: `F:\Projects\DeptChatSystem\DeptChat.apk` (Updated: Oct 23, 2026 - 1:03 AM)
 
 ---
 
-## 7. Recommended Next Implementation Steps
+## 7. Critical Fixes Applied (Oct 23, 2026)
+1. **Conversation Segregation & Outbox Isolation**:
+   - `ChatRoomViewModel` now strictly guards `GetConversationsForDepartmentAsync` and `MigrateConversationIdAsync` to only run for Customer accounts where `_conversationId == Guid.Empty`.
+   - Admins/Managers opening a conversation from `DepartmentConversationsViewModel` have their `_conversationId` locked to the exact tapped user conversation; it is never overwritten or migrated.
+2. **Local SQLite Outbox Cache Invalidation**:
+   - Bumped `LocalOutboxService` cache version to `v2` (`Preferences.Default.Get("outbox_cache_version")`), cleanly dropping and recreating the `OutboxMessages` table on update to eliminate previously contaminated/mixed message records.
+3. **Instant Presence & Active Status on Chat Open**:
+   - `DepartmentConversationsViewModel` passes `&userId={item.CreatedByUserId}&isOnline={item.IsOnline}` in the navigation route.
+   - `ChatRoomViewModel` consumes `OtherUserIdString` and `InitialIsOnlineString`, immediately setting `PresenceStatusText = "online"` (0ms) when opening an active customer's chat.
+   - `HandleUserPresenceChanged` verifies `IsOtherUserOnline` before switching to `last seen`, ensuring users active anywhere in the app remain shown as `online`.
+
+---
+
+## 8. Recommended Next Implementation Steps
 1. **Audio Waveform Visualization**:
    - Currently, audio uses a sleek MAUI `<Slider>`. A custom waveform bar component (using SkiaSharp or MAUI Graphics) can be added for audio message visualizations.
 2. **Persistent Cloudflare Tunnel (Named Tunnel)**:
