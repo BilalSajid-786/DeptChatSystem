@@ -3,6 +3,9 @@ namespace DeptChat.Mobile.Views;
 public partial class ChatRoomPage : ContentPage
 {
     private ViewModels.ChatRoomViewModel? _vm;
+#if ANDROID
+    private Platforms.Android.KeyboardHeightObserver? _keyboardObserver;
+#endif
 
     public ChatRoomPage(ViewModels.ChatRoomViewModel vm)
     {
@@ -25,6 +28,39 @@ public partial class ChatRoomPage : ContentPage
         _vm.RequestScrollToBottom += OnRequestScrollToBottom;
         _vm.RequestScrollToItem -= OnRequestScrollToItem;
         _vm.RequestScrollToItem += OnRequestScrollToItem;
+
+        _vm.PropertyChanged -= OnViewModelPropertyChanged;
+        _vm.PropertyChanged += OnViewModelPropertyChanged;
+
+        _vm.Messages.CollectionChanged -= OnMessagesCollectionChanged;
+        _vm.Messages.CollectionChanged += OnMessagesCollectionChanged;
+    }
+
+    private void DetachScrollHandler()
+    {
+        if (_vm == null) return;
+        _vm.RequestScrollToBottom -= OnRequestScrollToBottom;
+        _vm.RequestScrollToItem -= OnRequestScrollToItem;
+        _vm.PropertyChanged -= OnViewModelPropertyChanged;
+        _vm.Messages.CollectionChanged -= OnMessagesCollectionChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ViewModels.ChatRoomViewModel.IsLoadingMessages) && _vm?.IsLoadingMessages == false)
+        {
+            ScrollToBottom(animate: false);
+        }
+    }
+
+    private void OnMessagesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (_vm?.IsLoadingOlderMessages == true) return;
+
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+        {
+            ScrollToBottom(animate: false);
+        }
     }
 
     private void OnRequestScrollToItem(ViewModels.ChatMessageItem item)
@@ -52,24 +88,56 @@ public partial class ChatRoomPage : ContentPage
 
     private void OnRequestScrollToBottom()
     {
-        ScrollToBottom(animate: true);
+        ScrollToBottom(animate: false);
     }
 
-    private void ScrollToBottom(bool animate = true)
+    public void ScrollToBottom(bool animate = false)
     {
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            try
-            {
-                await Task.Delay(80);
-                if (_vm?.Messages.Count > 0)
-                {
-                    var lastIndex = _vm.Messages.Count - 1;
-                    MessagesCollectionView.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: animate);
-                }
-            }
-            catch { }
+            PerformScroll(animate);
+
+            // Phase 2: Post-measurement pass after items/audio cards are laid out
+            await Task.Delay(80);
+            PerformScroll(false);
+
+            // Phase 3: Secondary pass for network batch arrivals
+            await Task.Delay(200);
+            PerformScroll(false);
+
+            // Phase 4: Final safety check
+            await Task.Delay(400);
+            PerformScroll(false);
         });
+    }
+
+    private void PerformScroll(bool animate)
+    {
+        try
+        {
+            if (_vm?.Messages.Count > 0)
+            {
+                var lastIndex = _vm.Messages.Count - 1;
+                var lastItem = _vm.Messages[lastIndex];
+
+                MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
+
+#if ANDROID
+                if (MessagesCollectionView.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+                {
+                    rv.Post(() =>
+                    {
+                        try
+                        {
+                            rv.ScrollToPosition(lastIndex);
+                        }
+                        catch { }
+                    });
+                }
+#endif
+            }
+        }
+        catch { }
     }
 
     private void OnPreviewSliderDragStarted(object? sender, EventArgs e)
@@ -108,28 +176,46 @@ public partial class ChatRoomPage : ContentPage
     {
         if (e.IsFocused)
         {
-            // Ensure chat scrolls to the bottom so all messages and the active typing area stay visible
-            MainThread.BeginInvokeOnMainThread(async () =>
-            {
-                await Task.Delay(150);
-                ScrollToBottom(animate: true);
-                await Task.Delay(250);
-                ScrollToBottom(animate: true);
-            });
+            ScrollToBottom(animate: false);
         }
+    }
+
+    private void OnKeyboardHeightChanged(double keyboardDp)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try
+            {
+                ChatContentGrid.Margin = new Thickness(0, 0, 0, keyboardDp);
+
+                if (keyboardDp > 0)
+                {
+                    ScrollToBottom(animate: false);
+                }
+            }
+            catch { }
+        });
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+
 #if ANDROID
-        if (Microsoft.Maui.ApplicationModel.Platform.CurrentActivity?.Window != null)
+        if (Microsoft.Maui.ApplicationModel.Platform.CurrentActivity != null)
         {
-            var window = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity.Window;
-            AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(window, true);
-            window.SetSoftInputMode(Android.Views.SoftInput.AdjustResize);
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+            if (activity.Window != null)
+            {
+                AndroidX.Core.View.WindowCompat.SetDecorFitsSystemWindows(activity.Window, true);
+                activity.Window.SetSoftInputMode(Android.Views.SoftInput.AdjustResize);
+            }
+
+            _keyboardObserver?.Detach();
+            _keyboardObserver = new Platforms.Android.KeyboardHeightObserver(activity, OnKeyboardHeightChanged);
         }
 #endif
+
         if (BindingContext is ViewModels.ChatRoomViewModel vm)
         {
             _vm = vm;
@@ -138,23 +224,21 @@ public partial class ChatRoomPage : ContentPage
 
             // Auto-scroll to the very last message when opening a chat
             ScrollToBottom(animate: false);
-
-            // Secondary pass after layout stabilization
-            MainThread.BeginInvokeOnMainThread(async () =>
-            {
-                await Task.Delay(250);
-                ScrollToBottom(animate: false);
-            });
         }
     }
 
     protected override async void OnDisappearing()
     {
         base.OnDisappearing();
+
+#if ANDROID
+        _keyboardObserver?.Detach();
+        _keyboardObserver = null;
+#endif
+
         if (BindingContext is ViewModels.ChatRoomViewModel vm)
         {
-            vm.RequestScrollToBottom -= OnRequestScrollToBottom;
-            vm.RequestScrollToItem -= OnRequestScrollToItem;
+            DetachScrollHandler();
             await vm.OnDisappearingAsync();
         }
     }

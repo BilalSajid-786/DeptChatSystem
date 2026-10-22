@@ -10,7 +10,7 @@ namespace DeptChat.Mobile;
 [Activity(
     Theme = "@style/Maui.SplashTheme", 
     MainLauncher = true, 
-    ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density,
+    ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density | ConfigChanges.Keyboard | ConfigChanges.KeyboardHidden,
     WindowSoftInputMode = SoftInput.AdjustResize)]
 public class MainActivity : MauiAppCompatActivity
 {
