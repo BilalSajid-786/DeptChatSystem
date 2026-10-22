@@ -10,6 +10,7 @@ public class User
     public string PasswordHash { get; set; } = string.Empty;
     public UserRole Role { get; set; } = UserRole.User;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastSeenAt { get; set; }
 
     public ICollection<DepartmentManager> DepartmentAssignments { get; set; } = new List<DepartmentManager>();
     public ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();

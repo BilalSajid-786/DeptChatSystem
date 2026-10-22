@@ -16,10 +16,12 @@ namespace DeptChat.WebApi.Controllers;
 public class ConversationsController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
+    private readonly IPresenceService _presenceService;
 
-    public ConversationsController(ApplicationDbContext dbContext)
+    public ConversationsController(ApplicationDbContext dbContext, IPresenceService presenceService)
     {
         _dbContext = dbContext;
+        _presenceService = presenceService;
     }
 
     /// <summary>
@@ -69,6 +71,8 @@ public class ConversationsController : ControllerBase
                 .Where(m => m.ConversationId == conversation.Id && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
                 .CountAsync();
 
+            var isUserOnline = await _presenceService.IsUserOnlineAsync(userId);
+
             var summary = new ConversationSummaryDto(
                 conversation.Id,
                 conversation.DepartmentId,
@@ -78,7 +82,8 @@ public class ConversationsController : ControllerBase
                 conversation.LastMessagePreview,
                 conversation.LastMessageAt,
                 unreadCount,
-                conversation.Status
+                conversation.Status,
+                isUserOnline
             );
 
             return Ok(new List<ConversationSummaryDto> { summary });
@@ -114,17 +119,23 @@ public class ConversationsController : ControllerBase
                 .Select(g => new { ConversationId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ConversationId, x => x.Count);
 
-            var list = conversations.Select(conv => new ConversationSummaryDto(
-                conv.Id,
-                conv.DepartmentId,
-                conv.Department.Name,
-                conv.CreatedByUserId,
-                conv.CreatedByUser.FullName,
-                conv.LastMessagePreview,
-                conv.LastMessageAt,
-                unreadCounts.GetValueOrDefault(conv.Id, 0),
-                conv.Status
-            )).ToList();
+            var list = new List<ConversationSummaryDto>();
+            foreach (var conv in conversations)
+            {
+                var isOnline = await _presenceService.IsUserOnlineAsync(conv.CreatedByUserId);
+                list.Add(new ConversationSummaryDto(
+                    conv.Id,
+                    conv.DepartmentId,
+                    conv.Department.Name,
+                    conv.CreatedByUserId,
+                    conv.CreatedByUser.FullName,
+                    conv.LastMessagePreview,
+                    conv.LastMessageAt,
+                    unreadCounts.GetValueOrDefault(conv.Id, 0),
+                    conv.Status,
+                    isOnline
+                ));
+            }
 
             return Ok(list);
         }
@@ -173,6 +184,8 @@ public class ConversationsController : ControllerBase
             .Where(m => m.ConversationId == conv.Id && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
             .CountAsync();
 
+        var isOnline = await _presenceService.IsUserOnlineAsync(conv.CreatedByUserId);
+
         return Ok(new ConversationSummaryDto(
             conv.Id,
             conv.DepartmentId,
@@ -182,7 +195,8 @@ public class ConversationsController : ControllerBase
             conv.LastMessagePreview,
             conv.LastMessageAt,
             unreadCount,
-            conv.Status
+            conv.Status,
+            isOnline
         ));
     }
 

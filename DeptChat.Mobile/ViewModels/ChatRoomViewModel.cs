@@ -10,6 +10,7 @@ namespace DeptChat.Mobile.ViewModels;
 public class ChatMessageItem : ObservableObject
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid SenderId { get; set; }
     public string ClientGeneratedId { get; set; } = string.Empty;
     public string SenderName { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
@@ -320,7 +321,14 @@ public partial class ChatRoomViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    private string _presenceStatusText = "online";
+    private string _presenceStatusText = string.Empty;
+
+    public bool HasPresenceStatus => !string.IsNullOrWhiteSpace(PresenceStatusText);
+
+    partial void OnPresenceStatusTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasPresenceStatus));
+    }
 
     [ObservableProperty]
     private Color _presenceTextColor = Color.FromArgb("#A7F3D0");
@@ -460,6 +468,9 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnReconnected += HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
             _signalRService.OnUserTyping += HandleUserTyping;
+            _signalRService.OnUserPresenceState += HandleUserPresenceState;
+            _signalRService.OnDepartmentPresenceState += HandleDepartmentPresenceState;
+            _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
         }
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
@@ -480,6 +491,9 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnReconnected -= HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
             _signalRService.OnUserTyping -= HandleUserTyping;
+            _signalRService.OnUserPresenceState -= HandleUserPresenceState;
+            _signalRService.OnDepartmentPresenceState -= HandleDepartmentPresenceState;
+            _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
         }
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
@@ -558,9 +572,13 @@ public partial class ChatRoomViewModel : ObservableObject
                         ActiveConversationId = _conversationId;
                         Preferences.Default.Set($"dept_conv_{deptGuid}_{myUserId}", _conversationId.ToString());
                         var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
-                        if (!isCustomer && conv.CreatedByUserId != myUserId && string.IsNullOrEmpty(CustomerName))
+                        if (!isCustomer && conv.CreatedByUserId != myUserId)
                         {
-                            CustomerName = conv.CreatedByUserName;
+                            OtherUserId = conv.CreatedByUserId;
+                            if (string.IsNullOrEmpty(CustomerName))
+                            {
+                                CustomerName = conv.CreatedByUserName;
+                            }
                         }
                         if (Messages.Count == 0)
                         {
@@ -592,10 +610,10 @@ public partial class ChatRoomViewModel : ObservableObject
                 // Initial presence check for other user
                 if (OtherUserId == Guid.Empty)
                 {
-                    var otherMsg = Messages.FirstOrDefault(m => !m.IsOutgoing && m.Id != Guid.Empty);
+                    var otherMsg = Messages.FirstOrDefault(m => !m.IsOutgoing && m.SenderId != Guid.Empty);
                     if (otherMsg != null)
                     {
-                        // Will be resolved from server message
+                        OtherUserId = otherMsg.SenderId;
                     }
                 }
 
@@ -1177,6 +1195,60 @@ public partial class ChatRoomViewModel : ObservableObject
         });
     }
 
+    private void HandleUserPresenceState(Guid convId, Guid userId, bool isInRoom, bool isOnline, DateTime? lastSeen)
+    {
+        if (convId != _conversationId) return;
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        if (userId == myUserId) return;
+
+        OtherUserId = userId;
+        ApplyPresence(new UserPresenceDto(userId, isOnline, isInRoom, lastSeen));
+    }
+
+    private void HandleDepartmentPresenceState(Guid convId, Guid deptId, bool isOnline)
+    {
+        if (convId != _conversationId) return;
+        var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+        if (!isCustomer) return;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (isOnline)
+            {
+                PresenceStatusText = "online";
+                PresenceTextColor = Color.FromArgb("#A7F3D0");
+                IsOtherUserOnline = true;
+            }
+            else
+            {
+                PresenceStatusText = "offline";
+                PresenceTextColor = Color.FromArgb("#CBD5E1");
+                IsOtherUserOnline = false;
+            }
+        });
+    }
+
+    private void HandleUserOnlineStatusChanged(Guid userId, bool isOnline)
+    {
+        if (OtherUserId == Guid.Empty || userId != OtherUserId) return;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (isOnline)
+            {
+                PresenceStatusText = "online";
+                PresenceTextColor = Color.FromArgb("#A7F3D0");
+                IsOtherUserOnline = true;
+            }
+            else
+            {
+                PresenceStatusText = $"last seen today at {DateTime.Now:h:mm tt}";
+                PresenceTextColor = Color.FromArgb("#D8E2DC");
+                IsOtherUserOnline = false;
+            }
+        });
+    }
+
     [RelayCommand]
     private async Task AudioCallAsync()
     {
@@ -1289,6 +1361,7 @@ public partial class ChatRoomViewModel : ObservableObject
             var newItem = new ChatMessageItem
             {
                 Id = msg.Id,
+                SenderId = msg.SenderId,
                 ClientGeneratedId = msg.ClientGeneratedId,
                 SenderName = msg.SenderName,
                 Content = msg.Content,

@@ -71,14 +71,45 @@ public class ChatHub : Hub
         }
 
         await _presenceService.SetUserOnlineAsync(userId, true);
+        await Clients.All.SendAsync("UserOnlineStatusChanged", userId, true);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var userId = GetUserId();
+        var currentPresence = await _presenceService.GetPresenceAsync(userId);
         await _presenceService.ClearPresenceAsync(userId);
         await _presenceService.SetUserOnlineAsync(userId, false);
+
+        if (userId != Guid.Empty)
+        {
+            try
+            {
+                var user = await _dbContext.Users.FindAsync(userId);
+                if (user != null)
+                {
+                    user.LastSeenAt = DateTime.UtcNow;
+                    await _dbContext.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist LastSeenAt for user {UserId}", userId);
+            }
+        }
+
+        await Clients.All.SendAsync("UserOnlineStatusChanged", userId, false);
+
+        if (!string.IsNullOrEmpty(currentPresence) && currentPresence.StartsWith("room:"))
+        {
+            var convIdStr = currentPresence.Substring(5);
+            if (Guid.TryParse(convIdStr, out var convId))
+            {
+                await Clients.Group($"Room_{convId}").SendAsync("UserPresenceChanged", convId, userId, false);
+            }
+        }
+
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -89,6 +120,7 @@ public class ChatHub : Hub
     public async Task EnterRoom(Guid conversationId)
     {
         var userId = GetUserId();
+        var role = GetUserRole();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.SetPresenceAsync(userId, $"room:{conversationId}");
         await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, true);
@@ -109,6 +141,76 @@ public class ChatHub : Hub
             var maxSeq = unreadMessages.Max(m => m.SequenceNumber);
             // Broadcast read receipt to room
             await Clients.Group($"Room_{conversationId}").SendAsync("MessagesRead", conversationId, maxSeq);
+        }
+
+        // Inform caller about current presence of the other party
+        var conv = await _dbContext.Conversations
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == conversationId);
+
+        if (conv != null)
+        {
+            if (role != UserRole.User)
+            {
+                // Manager/Admin entered: check customer presence
+                var customerId = conv.CreatedByUserId;
+                var custPresence = await _presenceService.GetPresenceAsync(customerId);
+                var isCustomerInRoom = string.Equals(custPresence, $"room:{conversationId}", StringComparison.OrdinalIgnoreCase);
+                var isCustomerOnline = isCustomerInRoom || await _presenceService.IsUserOnlineAsync(customerId);
+                var customerLastSeen = await _presenceService.GetLastSeenAsync(customerId);
+                if (!customerLastSeen.HasValue)
+                {
+                    var customerUser = await _dbContext.Users.FindAsync(customerId);
+                    customerLastSeen = customerUser?.LastSeenAt;
+                }
+
+                await Clients.Caller.SendAsync("UserPresenceState", conversationId, customerId, isCustomerInRoom, isCustomerOnline, customerLastSeen);
+            }
+            else
+            {
+                // Customer entered: check if any staff is currently in this room
+                var staffAssignments = await _dbContext.DepartmentManagers
+                    .Where(dm => dm.DepartmentId == conv.DepartmentId)
+                    .Select(dm => dm.UserId)
+                    .ToListAsync();
+
+                var adminIds = await _dbContext.Users
+                    .Where(u => u.Role == UserRole.Admin)
+                    .Select(u => u.Id)
+                    .ToListAsync();
+
+                var allStaffIds = staffAssignments.Concat(adminIds).Distinct().ToList();
+
+                Guid? activeStaffInRoom = null;
+                foreach (var sId in allStaffIds)
+                {
+                    var p = await _presenceService.GetPresenceAsync(sId);
+                    if (string.Equals(p, $"room:{conversationId}", StringComparison.OrdinalIgnoreCase))
+                    {
+                        activeStaffInRoom = sId;
+                        break;
+                    }
+                }
+
+                if (activeStaffInRoom.HasValue)
+                {
+                    await Clients.Caller.SendAsync("UserPresenceState", conversationId, activeStaffInRoom.Value, true, true, (DateTime?)null);
+                }
+                else
+                {
+                    bool anyStaffOnline = false;
+                    foreach (var sId in allStaffIds)
+                    {
+                        if (await _presenceService.IsUserOnlineAsync(sId))
+                        {
+                            anyStaffOnline = true;
+                            break;
+                        }
+                    }
+
+                    await Clients.Caller.SendAsync("DepartmentPresenceState", conversationId, conv.DepartmentId, anyStaffOnline);
+                }
+            }
         }
 
         _logger.LogInformation("User {UserId} entered room {ConversationId}", userId, conversationId);
@@ -143,6 +245,14 @@ public class ChatHub : Hub
     {
         var isOnline = await _presenceService.IsUserOnlineAsync(targetUserId);
         var lastSeen = await _presenceService.GetLastSeenAsync(targetUserId);
+        if (!lastSeen.HasValue)
+        {
+            var user = await _dbContext.Users.FindAsync(targetUserId);
+            if (user?.LastSeenAt != null)
+            {
+                lastSeen = user.LastSeenAt;
+            }
+        }
         bool isInRoom = false;
         if (conversationId.HasValue)
         {

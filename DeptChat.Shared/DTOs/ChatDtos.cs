@@ -11,7 +11,8 @@ public record ConversationSummaryDto(
     string? LastMessagePreview,
     DateTime? LastMessageAt,
     int UnreadCount,
-    ConversationStatus Status
+    ConversationStatus Status,
+    bool IsOnline = false
 );
 
 public record ChatMessageDto(

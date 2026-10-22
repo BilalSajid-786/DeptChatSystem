@@ -34,6 +34,9 @@ public class SignalRService
     public event Action? OnReconnected;
     public event Action<Guid, Guid, bool>? OnUserPresenceChanged;
     public event Action<Guid, Guid, string, bool>? OnUserTyping;
+    public event Action<Guid, bool>? OnUserOnlineStatusChanged;
+    public event Action<Guid, Guid, bool, bool, DateTime?>? OnUserPresenceState;
+    public event Action<Guid, Guid, bool>? OnDepartmentPresenceState;
 
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
@@ -120,6 +123,21 @@ public class SignalRService
         _hubConnection.On<Guid, Guid, string, bool>("UserTyping", (convId, userId, userName, isTyping) =>
         {
             OnUserTyping?.Invoke(convId, userId, userName, isTyping);
+        });
+
+        _hubConnection.On<Guid, bool>("UserOnlineStatusChanged", (userId, isOnline) =>
+        {
+            OnUserOnlineStatusChanged?.Invoke(userId, isOnline);
+        });
+
+        _hubConnection.On<Guid, Guid, bool, bool, DateTime?>("UserPresenceState", (convId, userId, isInRoom, isOnline, lastSeen) =>
+        {
+            OnUserPresenceState?.Invoke(convId, userId, isInRoom, isOnline, lastSeen);
+        });
+
+        _hubConnection.On<Guid, Guid, bool>("DepartmentPresenceState", (convId, deptId, isOnline) =>
+        {
+            OnDepartmentPresenceState?.Invoke(convId, deptId, isOnline);
         });
 
         try

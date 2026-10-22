@@ -46,14 +46,20 @@
                            VerticalOptions="Center" />
                 </Border>
 
-                <!-- Department / Contact Title (Centered Vertically) -->
-                <Label Text="{Binding ContactTitle}"
-                       TextColor="White"
-                       FontAttributes="Bold"
-                       FontSize="18"
-                       VerticalOptions="Center"
-                       LineBreakMode="TailTruncation"
-                       Margin="4,0,0,0" />
+                <!-- Department / Contact Title & Real-Time Presence Subtitle (WhatsApp Style) -->
+                <VerticalStackLayout VerticalOptions="Center" Spacing="1" Margin="4,0,0,0">
+                    <Label Text="{Binding ContactTitle}"
+                           TextColor="White"
+                           FontAttributes="Bold"
+                           FontSize="16"
+                           LineBreakMode="TailTruncation" />
+
+                    <Label Text="{Binding PresenceStatusText}"
+                           TextColor="{Binding PresenceTextColor}"
+                           IsVisible="{Binding HasPresenceStatus}"
+                           FontSize="12"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
             </HorizontalStackLayout>
         </Grid>
 

@@ -175,22 +175,35 @@
                             </Border.GestureRecognizers>
 
                             <Grid ColumnDefinitions="46, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
-                                <!-- User Avatar -->
-                                <Border Grid.Column="0" 
-                                        BackgroundColor="#E0F2FE" 
-                                        Stroke="#BAE6FD"
-                                        StrokeShape="RoundRectangle 23" 
-                                        WidthRequest="46" 
-                                        HeightRequest="46" 
-                                        HorizontalOptions="Center" 
-                                        VerticalOptions="Center">
-                                    <Label Text="{Binding UserInitials}" 
-                                           FontSize="18" 
-                                           FontAttributes="Bold" 
-                                           TextColor="#0284C7" 
-                                           HorizontalOptions="Center" 
-                                           VerticalOptions="Center" />
-                                </Border>
+                                <!-- User Avatar + Online Indicator Dot -->
+                                <Grid Grid.Column="0" WidthRequest="46" HeightRequest="46">
+                                    <Border BackgroundColor="#E0F2FE" 
+                                            Stroke="#BAE6FD"
+                                            StrokeShape="RoundRectangle 23" 
+                                            WidthRequest="46" 
+                                            HeightRequest="46" 
+                                            HorizontalOptions="Center" 
+                                            VerticalOptions="Center">
+                                        <Label Text="{Binding UserInitials}" 
+                                               FontSize="18" 
+                                               FontAttributes="Bold" 
+                                               TextColor="#0284C7" 
+                                               HorizontalOptions="Center" 
+                                               VerticalOptions="Center" />
+                                    </Border>
+
+                                    <!-- Green Online Status Indicator Dot -->
+                                    <Border IsVisible="{Binding IsOnline}"
+                                            BackgroundColor="#22C55E"
+                                            Stroke="White"
+                                            StrokeThickness="1.5"
+                                            StrokeShape="RoundRectangle 6"
+                                            WidthRequest="12"
+                                            HeightRequest="12"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="End"
+                                            Margin="0,0,1,1" />
+                                </Grid>
 
                                 <!-- User Name, Last Message, Timestamp -->
                                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="3">

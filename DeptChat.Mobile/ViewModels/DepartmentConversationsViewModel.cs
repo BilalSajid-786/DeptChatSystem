@@ -23,6 +23,13 @@ public class ConversationListItem : ObservableObject
     public int UnreadCount { get; set; }
     public bool HasUnread => UnreadCount > 0;
     public ConversationStatus Status { get; set; }
+
+    private bool _isOnline;
+    public bool IsOnline
+    {
+        get => _isOnline;
+        set => SetProperty(ref _isOnline, value);
+    }
 }
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
@@ -93,6 +100,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         {
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnMessageReceived += HandleMessageReceived;
+            _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
             _signalRService.OnMessagesRead += (cId, seq) =>
             {
                 MainThread.BeginInvokeOnMainThread(async () => await LoadConversationsAsync());
@@ -231,7 +239,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                     LastMessagePreview = string.IsNullOrWhiteSpace(c.LastMessagePreview) ? "No messages yet" : c.LastMessagePreview,
                     LastMessageAt = c.LastMessageAt,
                     UnreadCount = c.UnreadCount,
-                    Status = c.Status
+                    Status = c.Status,
+                    IsOnline = c.IsOnline
                 });
             }
 
@@ -246,6 +255,18 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    private void HandleUserOnlineStatusChanged(Guid userId, bool isOnline)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var item = _allConversations.FirstOrDefault(c => c.CreatedByUserId == userId);
+            if (item != null)
+            {
+                item.IsOnline = isOnline;
+            }
+        });
     }
 
     [RelayCommand]
