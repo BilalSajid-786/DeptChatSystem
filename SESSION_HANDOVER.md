@@ -96,6 +96,17 @@ The backend is currently running locally and forwarded to the internet:
   - Clear "✕" button resets search query immediately.
   - Dedicated "No Users Found" empty state with "Clear Search" button when query matches 0 items.
 
+### F. WhatsApp Rounded Speech Bubbles (`ChatRoomPage.xaml` & `ChatRoomViewModel.cs`)
+- **Requirement**: Make the chat borders round instead of square.
+- **Root Cause**: `Border.StrokeShape` in MAUI requires a `Microsoft.Maui.Graphics.IShape`. Previously, `BubbleShape` returned `Microsoft.Maui.CornerRadius`, causing a runtime XAML binding conversion failure that fell back to the default square `Rectangle` shape from `Styles.xaml`.
+- **Implementation**:
+  - In [`ChatRoomViewModel.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/ViewModels/ChatRoomViewModel.cs), updated `ChatMessageItem.BubbleShape` to return an `IShape` using `Microsoft.Maui.Controls.Shapes.RoundRectangle`.
+  - Configured authentic WhatsApp bubble corner radii:
+    - Outgoing: `CornerRadius(16, 16, 6, 16)`
+    - Incoming: `CornerRadius(16, 16, 16, 6)`
+  - Lazily cached per-item instance `_bubbleShape` to avoid multi-parent tree conflicts and redundant allocations during scrolling.
+  - Added reactive property notification on `IsOutgoing` setter so changes instantly refresh `BubbleShape`.
+
 ---
 
 ## 4. Key Code Locations & Symbols
