@@ -6,7 +6,7 @@ This document serves as the complete technical handover file for subsequent deve
 
 ## 1. Project Overview & Repository Structure
 - **Repository Root**: `F:\Projects\DeptChatSystem`
-- **Active Git Branch**: `feature/ui-enhancements-and-fixes`
+- **Active Git Branch**: `feature/realtime-presence`
 - **Target Framework**: .NET 10 (`net10.0`, `net10.0-android`)
 
 ### Solution Projects (`DeptChatSystem.sln`):
@@ -179,6 +179,15 @@ The backend is currently running locally and forwarded to the internet:
   - **Local SQLite Optimization**: Added `GetRecentConversationMessagesAsync(convId, limit: 25)` in [`LocalOutboxService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Services/LocalOutboxService.cs) to ensure instant local rendering.
 
 
+### K. Instant Presence & Last Seen Notification on App Termination
+- **Problem**: When a user closed the app and cleared it from the background / swiped away from Android Recents, the edge proxy and TCP socket took up to 60 seconds to detect the broken connection before updating the user's status to "last seen".
+- **Implementation**:
+  - **Native Android Cleanup Service**: Created [`AppPresenceService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Platforms/Android/AppPresenceService.cs) inheriting Android `Service`. Overrides `OnTaskRemoved(Intent rootIntent)` and `OnDestroy()`. When the user swipes away the app from Recents, `OnTaskRemoved` fires immediately before process teardown.
+  - **Synchronous Fast-Path Dispatch**: `NotifyServerOffline()` synchronously executes `POST /api/presence/offline` with cached JWT auth credentials using `FastHttpHandler.CreateHandler()` (~20ms latency directly to server).
+  - **Backend Presence Controller**: Implemented [`PresenceController.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.WebApi/Controllers/PresenceController.cs) (`POST /api/presence/offline`). Immediately updates `InMemoryPresenceService`, persists `LastSeenAt = DateTime.UtcNow` in the `Users` database table, and broadcasts `UserOnlineStatusChanged(userId, false)` and `UserPresenceState` across SignalR via `IHubContext<ChatHub>`.
+  - **Tuned SignalR Timeouts**: Lowered `KeepAliveInterval` to 3s and `ClientTimeoutInterval` to 6s on both server and mobile client so that ungraceful network drops fail over in seconds rather than 60+ seconds.
+  - **Result**: Swiping the app away changes status from `"online"` to `"last seen today at ..."` on other devices immediately without any delay.
+
 ---
 
 ## 4. Key Code Locations & Symbols
@@ -186,6 +195,8 @@ The backend is currently running locally and forwarded to the internet:
 | File Path | Role & Responsibilities |
 | :--- | :--- |
 | [`DeptChat.Mobile/ViewModels/ChatRoomViewModel.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/ViewModels/ChatRoomViewModel.cs) | Core chat logic, audio recording/preview/playback, SignalR event subscriptions, delivery status ticks, outbox queue. |
+| [`DeptChat.Mobile/Platforms/Android/AppPresenceService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Platforms/Android/AppPresenceService.cs) | Android foreground/background lifecycle service intercepting `OnTaskRemoved` when swiped from Recents. |
+| [`DeptChat.WebApi/Controllers/PresenceController.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.WebApi/Controllers/PresenceController.cs) | REST endpoint `/api/presence/offline` for instant presence teardown and database persistence. |
 | [`DeptChat.Mobile/Views/ChatRoomPage.xaml`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/ChatRoomPage.xaml) | Chat UI, wallpaper background, speech bubbles, audio sliders, bottom WhatsApp floating pill input. |
 | [`DeptChat.Mobile/Platforms/Android/AndroidAudioService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Platforms/Android/AndroidAudioService.cs) | Android `MediaRecorder` & `MediaPlayer` implementation of `IAudioService`. Handles AAC recording and seeking. |
 | [`DeptChat.Mobile/Services/ServerConfigService.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Services/ServerConfigService.cs) | Centralized server URL resolver. Automatically falls back to Cloudflare or Wi-Fi. |
@@ -215,9 +226,7 @@ dotnet publish F:\Projects\DeptChatSystem\DeptChat.Mobile\DeptChat.Mobile.csproj
 ---
 
 ## 7. Recommended Next Implementation Steps
-1. **Real-time Online & Last Seen Backend Logic**:
-   - WebApi currently tracks in-memory presence; hook up full heartbeat tracking via SignalR `OnConnectedAsync` / `OnDisconnectedAsync` and persist `LastSeenAt` in the `Users` table.
-2. **Audio Waveform Visualization**:
+1. **Audio Waveform Visualization**:
    - Currently, audio uses a sleek MAUI `<Slider>`. A custom waveform bar component (using SkiaSharp or MAUI Graphics) can be added for audio message visualizations.
-3. **Persistent Cloudflare Tunnel (Named Tunnel)**:
+2. **Persistent Cloudflare Tunnel (Named Tunnel)**:
    - To avoid changing the `trycloudflare.com` domain across system reboots, configure a named Cloudflare Tunnel (`cloudflared tunnel create deptchat`) with a persistent DNS CNAME or custom domain.
