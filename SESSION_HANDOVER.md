@@ -87,6 +87,15 @@ The backend is currently running locally and forwarded to the internet:
 - Incremental sequence numbers (`SequenceNumber`) ensure strictly ordered message display.
 - Server-side conversation deletion or clearance returns HTTP 404 / 0 sequence on delta sync, automatically clearing stale cached messages from the mobile SQLite outbox.
 
+### E. Admin/Manager Customer Search Bar (`DepartmentConversationsPage.xaml`)
+- **Requirement**: Admins and Managers opening a department with many customer inquiries can quickly find specific users or messages.
+- **Implementation**:
+  - Added a search bar in [`DepartmentConversationsPage.xaml`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/Views/DepartmentConversationsPage.xaml) with instant reactive filtering.
+  - In [`DepartmentConversationsViewModel.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/ViewModels/DepartmentConversationsViewModel.cs), `ApplyFilter()` matches against `CreatedByUserName` and `LastMessagePreview`.
+  - Subtitle dynamically reflects match counts (e.g. `"1 of 25 Found"`).
+  - Clear "✕" button resets search query immediately.
+  - Dedicated "No Users Found" empty state with "Clear Search" button when query matches 0 items.
+
 ---
 
 ## 4. Key Code Locations & Symbols
