@@ -19,8 +19,6 @@ public class InMemoryPresenceService : IPresenceService
     public Task ClearPresenceAsync(Guid userId)
     {
         _presence.TryRemove(userId, out _);
-        _onlineStatus[userId] = false;
-        _lastSeen[userId] = DateTime.UtcNow;
         return Task.CompletedTask;
     }
 

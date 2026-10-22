@@ -23,6 +23,31 @@ public partial class ChatRoomPage : ContentPage
         if (_vm == null) return;
         _vm.RequestScrollToBottom -= OnRequestScrollToBottom;
         _vm.RequestScrollToBottom += OnRequestScrollToBottom;
+        _vm.RequestScrollToItem -= OnRequestScrollToItem;
+        _vm.RequestScrollToItem += OnRequestScrollToItem;
+    }
+
+    private void OnRequestScrollToItem(ViewModels.ChatMessageItem item)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await Task.Delay(40);
+                MessagesCollectionView.ScrollTo(item, position: ScrollToPosition.Start, animate: false);
+            }
+            catch { }
+        });
+    }
+
+    private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+        if (_vm == null) return;
+
+        if (e.FirstVisibleItemIndex <= 1 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages)
+        {
+            _vm.LoadOlderMessagesCommand.Execute(null);
+        }
     }
 
     private void OnRequestScrollToBottom()
@@ -129,6 +154,7 @@ public partial class ChatRoomPage : ContentPage
         if (BindingContext is ViewModels.ChatRoomViewModel vm)
         {
             vm.RequestScrollToBottom -= OnRequestScrollToBottom;
+            vm.RequestScrollToItem -= OnRequestScrollToItem;
             await vm.OnDisappearingAsync();
         }
     }

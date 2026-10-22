@@ -61,7 +61,8 @@ public class AuthController : ControllerBase
             Email = normalizedEmail,
             PasswordHash = _passwordHasher.HashPassword(dto.Password),
             Role = UserRole.User,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            LastSeenAt = DateTime.UtcNow
         };
 
         _dbContext.Users.Add(user);

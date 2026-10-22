@@ -92,7 +92,13 @@
                                 ItemsSource="{Binding Messages}"
                                 BackgroundColor="Transparent"
                                 Margin="8,4"
-                                ItemSizingStrategy="MeasureAllItems">
+                                ItemSizingStrategy="MeasureAllItems"
+                                Scrolled="OnMessagesScrolled">
+                    <CollectionView.Header>
+                        <VerticalStackLayout IsVisible="{Binding IsLoadingOlderMessages}" Padding="8" HorizontalOptions="Center">
+                            <ActivityIndicator IsRunning="{Binding IsLoadingOlderMessages}" Color="#075E54" WidthRequest="24" HeightRequest="24" />
+                        </VerticalStackLayout>
+                    </CollectionView.Header>
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChatMessageItem">
                             <Grid Padding="0,3" HorizontalOptions="FillAndExpand">

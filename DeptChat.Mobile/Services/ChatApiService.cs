@@ -55,6 +55,19 @@ public class ChatApiService
         return JsonSerializer.Deserialize<ConversationSyncResponseDto>(content, JsonOptions);
     }
 
+    public async Task<PaginatedMessagesDto?> GetMessagesAsync(Guid conversationId, long? beforeSequenceNumber = null, int pageSize = 25)
+    {
+        AttachBearerToken();
+        var url = beforeSequenceNumber.HasValue && beforeSequenceNumber.Value > 0
+            ? BuildUrl($"api/conversations/{conversationId}/messages?beforeSequenceNumber={beforeSequenceNumber.Value}&pageSize={pageSize}")
+            : BuildUrl($"api/conversations/{conversationId}/messages?pageSize={pageSize}");
+
+        var response = await _httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        var content = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<PaginatedMessagesDto>(content, JsonOptions);
+    }
+
     public async Task<DepartmentDto?> CreateDepartmentAsync(string name, string description)
     {
         AttachBearerToken();

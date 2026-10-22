@@ -56,3 +56,11 @@ public record UserPresenceDto(
     DateTime? LastSeenAt
 );
 
+public record PaginatedMessagesDto(
+    Guid ConversationId,
+    long? EarliestSequenceNumber,
+    long? LatestSequenceNumber,
+    bool HasMore,
+    List<ChatMessageDto> Messages
+);
+

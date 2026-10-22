@@ -82,6 +82,7 @@ public class ChatHub : Hub
         await _presenceService.ClearPresenceAsync(userId);
         await _presenceService.SetUserOnlineAsync(userId, false);
 
+        var now = DateTime.UtcNow;
         if (userId != Guid.Empty)
         {
             try
@@ -89,7 +90,7 @@ public class ChatHub : Hub
                 var user = await _dbContext.Users.FindAsync(userId);
                 if (user != null)
                 {
-                    user.LastSeenAt = DateTime.UtcNow;
+                    user.LastSeenAt = now;
                     await _dbContext.SaveChangesAsync();
                 }
             }
@@ -107,6 +108,7 @@ public class ChatHub : Hub
             if (Guid.TryParse(convIdStr, out var convId))
             {
                 await Clients.Group($"Room_{convId}").SendAsync("UserPresenceChanged", convId, userId, false);
+                await Clients.Group($"Room_{convId}").SendAsync("UserPresenceState", convId, userId, false, false, now);
             }
         }
 
@@ -124,6 +126,7 @@ public class ChatHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.SetPresenceAsync(userId, $"room:{conversationId}");
         await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, true);
+        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, true, true, (DateTime?)null);
 
         // Mark all unread messages sent by others in this conversation as Read
         var unreadMessages = await _dbContext.Messages
@@ -161,7 +164,7 @@ public class ChatHub : Hub
                 if (!customerLastSeen.HasValue)
                 {
                     var customerUser = await _dbContext.Users.FindAsync(customerId);
-                    customerLastSeen = customerUser?.LastSeenAt;
+                    customerLastSeen = customerUser?.LastSeenAt ?? customerUser?.CreatedAt ?? DateTime.UtcNow;
                 }
 
                 await Clients.Caller.SendAsync("UserPresenceState", conversationId, customerId, isCustomerInRoom, isCustomerOnline, customerLastSeen);
@@ -199,16 +202,39 @@ public class ChatHub : Hub
                 else
                 {
                     bool anyStaffOnline = false;
+                    DateTime? mostRecentStaffLastSeen = null;
+                    Guid? representativeStaffId = null;
+
                     foreach (var sId in allStaffIds)
                     {
                         if (await _presenceService.IsUserOnlineAsync(sId))
                         {
                             anyStaffOnline = true;
+                            representativeStaffId = sId;
                             break;
+                        }
+
+                        var ls = await _presenceService.GetLastSeenAsync(sId);
+                        if (!ls.HasValue)
+                        {
+                            var staffUser = await _dbContext.Users.FindAsync(sId);
+                            ls = staffUser?.LastSeenAt ?? staffUser?.CreatedAt;
+                        }
+                        if (ls.HasValue && (!mostRecentStaffLastSeen.HasValue || ls.Value > mostRecentStaffLastSeen.Value))
+                        {
+                            mostRecentStaffLastSeen = ls.Value;
+                            representativeStaffId = sId;
                         }
                     }
 
-                    await Clients.Caller.SendAsync("DepartmentPresenceState", conversationId, conv.DepartmentId, anyStaffOnline);
+                    if (representativeStaffId.HasValue)
+                    {
+                        await Clients.Caller.SendAsync("UserPresenceState", conversationId, representativeStaffId.Value, false, anyStaffOnline, anyStaffOnline ? (DateTime?)null : (mostRecentStaffLastSeen ?? DateTime.UtcNow));
+                    }
+                    else
+                    {
+                        await Clients.Caller.SendAsync("DepartmentPresenceState", conversationId, conv.DepartmentId, anyStaffOnline);
+                    }
                 }
             }
         }
@@ -222,9 +248,15 @@ public class ChatHub : Hub
     public async Task LeaveRoom(Guid conversationId)
     {
         var userId = GetUserId();
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.ClearPresenceAsync(userId);
-        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, false);
+        var isOnline = await _presenceService.IsUserOnlineAsync(userId);
+        var lastSeen = isOnline ? (DateTime?)null : (await _presenceService.GetLastSeenAsync(userId) ?? DateTime.UtcNow);
+
+        // Broadcast to group BEFORE removing connection from group so remaining members receive the update
+        await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, false);
+        await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, false, isOnline, lastSeen ?? DateTime.UtcNow);
+
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         _logger.LogInformation("User {UserId} left room {ConversationId}", userId, conversationId);
     }
 
@@ -248,10 +280,7 @@ public class ChatHub : Hub
         if (!lastSeen.HasValue)
         {
             var user = await _dbContext.Users.FindAsync(targetUserId);
-            if (user?.LastSeenAt != null)
-            {
-                lastSeen = user.LastSeenAt;
-            }
+            lastSeen = user?.LastSeenAt ?? user?.CreatedAt ?? DateTime.UtcNow;
         }
         bool isInRoom = false;
         if (conversationId.HasValue)

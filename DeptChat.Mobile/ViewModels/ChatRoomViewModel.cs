@@ -200,6 +200,12 @@ public partial class ChatRoomViewModel : ObservableObject
                 syncFromSeq = GetHighestContiguousSequence(Messages.Select(m => m.SequenceNumber));
             }
 
+            if (syncFromSeq == 0)
+            {
+                await LoadInitialMessagesAsync();
+                return;
+            }
+
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
             if (sync != null)
             {
@@ -290,6 +296,147 @@ public partial class ChatRoomViewModel : ObservableObject
                 IsSyncingMessages = false;
             });
             _syncLock.Release();
+        }
+    }
+
+    private async Task LoadInitialMessagesAsync()
+    {
+        if (_apiService == null) return;
+        var convId = await EnsureConversationIdAsync();
+        if (convId == Guid.Empty) return;
+
+        try
+        {
+            var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
+            if (paged != null)
+            {
+                HasMoreOlderMessages = paged.HasMore;
+                if (paged.EarliestSequenceNumber.HasValue)
+                {
+                    _earliestLoadedSequenceNumber = paged.EarliestSequenceNumber.Value;
+                }
+
+                if (paged.Messages.Count > 0)
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        foreach (var m in paged.Messages)
+                        {
+                            AddOrUpdateServerMessage(m, reorder: false, scroll: false);
+                            if (_outboxService != null)
+                            {
+                                _ = _outboxService.SaveServerMessageAsync(
+                                    convId,
+                                    m.Id,
+                                    m.ClientGeneratedId,
+                                    m.Content,
+                                    m.SenderName,
+                                    m.SenderId == (_authService?.UserId ?? Guid.Empty),
+                                    m.SequenceNumber,
+                                    m.Status,
+                                    m.SentAt
+                                );
+                            }
+                        }
+                        SortMessages();
+                        RequestScrollToBottom?.Invoke();
+                    });
+
+                    if (paged.LatestSequenceNumber.HasValue && paged.LatestSequenceNumber.Value > _lastSequenceNumber)
+                    {
+                        _lastSequenceNumber = paged.LatestSequenceNumber.Value;
+                    }
+
+                    var myUserId = _authService?.UserId ?? Guid.Empty;
+                    var unreadIncoming = paged.Messages.Where(m => m.SenderId != myUserId).ToList();
+                    if (unreadIncoming.Count > 0 && _signalRService != null && _signalRService.IsConnected)
+                    {
+                        var maxIncomingSeq = unreadIncoming.Max(m => m.SequenceNumber);
+                        _ = _signalRService.MarkAsReadAsync(convId, maxIncomingSeq);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoom] LoadInitialMessages error: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadOlderMessagesAsync()
+    {
+        if (IsLoadingOlderMessages || !HasMoreOlderMessages || _apiService == null || _conversationId == Guid.Empty)
+            return;
+
+        if (_earliestLoadedSequenceNumber <= 1)
+        {
+            HasMoreOlderMessages = false;
+            return;
+        }
+
+        IsLoadingOlderMessages = true;
+        try
+        {
+            var paged = await _apiService.GetMessagesAsync(_conversationId, beforeSequenceNumber: _earliestLoadedSequenceNumber, pageSize: 25);
+            if (paged != null)
+            {
+                HasMoreOlderMessages = paged.HasMore;
+                if (paged.EarliestSequenceNumber.HasValue)
+                {
+                    _earliestLoadedSequenceNumber = Math.Min(_earliestLoadedSequenceNumber, paged.EarliestSequenceNumber.Value);
+                }
+                else
+                {
+                    HasMoreOlderMessages = false;
+                }
+
+                if (paged.Messages.Count > 0)
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        var previousTopItem = Messages.FirstOrDefault();
+
+                        foreach (var m in paged.Messages)
+                        {
+                            AddOrUpdateServerMessage(m, reorder: false, scroll: false);
+                            if (_outboxService != null)
+                            {
+                                _ = _outboxService.SaveServerMessageAsync(
+                                    _conversationId,
+                                    m.Id,
+                                    m.ClientGeneratedId,
+                                    m.Content,
+                                    m.SenderName,
+                                    m.SenderId == (_authService?.UserId ?? Guid.Empty),
+                                    m.SequenceNumber,
+                                    m.Status,
+                                    m.SentAt
+                                );
+                            }
+                        }
+
+                        SortMessages();
+
+                        if (previousTopItem != null)
+                        {
+                            RequestScrollToItem?.Invoke(previousTopItem);
+                        }
+                    });
+                }
+            }
+            else
+            {
+                HasMoreOlderMessages = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoom] LoadOlderMessages error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingOlderMessages = false;
         }
     }
 
@@ -446,6 +593,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private ObservableCollection<ChatMessageItem> _messages = new();
 
     public event Action? RequestScrollToBottom;
+    public event Action<ChatMessageItem>? RequestScrollToItem;
 
     public void TriggerScrollToBottom() => RequestScrollToBottom?.Invoke();
 
@@ -490,6 +638,14 @@ public partial class ChatRoomViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isSyncingMessages;
+
+    [ObservableProperty]
+    private bool _isLoadingOlderMessages;
+
+    [ObservableProperty]
+    private bool _hasMoreOlderMessages = true;
+
+    private long _earliestLoadedSequenceNumber = long.MaxValue;
 
     [ObservableProperty]
     private string _loadingStatusText = "Loading messages...";
@@ -564,7 +720,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private async Task LoadLocalMessagesAsync(Guid convId)
     {
         if (_outboxService == null) return;
-        var localMessages = await _outboxService.GetConversationMessagesAsync(convId);
+        var localMessages = await _outboxService.GetRecentConversationMessagesAsync(convId, limit: 25);
         if (localMessages.Count > 0)
         {
             MainThread.BeginInvokeOnMainThread(() =>
@@ -574,6 +730,10 @@ public partial class ChatRoomViewModel : ObservableObject
                 {
                     var item = MapLocalToChatItem(lm);
                     Messages.Add(item);
+                    if (lm.SequenceNumber > 0 && lm.SequenceNumber < _earliestLoadedSequenceNumber)
+                    {
+                        _earliestLoadedSequenceNumber = lm.SequenceNumber;
+                    }
                     if (lm.SequenceNumber > _lastSequenceNumber)
                     {
                         _lastSequenceNumber = lm.SequenceNumber;
@@ -1219,6 +1379,16 @@ public partial class ChatRoomViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
+    private string FormatLastSeen(DateTime? lastSeenUtc)
+    {
+        var dt = (lastSeenUtc ?? DateTime.UtcNow).ToLocalTime();
+        if (dt.Date == DateTime.Today)
+            return $"last seen today at {dt:h:mm tt}";
+        if (dt.Date == DateTime.Today.AddDays(-1))
+            return $"last seen yesterday at {dt:h:mm tt}";
+        return $"last seen {dt:MMM dd} at {dt:h:mm tt}";
+    }
+
     private void ApplyPresence(UserPresenceDto presence)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -1244,8 +1414,8 @@ public partial class ChatRoomViewModel : ObservableObject
             else
             {
                 IsOtherUserOnline = false;
-                PresenceStatusText = "offline";
-                PresenceTextColor = Color.FromArgb("#CBD5E1");
+                PresenceStatusText = FormatLastSeen(DateTime.UtcNow);
+                PresenceTextColor = Color.FromArgb("#D8E2DC");
             }
         });
     }
@@ -1332,8 +1502,8 @@ public partial class ChatRoomViewModel : ObservableObject
             }
             else
             {
-                PresenceStatusText = "offline";
-                PresenceTextColor = Color.FromArgb("#CBD5E1");
+                PresenceStatusText = FormatLastSeen(DateTime.UtcNow);
+                PresenceTextColor = Color.FromArgb("#D8E2DC");
                 IsOtherUserOnline = false;
             }
         });
@@ -1487,6 +1657,11 @@ public partial class ChatRoomViewModel : ObservableObject
             Messages.Add(newItem);
             if (reorder) SortMessages();
             if (scroll) RequestScrollToBottom?.Invoke();
+        }
+
+        if (msg.SequenceNumber > 0 && msg.SequenceNumber < _earliestLoadedSequenceNumber)
+        {
+            _earliestLoadedSequenceNumber = msg.SequenceNumber;
         }
 
         if (msg.SequenceNumber > _lastSequenceNumber)

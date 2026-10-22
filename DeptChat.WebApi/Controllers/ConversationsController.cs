@@ -201,6 +201,84 @@ public class ConversationsController : ControllerBase
     }
 
     /// <summary>
+    /// Paginated message retrieval: loads a window of messages.
+    /// If beforeSequenceNumber is not specified, returns the latest messages (page of size pageSize).
+    /// If beforeSequenceNumber is specified, returns messages strictly before that sequence number.
+    /// </summary>
+    [HttpGet("{id}/messages")]
+    public async Task<IActionResult> GetMessages(
+        Guid id,
+        [FromQuery] long? beforeSequenceNumber = null,
+        [FromQuery] int pageSize = 25)
+    {
+        var userId = GetUserId();
+        var role = GetUserRole();
+
+        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id);
+        if (conv == null)
+        {
+            return NotFound(new { message = "Conversation not found." });
+        }
+
+        if (role == UserRole.User && conv.CreatedByUserId != userId)
+        {
+            return Forbid();
+        }
+
+        if (role == UserRole.Manager)
+        {
+            var hasExplicitManagers = await _dbContext.DepartmentManagers
+                .AnyAsync(dm => dm.DepartmentId == conv.DepartmentId);
+            if (hasExplicitManagers)
+            {
+                var isAssigned = await _dbContext.DepartmentManagers
+                    .AnyAsync(dm => dm.DepartmentId == conv.DepartmentId && dm.UserId == userId);
+                if (!isAssigned)
+                {
+                    return Forbid();
+                }
+            }
+        }
+
+        pageSize = Math.Clamp(pageSize, 5, 100);
+
+        IQueryable<Message> query = _dbContext.Messages
+            .Include(m => m.Sender)
+            .Where(m => m.ConversationId == id);
+
+        if (beforeSequenceNumber.HasValue && beforeSequenceNumber.Value > 0)
+        {
+            query = query.Where(m => m.SequenceNumber < beforeSequenceNumber.Value);
+        }
+
+        var rawMessages = await query
+            .OrderByDescending(m => m.SequenceNumber)
+            .Take(pageSize + 1)
+            .ToListAsync();
+
+        var hasMore = rawMessages.Count > pageSize;
+        var pagedList = rawMessages.Take(pageSize).OrderBy(m => m.SequenceNumber).ToList();
+
+        var messageDtos = pagedList.Select(m => new ChatMessageDto(
+            m.Id,
+            m.ConversationId,
+            m.SenderId,
+            m.Sender?.FullName ?? "Staff",
+            m.SenderRole,
+            m.ClientGeneratedId,
+            m.SequenceNumber,
+            m.Content,
+            m.Status,
+            m.SentAt
+        )).ToList();
+
+        long? earliestSeq = messageDtos.Count > 0 ? messageDtos.Min(m => m.SequenceNumber) : null;
+        long? latestSeq = messageDtos.Count > 0 ? messageDtos.Max(m => m.SequenceNumber) : null;
+
+        return Ok(new PaginatedMessagesDto(id, earliestSeq, latestSeq, hasMore, messageDtos));
+    }
+
+    /// <summary>
     /// Delta Catch-Up Sync: returns all messages strictly strictly after sinceSequenceNumber.
     /// Guarantees zero message loss during reconnects.
     /// </summary>

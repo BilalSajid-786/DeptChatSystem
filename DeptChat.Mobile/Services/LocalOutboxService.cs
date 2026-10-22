@@ -179,6 +179,25 @@ public class LocalOutboxService
             .ToList();
     }
 
+    public async Task<List<LocalOutboxMessage>> GetRecentConversationMessagesAsync(Guid conversationId, int limit = 25)
+    {
+        await EnsureInitializedAsync();
+        var msgs = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == conversationId)
+            .ToListAsync();
+
+        var pending = msgs.Where(m => m.SequenceNumber == 0).ToList();
+        var confirmed = msgs.Where(m => m.SequenceNumber > 0)
+            .OrderByDescending(m => m.SequenceNumber)
+            .Take(limit)
+            .ToList();
+
+        return confirmed.Concat(pending)
+            .OrderBy(m => m.SequenceNumber > 0 ? m.SequenceNumber : long.MaxValue)
+            .ThenBy(m => m.Timestamp)
+            .ToList();
+    }
+
     public async Task ClearConversationMessagesAsync(Guid conversationId)
     {
         await EnsureInitializedAsync();
