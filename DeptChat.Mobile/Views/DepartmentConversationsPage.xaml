@@ -11,7 +11,7 @@
         <ToolbarItem Text="Log Out" Command="{Binding LogoutCommand}" />
     </ContentPage.ToolbarItems>
 
-    <Grid RowDefinitions="Auto, *">
+    <Grid RowDefinitions="Auto, Auto, *">
         <!-- Header Banner -->
         <Border Grid.Row="0" BackgroundColor="#1E293B" Padding="16,14" StrokeThickness="0">
             <VerticalStackLayout Spacing="8">
@@ -51,8 +51,50 @@
             </VerticalStackLayout>
         </Border>
 
+        <!-- Search Bar (For Admins & Managers to quickly find users or messages) -->
+        <Border Grid.Row="1"
+                IsVisible="{Binding ShowSearchBar}"
+                BackgroundColor="White"
+                Stroke="#E2E8F0"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 12"
+                Margin="16,10,16,4"
+                Padding="12,0"
+                HeightRequest="46"
+                VerticalOptions="Center">
+            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8" VerticalOptions="Center">
+                <Label Grid.Column="0" 
+                       Text="🔍" 
+                       FontSize="15" 
+                       TextColor="#94A3B8" 
+                       VerticalOptions="Center" />
+                
+                <Entry Grid.Column="1"
+                       Text="{Binding SearchQuery, Mode=TwoWay}"
+                       Placeholder="Search users or messages..."
+                       PlaceholderColor="#94A3B8"
+                       TextColor="#0F172A"
+                       FontSize="14"
+                       ClearButtonVisibility="Never"
+                       VerticalOptions="Center"
+                       HeightRequest="42" />
+
+                <Button Grid.Column="2"
+                        Text="✕"
+                        Command="{Binding ClearSearchCommand}"
+                        IsVisible="{Binding HasSearchQuery}"
+                        BackgroundColor="Transparent"
+                        TextColor="#64748B"
+                        FontSize="14"
+                        WidthRequest="30"
+                        HeightRequest="36"
+                        Padding="0"
+                        VerticalOptions="Center" />
+            </Grid>
+        </Border>
+
         <!-- Main Body -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <!-- 1. In-App Cross-Department Toast Banner -->
             <Border VerticalOptions="Start"
                     ZIndex="10"
@@ -67,7 +109,7 @@
                 </Grid>
             </Border>
 
-            <!-- Empty State -->
+            <!-- Empty State (No chats exist in this department) -->
             <VerticalStackLayout IsVisible="{Binding IsEmpty}"
                                  VerticalOptions="Center"
                                  HorizontalOptions="Center"
@@ -88,10 +130,42 @@
                        HorizontalOptions="Center" />
             </VerticalStackLayout>
 
+            <!-- Search Results Empty State (Search filter matched nothing) -->
+            <VerticalStackLayout IsVisible="{Binding IsSearchEmpty}"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="12"
+                                 Padding="32">
+                <Border BackgroundColor="#F1F5F9" StrokeShape="RoundRectangle 36" WidthRequest="72" HeightRequest="72" HorizontalOptions="Center">
+                    <Label Text="🔍" FontSize="30" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Label Text="No Users Found"
+                       FontSize="18"
+                       FontAttributes="Bold"
+                       TextColor="#0F172A"
+                       HorizontalOptions="Center" />
+                <Label Text="No user conversations match your search query."
+                       FontSize="13"
+                       TextColor="#64748B"
+                       HorizontalTextAlignment="Center"
+                       HorizontalOptions="Center" />
+                <Button Text="Clear Search"
+                        Command="{Binding ClearSearchCommand}"
+                        BackgroundColor="#0284C7"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        FontSize="13"
+                        CornerRadius="8"
+                        HeightRequest="36"
+                        Padding="16,0"
+                        Margin="0,4,0,0"
+                        HorizontalOptions="Center" />
+            </VerticalStackLayout>
+
             <!-- Conversations List -->
             <CollectionView IsVisible="{Binding HasConversations}"
                             ItemsSource="{Binding Conversations}"
-                            Margin="16,12">
+                            Margin="16,8,16,12">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ConversationListItem">
                         <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,5" Padding="14">

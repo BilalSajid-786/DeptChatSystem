@@ -32,6 +32,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     private readonly ChatApiService? _apiService;
     private readonly AuthService? _authService;
     private readonly SignalRService? _signalRService;
+    private List<ConversationListItem> _allConversations = new();
 
     [ObservableProperty]
     private string _departmentId = string.Empty;
@@ -41,6 +42,12 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     [ObservableProperty]
     private ObservableCollection<ConversationListItem> _conversations = new();
+
+    [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    [ObservableProperty]
+    private bool _isSearchEmpty;
 
     [ObservableProperty]
     private bool _isBusy;
@@ -54,11 +61,24 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     [ObservableProperty]
     private string _inAppToastMessage = string.Empty;
 
-    public bool HasConversations => !IsEmpty;
+    public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchQuery);
 
-    public string SubtitleText => Conversations.Count == 0
-        ? "0 Active Chats"
-        : $"{Conversations.Count} Active {(Conversations.Count == 1 ? "Chat" : "Chats")}";
+    public bool ShowSearchBar => _allConversations.Count > 0;
+
+    public bool HasConversations => !IsEmpty && !IsSearchEmpty;
+
+    public string SubtitleText
+    {
+        get
+        {
+            if (_allConversations.Count == 0) return "0 Active Chats";
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                return $"{Conversations.Count} of {_allConversations.Count} Found";
+            }
+            return $"{_allConversations.Count} Active {(_allConversations.Count == 1 ? "Chat" : "Chats")}";
+        }
+    }
 
     public DepartmentConversationsViewModel(
         ChatApiService apiService,
@@ -89,9 +109,52 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _ = LoadConversationsAsync();
     }
 
+    partial void OnSearchQueryChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasSearchQuery));
+        ApplyFilter();
+    }
+
     partial void OnIsEmptyChanged(bool value)
     {
         OnPropertyChanged(nameof(HasConversations));
+        OnPropertyChanged(nameof(ShowSearchBar));
+    }
+
+    partial void OnIsSearchEmptyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HasConversations));
+    }
+
+    [RelayCommand]
+    private void ClearSearch()
+    {
+        SearchQuery = string.Empty;
+    }
+
+    private void ApplyFilter()
+    {
+        var query = SearchQuery?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(query))
+        {
+            Conversations = new ObservableCollection<ConversationListItem>(_allConversations);
+            IsSearchEmpty = false;
+        }
+        else
+        {
+            var filtered = _allConversations.Where(c => 
+                (!string.IsNullOrEmpty(c.CreatedByUserName) && c.CreatedByUserName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(c.LastMessagePreview) && c.LastMessagePreview.Contains(query, StringComparison.OrdinalIgnoreCase))
+            ).ToList();
+
+            Conversations = new ObservableCollection<ConversationListItem>(filtered);
+            IsSearchEmpty = filtered.Count == 0 && _allConversations.Count > 0;
+        }
+
+        IsEmpty = _allConversations.Count == 0;
+        OnPropertyChanged(nameof(SubtitleText));
+        OnPropertyChanged(nameof(HasConversations));
+        OnPropertyChanged(nameof(ShowSearchBar));
     }
 
     [RelayCommand]
@@ -154,7 +217,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         {
             IsBusy = true;
             var list = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
-            var items = new ObservableCollection<ConversationListItem>();
+            var items = new List<ConversationListItem>();
 
             foreach (var c in list)
             {
@@ -172,9 +235,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                 });
             }
 
-            Conversations = items;
-            IsEmpty = Conversations.Count == 0;
-            OnPropertyChanged(nameof(SubtitleText));
+            _allConversations = items;
+            ApplyFilter();
         }
         catch
         {
