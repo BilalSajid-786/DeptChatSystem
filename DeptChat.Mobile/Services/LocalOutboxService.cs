@@ -191,4 +191,34 @@ public class LocalOutboxService
             await _db.DeleteAsync(m);
         }
     }
+
+    public async Task ClearConfirmedMessagesAsync(Guid conversationId)
+    {
+        await EnsureInitializedAsync();
+        var msgs = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == conversationId && m.Status != MessageDeliveryStatus.Pending)
+            .ToListAsync();
+
+        foreach (var m in msgs)
+        {
+            await _db.DeleteAsync(m);
+        }
+    }
+
+    public async Task MigrateConversationIdAsync(Guid oldConversationId, Guid newConversationId)
+    {
+        if (oldConversationId == Guid.Empty || newConversationId == Guid.Empty || oldConversationId == newConversationId)
+            return;
+
+        await EnsureInitializedAsync();
+        var msgs = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == oldConversationId)
+            .ToListAsync();
+
+        foreach (var m in msgs)
+        {
+            m.ConversationId = newConversationId;
+            await _db.UpdateAsync(m);
+        }
+    }
 }

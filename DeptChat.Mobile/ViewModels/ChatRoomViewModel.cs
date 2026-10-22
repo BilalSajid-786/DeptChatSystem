@@ -196,17 +196,21 @@ public partial class ChatRoomViewModel : ObservableObject
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
             if (sync != null)
             {
-                // If server reports 0 messages, but local device has messages, wipe local cache!
-                if (sync.LastSequenceNumber == 0 && sync.Messages.Count == 0 && Messages.Count > 0)
+                // If server reports 0 messages, but local device has confirmed server messages, clear only confirmed messages (protect pending outbox messages!)
+                if (sync.LastSequenceNumber == 0 && sync.Messages.Count == 0 && Messages.Any(m => m.SequenceNumber > 0))
                 {
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        Messages.Clear();
+                        var confirmed = Messages.Where(m => m.SequenceNumber > 0).ToList();
+                        foreach (var cm in confirmed)
+                        {
+                            Messages.Remove(cm);
+                        }
                     });
                     _lastSequenceNumber = 0;
                     if (_outboxService != null)
                     {
-                        _ = _outboxService.ClearConversationMessagesAsync(convId);
+                        _ = _outboxService.ClearConfirmedMessagesAsync(convId);
                     }
                 }
                 else if (sync.Messages.Count > 0)
@@ -282,11 +286,21 @@ public partial class ChatRoomViewModel : ObservableObject
         if (_conversationId != Guid.Empty)
             return _conversationId;
 
-        var completed = await Task.WhenAny(_convIdTcs.Task, Task.Delay(5000));
+        var completed = await Task.WhenAny(_convIdTcs.Task, Task.Delay(2000));
         if (completed == _convIdTcs.Task)
         {
             return await _convIdTcs.Task;
         }
+
+        if (Guid.TryParse(DepartmentId, out var deptGuid))
+        {
+            var myUserId = _authService?.UserId ?? Guid.Empty;
+            _conversationId = Guid.NewGuid();
+            Preferences.Default.Set($"dept_conv_{deptGuid}_{myUserId}", _conversationId.ToString());
+            _convIdTcs.TrySetResult(_conversationId);
+            return _conversationId;
+        }
+
         return _conversationId;
     }
 
@@ -568,6 +582,12 @@ public partial class ChatRoomViewModel : ObservableObject
                 _conversationId = cachedConvId;
                 _convIdTcs.TrySetResult(_conversationId);
             }
+            else
+            {
+                _conversationId = Guid.NewGuid();
+                Preferences.Default.Set($"dept_conv_{deptGuid}_{myUserId}", _conversationId.ToString());
+                _convIdTcs.TrySetResult(_conversationId);
+            }
         }
 
         // 2. If conversation ID is known, render local cached messages immediately (0ms instant display!)
@@ -590,7 +610,11 @@ public partial class ChatRoomViewModel : ObservableObject
                     {
                         if (_conversationId != Guid.Empty && _conversationId != conv.Id)
                         {
-                            MainThread.BeginInvokeOnMainThread(() => Messages.Clear());
+                            var oldId = _conversationId;
+                            if (_outboxService != null)
+                            {
+                                await _outboxService.MigrateConversationIdAsync(oldId, conv.Id);
+                            }
                         }
                         _conversationId = conv.Id;
                         _convIdTcs.TrySetResult(_conversationId);
