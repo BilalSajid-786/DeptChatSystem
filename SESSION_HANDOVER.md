@@ -186,7 +186,14 @@ The backend is currently running locally and forwarded to the internet:
   - **Synchronous Fast-Path Dispatch**: `NotifyServerOffline()` synchronously executes `POST /api/presence/offline` with cached JWT auth credentials using `FastHttpHandler.CreateHandler()` (~20ms latency directly to server).
   - **Backend Presence Controller**: Implemented [`PresenceController.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.WebApi/Controllers/PresenceController.cs) (`POST /api/presence/offline`). Immediately updates `InMemoryPresenceService`, persists `LastSeenAt = DateTime.UtcNow` in the `Users` database table, and broadcasts `UserOnlineStatusChanged(userId, false)` and `UserPresenceState` across SignalR via `IHubContext<ChatHub>`.
   - **Tuned SignalR Timeouts**: Lowered `KeepAliveInterval` to 3s and `ClientTimeoutInterval` to 6s on both server and mobile client so that ungraceful network drops fail over in seconds rather than 60+ seconds.
-  - **Result**: Swiping the app away changes status from `"online"` to `"last seen today at ..."` on other devices immediately without any delay.
+### M. Asymmetric Role-Based Presence Visibility
+- **Specification**:
+  - **Admins & Managers**: View full real-time user presence when chatting with customers — display `"online"` when the customer is active in the app, and formatted last seen (e.g. `"last seen today at 11:08 PM"`) when offline.
+  - **Customers**: When chatting with a department, display `"online"` ONLY when an assigned manager or admin is currently online. When no staff member is online, the presence subtitle is completely hidden (no `"offline"`, no `"last seen"`, no empty placeholder).
+- **Implementation**:
+  - Added `IsCustomer` property to [`ChatRoomViewModel.cs`](file:///F:/Projects/DeptChatSystem/DeptChat.Mobile/ViewModels/ChatRoomViewModel.cs).
+  - Conditioned `ApplyPresence`, `HandleUserPresenceChanged`, `HandleUserTyping`, `HandleDepartmentPresenceState`, and `HandleUserOnlineStatusChanged` to set `PresenceStatusText = string.Empty` whenever `IsCustomer` is true and staff is offline.
+  - Removed `"connecting..."` placeholder on customer initialization so the header remains clean unless staff is actively online.
 
 ### L. Universal Keyboard Height Adaptation & Auto-Scroll to Latest Message
 - **Problems**:
