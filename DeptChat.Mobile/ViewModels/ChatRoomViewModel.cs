@@ -226,7 +226,7 @@ public partial class ChatRoomViewModel : ObservableObject
                     {
                         foreach (var m in sync.Messages)
                         {
-                            AddOrUpdateServerMessage(m);
+                            AddOrUpdateServerMessage(m, reorder: false, scroll: false);
                             if (_outboxService != null)
                             {
                                 _ = _outboxService.SaveServerMessageAsync(
@@ -242,6 +242,7 @@ public partial class ChatRoomViewModel : ObservableObject
                                 );
                             }
                         }
+                        SortMessages();
                         RequestScrollToBottom?.Invoke();
                     });
 
@@ -674,7 +675,21 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 if (_conversationId == Guid.Empty) return;
 
-                // Connect to SignalR and enter room
+                // 4. Fetch messages immediately from REST API (sub-second response)
+                await SyncMissedMessagesAsync();
+
+                // Dismiss loading indicators immediately once messages are rendered
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    IsLoadingMessages = false;
+                    IsSyncingMessages = false;
+                    if (isCustomer && PresenceStatusText == "connecting...")
+                    {
+                        PresenceStatusText = string.Empty;
+                    }
+                });
+
+                // 5. Connect to SignalR and enter room in background
                 if (_signalRService != null)
                 {
                     if (!_signalRService.IsConnected && !string.IsNullOrEmpty(_authService?.Token))
@@ -688,8 +703,7 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
                 }
 
-                // Sync delta and flush outbox
-                await SyncMissedMessagesAsync();
+                // Flush outbox
                 await FlushOutboxAsync();
 
                 // Initial presence check for other user
@@ -1441,7 +1455,7 @@ public partial class ChatRoomViewModel : ObservableObject
         }
     }
 
-    private void AddOrUpdateServerMessage(ChatMessageDto msg)
+    private void AddOrUpdateServerMessage(ChatMessageDto msg, bool reorder = true, bool scroll = true)
     {
         var isOutgoing = msg.SenderId == (_authService?.UserId ?? Guid.Empty);
 
@@ -1451,7 +1465,7 @@ public partial class ChatRoomViewModel : ObservableObject
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
             UpdateStatusVisuals(existing, msg.Status);
-            ReorderMessageIfNeeded(existing);
+            if (reorder) ReorderMessageIfNeeded(existing);
         }
         else
         {
@@ -1471,8 +1485,8 @@ public partial class ChatRoomViewModel : ObservableObject
             UpdateStatusVisuals(newItem, msg.Status);
 
             Messages.Add(newItem);
-            SortMessages();
-            RequestScrollToBottom?.Invoke();
+            if (reorder) SortMessages();
+            if (scroll) RequestScrollToBottom?.Invoke();
         }
 
         if (msg.SequenceNumber > _lastSequenceNumber)

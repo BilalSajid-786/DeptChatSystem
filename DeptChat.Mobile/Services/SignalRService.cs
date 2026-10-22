@@ -1,6 +1,9 @@
+using System.Net.Http;
+using System.Net.WebSockets;
 using DeptChat.Shared.DTOs;
 using DeptChat.Shared.Enums;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Http.Connections.Client;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace DeptChat.Mobile.Services;
@@ -60,6 +63,20 @@ public class SignalRService
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(_authToken);
                 options.HttpMessageHandlerFactory = _ => FastHttpHandler.CreateHandler();
+                options.WebSocketFactory = async (context, cancellationToken) =>
+                {
+                    var ws = new ClientWebSocket();
+                    if (context.Options?.Headers != null)
+                    {
+                        foreach (var kvp in context.Options.Headers)
+                        {
+                            ws.Options.SetRequestHeader(kvp.Key, kvp.Value);
+                        }
+                    }
+                    var invoker = new HttpMessageInvoker(FastHttpHandler.CreateHandler());
+                    await ws.ConnectAsync(context.Uri, invoker, cancellationToken);
+                    return ws;
+                };
                 options.Transports = HttpTransportType.WebSockets | HttpTransportType.LongPolling;
             })
             .WithAutomaticReconnect(new EndlessRetryPolicy())

@@ -221,7 +221,10 @@ public partial class DepartmentsViewModel : ObservableObject
         else
         {
             // Customer view: Navigates directly to their direct chat room for this department
-            await Shell.Current.GoToAsync($"ChatRoomPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}");
+            var myUserId = _authService?.UserId ?? Guid.Empty;
+            var cachedConvId = Preferences.Default.Get($"dept_conv_{department.Id}_{myUserId}", string.Empty);
+            var convParam = !string.IsNullOrEmpty(cachedConvId) ? $"&convId={cachedConvId}" : string.Empty;
+            await Shell.Current.GoToAsync($"ChatRoomPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}{convParam}");
         }
     }
 
