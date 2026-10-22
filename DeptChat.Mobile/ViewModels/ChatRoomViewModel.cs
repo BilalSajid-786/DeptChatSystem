@@ -537,6 +537,8 @@ public partial class ChatRoomViewModel : ObservableObject
     [ObservableProperty]
     private bool _isOtherUserTyping;
 
+    public bool IsCustomer => _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+
     public Guid OtherUserId { get; set; } = Guid.Empty;
 
     [ObservableProperty]
@@ -784,11 +786,7 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             IsLoadingMessages = true;
             LoadingStatusText = "Loading messages...";
-            if (isCustomer)
-            {
-                PresenceStatusText = "connecting...";
-                PresenceTextColor = Color.FromArgb("#A7F3D0");
-            }
+
         }
         else
         {
@@ -1401,16 +1399,17 @@ public partial class ChatRoomViewModel : ObservableObject
                 PresenceStatusText = "online";
                 PresenceTextColor = Color.FromArgb("#A7F3D0");
             }
+            else if (IsCustomer)
+            {
+                // Customer viewing department: if no staff online, show nothing
+                IsOtherUserOnline = false;
+                PresenceStatusText = string.Empty;
+            }
             else if (presence.LastSeenAt.HasValue)
             {
+                // Admin/Manager viewing customer: show last seen
                 IsOtherUserOnline = false;
-                var lastSeen = presence.LastSeenAt.Value.ToLocalTime();
-                if (lastSeen.Date == DateTime.Today)
-                    PresenceStatusText = $"last seen today at {lastSeen:h:mm tt}";
-                else if (lastSeen.Date == DateTime.Today.AddDays(-1))
-                    PresenceStatusText = $"last seen yesterday at {lastSeen:h:mm tt}";
-                else
-                    PresenceStatusText = $"last seen {lastSeen:MMM dd} at {lastSeen:h:mm tt}";
+                PresenceStatusText = FormatLastSeen(presence.LastSeenAt.Value);
                 PresenceTextColor = Color.FromArgb("#D8E2DC");
             }
             else
@@ -1437,6 +1436,10 @@ public partial class ChatRoomViewModel : ObservableObject
             {
                 PresenceStatusText = "online";
                 PresenceTextColor = Color.FromArgb("#A7F3D0");
+            }
+            else if (IsCustomer)
+            {
+                PresenceStatusText = string.Empty;
             }
             else
             {
@@ -1469,6 +1472,10 @@ public partial class ChatRoomViewModel : ObservableObject
                     PresenceStatusText = "online";
                     PresenceTextColor = Color.FromArgb("#A7F3D0");
                 }
+                else if (IsCustomer)
+                {
+                    PresenceStatusText = string.Empty;
+                }
                 else
                 {
                     PresenceStatusText = $"last seen today at {DateTime.Now:h:mm tt}";
@@ -1491,8 +1498,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private void HandleDepartmentPresenceState(Guid convId, Guid deptId, bool isOnline)
     {
         if (convId != _conversationId) return;
-        var isCustomer = _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
-        if (!isCustomer) return;
+        if (!IsCustomer) return;
 
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -1504,8 +1510,8 @@ public partial class ChatRoomViewModel : ObservableObject
             }
             else
             {
-                PresenceStatusText = FormatLastSeen(DateTime.UtcNow);
-                PresenceTextColor = Color.FromArgb("#D8E2DC");
+                // Customer viewing department: no staff online -> show nothing
+                PresenceStatusText = string.Empty;
                 IsOtherUserOnline = false;
             }
         });
@@ -1523,8 +1529,15 @@ public partial class ChatRoomViewModel : ObservableObject
                 PresenceTextColor = Color.FromArgb("#A7F3D0");
                 IsOtherUserOnline = true;
             }
+            else if (IsCustomer)
+            {
+                // Customer viewing department: staff went offline -> show nothing
+                PresenceStatusText = string.Empty;
+                IsOtherUserOnline = false;
+            }
             else
             {
+                // Admin/Manager viewing customer: customer went offline -> show last seen
                 PresenceStatusText = $"last seen today at {DateTime.Now:h:mm tt}";
                 PresenceTextColor = Color.FromArgb("#D8E2DC");
                 IsOtherUserOnline = false;
