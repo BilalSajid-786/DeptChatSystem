@@ -199,8 +199,8 @@ The backend is currently running locally and forwarded to the internet:
 | Email / Username | Password | Role | Notes |
 | :--- | :--- | :--- | :--- |
 | `u100@example.com` / `u100` | `Password123!` | Customer (`UserRole.User`) | Standard customer account. Interacts with departments. |
-| `admin@example.com` | `Password123!` | Admin (`UserRole.Admin`) | Full administrative access to all department chats. |
-| `manager@example.com` | `Password123!` | Manager (`UserRole.Manager`) | Department manager view. Assists assigned customers. |
+| `admin@deptchat.com` | `Admin123!` | Admin (`UserRole.Admin`) | Full administrative access to all department chats. |
+| `manager@deptchat.com` | `Manager123!` | Manager (`UserRole.Manager`) | Department manager view. Assists assigned customers. |
 
 ---
 
