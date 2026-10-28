@@ -18,6 +18,10 @@ public class AuthService
     public string? Token => CurrentUser?.Token;
     public Guid? UserId => CurrentUser?.UserId;
     public UserRole? Role => CurrentUser?.Role;
+    public Guid? ClientId => CurrentUser?.ClientId;
+    public string? ClientName => CurrentUser?.ClientName;
+    public string? PhoneNumber => CurrentUser?.PhoneNumber;
+    public string? Address => CurrentUser?.Address;
     public List<Guid> DepartmentIds => CurrentUser?.DepartmentIds ?? new();
 
     public AuthService(HttpClient httpClient, ServerConfigService serverConfig)
@@ -84,12 +88,13 @@ public class AuthService
         }
     }
 
-    public async Task<bool> RegisterAsync(string fullName, string email, string password)
+    public async Task<bool> RegisterAsync(string fullName, string email, string password, string companyCode, string? phoneNumber = null, string? address = null)
     {
         LastError = null;
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/register"), new RegisterRequestDto(fullName, email, password));
+            var reqDto = new RegisterRequestDto(fullName, email, password, companyCode, phoneNumber, address);
+            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/register"), reqDto);
             if (!response.IsSuccessStatusCode)
             {
                 var errContent = await response.Content.ReadAsStringAsync();
@@ -111,6 +116,49 @@ public class AuthService
         {
             var detail = ex.InnerException != null ? $"{ex.Message} ({ex.InnerException.Message})" : ex.Message;
             LastError = $"Connection failed ({_serverConfig.CurrentUrl}): {detail}";
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateProfileAsync(string fullName, string? phoneNumber, string? address)
+    {
+        LastError = null;
+        try
+        {
+            if (string.IsNullOrEmpty(Token)) return false;
+
+            using var req = new HttpRequestMessage(HttpMethod.Put, BuildUrl("api/auth/profile"));
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+            var reqDto = new UpdateProfileRequestDto(fullName, phoneNumber, address);
+            req.Content = JsonContent.Create(reqDto);
+
+            var response = await _httpClient.SendAsync(req);
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                LastError = !string.IsNullOrWhiteSpace(err) ? err : $"Failed to update profile ({(int)response.StatusCode})";
+                return false;
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var profile = JsonSerializer.Deserialize<UserProfileDto>(content, JsonOptions);
+            if (profile != null && CurrentUser != null)
+            {
+                CurrentUser = CurrentUser with
+                {
+                    FullName = profile.FullName,
+                    PhoneNumber = profile.PhoneNumber,
+                    Address = profile.Address
+                };
+                Preferences.Default.Set(AuthStorageKey, JsonSerializer.Serialize(CurrentUser, JsonOptions));
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
             return false;
         }
     }

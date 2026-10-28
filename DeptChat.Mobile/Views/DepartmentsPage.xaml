@@ -13,29 +13,51 @@
             <VerticalStackLayout Spacing="10">
                 <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
                     <VerticalStackLayout Grid.Column="0" Spacing="2">
-                        <Label Text="Support Channels" TextColor="White" FontSize="21" FontAttributes="Bold" />
+                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                            <Label Text="🏢" FontSize="15" VerticalOptions="Center" />
+                            <Label Text="{Binding ClientDisplayName}" TextColor="#A7F3D0" FontSize="13" FontAttributes="Bold" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                        <Label Text="Support Channels" TextColor="White" FontSize="20" FontAttributes="Bold" />
                         <Label Text="Select a department to start chatting directly" TextColor="#D1FAE5" FontSize="12" />
                     </VerticalStackLayout>
 
-                    <!-- WhatsApp Styled Exit Button -->
-                    <Button Grid.Column="1"
-                            Text="🚪 Exit"
-                            Command="{Binding LogoutCommand}"
-                            BackgroundColor="#005C4B"
-                            BorderColor="#00A884"
-                            BorderWidth="1"
-                            TextColor="White"
-                            FontAttributes="Bold"
-                            FontSize="12"
-                            CornerRadius="8"
-                            HeightRequest="36"
-                            Padding="12,0"
-                            VerticalOptions="Center" />
+                    <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                        <!-- Profile Button -->
+                        <Button Text="👤 Profile"
+                                Command="{Binding OpenProfileModalCommand}"
+                                BackgroundColor="#005C4B"
+                                BorderColor="#00A884"
+                                BorderWidth="1"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="12"
+                                CornerRadius="8"
+                                HeightRequest="36"
+                                Padding="10,0"
+                                VerticalOptions="Center" />
+
+                        <!-- WhatsApp Styled Exit Button -->
+                        <Button Text="🚪 Exit"
+                                Command="{Binding LogoutCommand}"
+                                BackgroundColor="#005C4B"
+                                BorderColor="#00A884"
+                                BorderWidth="1"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="12"
+                                CornerRadius="8"
+                                HeightRequest="36"
+                                Padding="10,0"
+                                VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                 </Grid>
 
                 <!-- Current User Details Badge -->
                 <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
                     <Border BackgroundColor="#005C4B" Stroke="#00A884" StrokeShape="RoundRectangle 6" Padding="8,4" StrokeThickness="1">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenProfileModalCommand}" />
+                        </Border.GestureRecognizers>
                         <Label Text="{Binding UserBadge}" TextColor="#72E5BE" FontSize="11" FontAttributes="Bold" />
                     </Border>
                     <Label Text="{Binding CurrentUserEmail}" TextColor="#D1FAE5" FontSize="11" VerticalOptions="Center" />
@@ -211,6 +233,117 @@
                                 FontSize="13"
                                 CornerRadius="8"
                                 HeightRequest="42" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- User Profile Modal Overlay -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsProfileModalVisible}"
+              BackgroundColor="#99000000"
+              HorizontalOptions="FillAndExpand"
+              VerticalOptions="FillAndExpand"
+              ZIndex="1000">
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    WidthRequest="340"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="22"
+                    Margin="20">
+                <VerticalStackLayout Spacing="14">
+                    <!-- Title & Close Button -->
+                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <Label Text="👤 My Profile" FontSize="18" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseProfileModalCommand}"
+                                BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
+                    </Grid>
+
+                    <!-- Organization Info Banner -->
+                    <Border BackgroundColor="#E8F5E9" Stroke="#A5D6A7" StrokeShape="RoundRectangle 8" Padding="10,6">
+                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                            <Label Text="🏢" FontSize="14" VerticalOptions="Center" />
+                            <Label Text="{Binding ClientDisplayName}" FontSize="12" FontAttributes="Bold" TextColor="#1B5E20" VerticalOptions="Center" />
+                            <Label Text="•" FontSize="12" TextColor="#66BB6A" VerticalOptions="Center" />
+                            <Label Text="{Binding CurrentUserRole}" FontSize="12" TextColor="#2E7D32" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <!-- Email (Read Only) -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Email Address" FontSize="11" FontAttributes="Bold" TextColor="#64748B" />
+                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F1F5F9" Padding="12,4">
+                            <Label Text="{Binding CurrentUserEmail}" TextColor="#64748B" FontSize="13" VerticalOptions="Center" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Full Name (Editable) -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Full Name *" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+                            <Entry Text="{Binding EditFullName}"
+                                   Placeholder="Full Name"
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#0F172A"
+                                   FontSize="13" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Phone Number (Editable) -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Phone Number" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+                            <Entry Text="{Binding EditPhoneNumber}"
+                                   Placeholder="+1 (555) 000-0000"
+                                   PlaceholderColor="#94A3B8"
+                                   Keyboard="Telephone"
+                                   TextColor="#0F172A"
+                                   FontSize="13" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Address (Editable) -->
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Address" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+                            <Entry Text="{Binding EditAddress}"
+                                   Placeholder="Street, City, Country"
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#0F172A"
+                                   FontSize="13" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Error Message -->
+                    <Label Text="{Binding ProfileErrorMessage}"
+                           TextColor="#EF4444"
+                           FontSize="12"
+                           IsVisible="{Binding HasProfileError}" />
+
+                    <!-- Action Buttons -->
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,4,0,0">
+                        <Button Grid.Column="0"
+                                Text="Cancel"
+                                Command="{Binding CloseProfileModalCommand}"
+                                BackgroundColor="#F1F5F9"
+                                TextColor="#475569"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="40" />
+                        <Button Grid.Column="1"
+                                Text="Save"
+                                Command="{Binding SaveProfileCommand}"
+                                IsEnabled="{Binding CanSaveProfile}"
+                                BackgroundColor="#008069"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="40" />
                     </Grid>
                 </VerticalStackLayout>
             </Border>

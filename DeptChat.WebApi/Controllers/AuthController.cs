@@ -29,7 +29,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
-    /// Public user self-registration.
+    /// Public user self-registration with mandatory Company Code.
     /// Strictly assigns Role = User (Privilege escalation prevention).
     /// </summary>
     [HttpPost("register")]
@@ -40,9 +40,24 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Full name, email, and password are required." });
         }
 
+        if (string.IsNullOrWhiteSpace(dto.CompanyCode))
+        {
+            return BadRequest(new { message = "Company code is required to register." });
+        }
+
         if (dto.Password.Length < 6)
         {
             return BadRequest(new { message = "Password must be at least 6 characters long." });
+        }
+
+        // Validate Company Code
+        var normalizedCode = dto.CompanyCode.Trim().ToUpperInvariant();
+        var client = await _dbContext.Clients
+            .FirstOrDefaultAsync(c => c.Code.ToUpper() == normalizedCode && c.IsActive);
+
+        if (client == null)
+        {
+            return BadRequest(new { message = $"Company code '{dto.CompanyCode.Trim()}' was not found or is inactive. Please contact your administrator." });
         }
 
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
@@ -57,9 +72,12 @@ public class AuthController : ControllerBase
         var user = new User
         {
             Id = Guid.NewGuid(),
+            ClientId = client.Id,
             FullName = dto.FullName.Trim(),
             Email = normalizedEmail,
             PasswordHash = _passwordHasher.HashPassword(dto.Password),
+            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
+            Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
             Role = UserRole.User,
             CreatedAt = DateTime.UtcNow,
             LastSeenAt = DateTime.UtcNow
@@ -68,7 +86,7 @@ public class AuthController : ControllerBase
         _dbContext.Users.Add(user);
         await _dbContext.SaveChangesAsync();
 
-        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role);
+        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, client.Id, client.Name);
 
         var response = new AuthResponseDto(
             UserId: user.Id,
@@ -76,7 +94,11 @@ public class AuthController : ControllerBase
             Email: user.Email,
             Role: user.Role,
             Token: token,
-            DepartmentIds: new List<Guid>()
+            DepartmentIds: new List<Guid>(),
+            ClientId: client.Id,
+            ClientName: client.Name,
+            PhoneNumber: user.PhoneNumber,
+            Address: user.Address
         );
 
         return StatusCode(StatusCodes.Status201Created, response);
@@ -84,6 +106,7 @@ public class AuthController : ControllerBase
 
     /// <summary>
     /// Login for all roles (Admin, Manager, and User).
+    /// Automatically identifies user's client workspace.
     /// </summary>
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto dto)
@@ -96,6 +119,7 @@ public class AuthController : ControllerBase
         var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
 
         var user = await _dbContext.Users
+            .Include(u => u.Client)
             .Include(u => u.DepartmentAssignments)
             .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
 
@@ -104,9 +128,16 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
+        if (user.Client != null && !user.Client.IsActive)
+        {
+            return Unauthorized(new { message = "Your organization workspace has been deactivated. Please contact support." });
+        }
+
+        var clientName = user.Client?.Name ?? "Main Organization";
+        var clientId = user.ClientId;
         var departmentIds = user.DepartmentAssignments.Select(da => da.DepartmentId).ToList();
 
-        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, departmentIds);
+        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, clientId, clientName, departmentIds);
 
         var response = new AuthResponseDto(
             UserId: user.Id,
@@ -114,17 +145,22 @@ public class AuthController : ControllerBase
             Email: user.Email,
             Role: user.Role,
             Token: token,
-            DepartmentIds: departmentIds
+            DepartmentIds: departmentIds,
+            ClientId: clientId,
+            ClientName: clientName,
+            PhoneNumber: user.PhoneNumber,
+            Address: user.Address
         );
 
         return Ok(response);
     }
 
     /// <summary>
-    /// Returns the authenticated user's profile and claims.
+    /// Returns the authenticated user's profile and company details.
     /// </summary>
     [Authorize]
     [HttpGet("me")]
+    [HttpGet("profile")]
     public async Task<IActionResult> GetCurrentUser()
     {
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -134,6 +170,7 @@ public class AuthController : ControllerBase
         }
 
         var user = await _dbContext.Users
+            .Include(u => u.Client)
             .Include(u => u.DepartmentAssignments)
             .FirstOrDefaultAsync(u => u.Id == userId);
 
@@ -142,16 +179,60 @@ public class AuthController : ControllerBase
             return NotFound(new { message = "User not found." });
         }
 
-        var departmentIds = user.DepartmentAssignments.Select(da => da.DepartmentId).ToList();
+        return Ok(new UserProfileDto(
+            UserId: user.Id,
+            FullName: user.FullName,
+            Email: user.Email,
+            Role: user.Role,
+            ClientId: user.ClientId,
+            ClientName: user.Client?.Name ?? "Main Organization",
+            PhoneNumber: user.PhoneNumber,
+            Address: user.Address
+        ));
+    }
 
-        return Ok(new
+    /// <summary>
+    /// Updates the authenticated user's profile details (FullName, PhoneNumber, Address).
+    /// </summary>
+    [Authorize]
+    [HttpPut("profile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequestDto dto)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
         {
-            user.Id,
-            user.FullName,
-            user.Email,
-            Role = user.Role.ToString(),
-            DepartmentIds = departmentIds
-        });
+            return Unauthorized();
+        }
+
+        var user = await _dbContext.Users
+            .Include(u => u.Client)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user == null)
+        {
+            return NotFound(new { message = "User not found." });
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.FullName))
+        {
+            user.FullName = dto.FullName.Trim();
+        }
+
+        user.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+        user.Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim();
+
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new UserProfileDto(
+            UserId: user.Id,
+            FullName: user.FullName,
+            Email: user.Email,
+            Role: user.Role,
+            ClientId: user.ClientId,
+            ClientName: user.Client?.Name ?? "Main Organization",
+            PhoneNumber: user.PhoneNumber,
+            Address: user.Address
+        ));
     }
 
     /// <summary>

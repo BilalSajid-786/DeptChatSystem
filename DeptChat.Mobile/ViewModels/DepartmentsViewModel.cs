@@ -30,10 +30,43 @@ public partial class DepartmentsViewModel : ObservableObject
     public string CurrentUserName => _authService?.CurrentUser?.FullName ?? "User";
     public string CurrentUserRole => _authService?.CurrentUser?.Role.ToString() ?? "";
     public string CurrentUserEmail => _authService?.CurrentUser?.Email ?? "";
+    public string ClientDisplayName => !string.IsNullOrEmpty(_authService?.CurrentUser?.ClientName) 
+        ? _authService.CurrentUser.ClientName 
+        : "Main Organization";
+    public string CurrentUserPhone => !string.IsNullOrEmpty(_authService?.CurrentUser?.PhoneNumber)
+        ? _authService.CurrentUser.PhoneNumber
+        : "Not provided";
+    public string CurrentUserAddress => !string.IsNullOrEmpty(_authService?.CurrentUser?.Address)
+        ? _authService.CurrentUser.Address
+        : "Not provided";
     public string UserBadge => !string.IsNullOrEmpty(CurrentUserRole) ? $"👤 {CurrentUserName} ({CurrentUserRole})" : "👤 User";
 
     [ObservableProperty]
     private bool _isAdmin;
+
+    [ObservableProperty]
+    private bool _isProfileModalVisible;
+
+    [ObservableProperty]
+    private string _editFullName = string.Empty;
+
+    [ObservableProperty]
+    private string _editPhoneNumber = string.Empty;
+
+    [ObservableProperty]
+    private string _editAddress = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProfileError))]
+    private string _profileErrorMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveProfile))]
+    private bool _isProfileSaving;
+
+    public bool CanSaveProfile => !IsProfileSaving;
+
+    public bool HasProfileError => !string.IsNullOrWhiteSpace(ProfileErrorMessage);
 
     [ObservableProperty]
     private bool _isAddDepartmentModalVisible;
@@ -105,6 +138,9 @@ public partial class DepartmentsViewModel : ObservableObject
         OnPropertyChanged(nameof(CurrentUserName));
         OnPropertyChanged(nameof(CurrentUserRole));
         OnPropertyChanged(nameof(CurrentUserEmail));
+        OnPropertyChanged(nameof(ClientDisplayName));
+        OnPropertyChanged(nameof(CurrentUserPhone));
+        OnPropertyChanged(nameof(CurrentUserAddress));
         OnPropertyChanged(nameof(UserBadge));
     }
 
@@ -244,6 +280,64 @@ public partial class DepartmentsViewModel : ObservableObject
         Departments.Clear();
 
         await Shell.Current.GoToAsync("//LoginPage");
+    }
+
+    [RelayCommand]
+    private void OpenProfileModal()
+    {
+        EditFullName = _authService?.CurrentUser?.FullName ?? string.Empty;
+        EditPhoneNumber = _authService?.CurrentUser?.PhoneNumber ?? string.Empty;
+        EditAddress = _authService?.CurrentUser?.Address ?? string.Empty;
+        ProfileErrorMessage = string.Empty;
+        IsProfileSaving = false;
+        IsProfileModalVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseProfileModal()
+    {
+        IsProfileModalVisible = false;
+        ProfileErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task SaveProfileAsync()
+    {
+        if (string.IsNullOrWhiteSpace(EditFullName))
+        {
+            ProfileErrorMessage = "Full Name is required.";
+            return;
+        }
+
+        if (_authService == null) return;
+
+        try
+        {
+            IsProfileSaving = true;
+            ProfileErrorMessage = string.Empty;
+            var success = await _authService.UpdateProfileAsync(EditFullName.Trim(), EditPhoneNumber?.Trim(), EditAddress?.Trim());
+            if (success)
+            {
+                RefreshUserInfo();
+                IsProfileModalVisible = false;
+                if (Shell.Current != null)
+                {
+                    await Shell.Current.DisplayAlert("Profile Updated", "Your profile details have been updated successfully.", "OK");
+                }
+            }
+            else
+            {
+                ProfileErrorMessage = _authService.LastError ?? "Failed to save profile changes.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ProfileErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsProfileSaving = false;
+        }
     }
 
     [RelayCommand]

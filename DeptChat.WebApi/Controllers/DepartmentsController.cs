@@ -25,11 +25,21 @@ public class DepartmentsController : ControllerBase
         _hubContext = hubContext;
     }
 
+    private Guid GetClientId()
+    {
+        var claim = User.FindFirstValue("client_id");
+        if (claim != null && Guid.TryParse(claim, out var cid))
+        {
+            return cid;
+        }
+        return Guid.Parse("00000000-0000-0000-0000-000000000001");
+    }
+
     /// <summary>
-    /// Gets all relevant departments with real-time unread badge counts.
-    /// - Normal Users: sees all active departments and unread replies in their private room.
-    /// - Managers: by default sees all departments (or assigned departments if restricted) and unread counts.
-    /// - Admins: sees all departments and global unread totals.
+    /// Gets all relevant departments for the authenticated user's client workspace.
+    /// - Normal Users: sees all active departments in their client and unread replies in their private room.
+    /// - Managers: sees departments in their client (or assigned departments if restricted) and unread counts.
+    /// - Admins: sees all departments in their client and global unread totals.
     /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetDepartments()
@@ -43,11 +53,12 @@ public class DepartmentsController : ControllerBase
         var roleClaim = User.FindFirstValue(ClaimTypes.Role);
         Enum.TryParse<UserRole>(roleClaim, out var role);
 
-        var query = _dbContext.Departments.Where(d => d.IsActive);
+        var clientId = GetClientId();
 
-        // By default, departments are visible to every user and manager.
+        var query = _dbContext.Departments.Where(d => d.ClientId == clientId && d.IsActive);
+
+        // By default, departments are visible to every user and manager in this client.
         // If a department has explicit managers assigned, only assigned managers see it.
-        // Unrestricted departments remain visible to all managers by default.
         if (role == UserRole.Manager)
         {
             var assignedDeptIds = await _dbContext.DepartmentManagers
@@ -56,6 +67,7 @@ public class DepartmentsController : ControllerBase
                 .ToListAsync();
 
             var restrictedDeptIds = await _dbContext.DepartmentManagers
+                .Where(dm => dm.Department.ClientId == clientId)
                 .Select(dm => dm.DepartmentId)
                 .Distinct()
                 .ToListAsync();
@@ -101,8 +113,7 @@ public class DepartmentsController : ControllerBase
     }
 
     /// <summary>
-    /// Admin only: Add a new department.
-    /// By default, newly added departments are visible to every user and manager.
+    /// Admin only: Add a new department for the current client.
     /// </summary>
     [Authorize(Roles = "Admin")]
     [HttpPost]
@@ -113,9 +124,12 @@ public class DepartmentsController : ControllerBase
             return BadRequest(new { message = "Department name is required." });
         }
 
+        var clientId = GetClientId();
+
         var dept = new Department
         {
             Id = Guid.NewGuid(),
+            ClientId = clientId,
             Name = dto.Name.Trim(),
             Description = dto.Description?.Trim() ?? string.Empty,
             IsActive = true
@@ -126,8 +140,8 @@ public class DepartmentsController : ControllerBase
 
         var responseDto = new DepartmentDto(dept.Id, dept.Name, dept.Description, dept.IsActive, 0);
 
-        // Real-time broadcast to all connected clients (users, managers, admins)
-        await _hubContext.Clients.All.SendAsync("DepartmentAdded", responseDto);
+        // Real-time broadcast to client group
+        await _hubContext.Clients.Group($"Client_{clientId}").SendAsync("DepartmentAdded", responseDto);
 
         return StatusCode(StatusCodes.Status201Created, responseDto);
     }
@@ -139,11 +153,12 @@ public class DepartmentsController : ControllerBase
     [HttpPost("{id}/managers")]
     public async Task<IActionResult> AssignManager(Guid id, [FromBody] AssignManagerDto dto)
     {
-        var deptExists = await _dbContext.Departments.AnyAsync(d => d.Id == id);
+        var clientId = GetClientId();
+        var deptExists = await _dbContext.Departments.AnyAsync(d => d.Id == id && d.ClientId == clientId);
         if (!deptExists) return NotFound(new { message = "Department not found." });
 
-        var manager = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == dto.UserId && u.Role == UserRole.Manager);
-        if (manager == null) return BadRequest(new { message = "User is not a valid Manager." });
+        var manager = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == dto.UserId && u.ClientId == clientId && u.Role == UserRole.Manager);
+        if (manager == null) return BadRequest(new { message = "User is not a valid Manager in this organization." });
 
         var alreadyAssigned = await _dbContext.DepartmentManagers.AnyAsync(dm => dm.DepartmentId == id && dm.UserId == dto.UserId);
         if (alreadyAssigned) return Ok(new { message = "Manager already assigned to this department." });
@@ -159,13 +174,13 @@ public class DepartmentsController : ControllerBase
 
     /// <summary>
     /// Admin only: Soft-deletes a department.
-    /// Sets IsActive to false and notifies all connected clients via SignalR.
     /// </summary>
     [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteDepartment(Guid id)
     {
-        var dept = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == id);
+        var clientId = GetClientId();
+        var dept = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == id && d.ClientId == clientId);
         if (dept == null)
         {
             return NotFound(new { message = "Department not found." });
@@ -174,8 +189,8 @@ public class DepartmentsController : ControllerBase
         dept.IsActive = false;
         await _dbContext.SaveChangesAsync();
 
-        // Broadcast real-time deletion to all connected clients
-        await _hubContext.Clients.All.SendAsync("DepartmentDeleted", id);
+        // Broadcast real-time deletion to client group
+        await _hubContext.Clients.Group($"Client_{clientId}").SendAsync("DepartmentDeleted", id);
 
         return Ok(new { message = "Department deleted successfully.", departmentId = id });
     }

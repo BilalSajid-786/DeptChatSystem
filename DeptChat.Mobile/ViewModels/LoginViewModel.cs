@@ -27,6 +27,15 @@ public partial class LoginViewModel : ObservableObject
     private string _fullName = "John Doe";
 
     [ObservableProperty]
+    private string _companyCode = "MAIN";
+
+    [ObservableProperty]
+    private string _phoneNumber = string.Empty;
+
+    [ObservableProperty]
+    private string _address = string.Empty;
+
+    [ObservableProperty]
     private bool _isRegisterMode;
 
     [ObservableProperty]
@@ -133,7 +142,13 @@ public partial class LoginViewModel : ObservableObject
 
             if (IsRegisterMode)
             {
-                success = await _authService.RegisterAsync(FullName, Email, Password);
+                if (string.IsNullOrWhiteSpace(FullName) || string.IsNullOrWhiteSpace(CompanyCode))
+                {
+                    ErrorMessage = "Please enter your name and company code.";
+                    IsBusy = false;
+                    return;
+                }
+                success = await _authService.RegisterAsync(FullName, Email, Password, CompanyCode.Trim().ToUpperInvariant(), PhoneNumber?.Trim(), Address?.Trim());
             }
             else
             {

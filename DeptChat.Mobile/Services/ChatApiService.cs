@@ -179,4 +179,42 @@ public class ChatApiService
             return url;
         return $"{_serverConfig.CurrentUrl.TrimEnd('/')}/{url.TrimStart('/')}";
     }
+
+    public async Task<UserProfileDto?> GetProfileAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/auth/profile"));
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<UserProfileDto>(content, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] GetProfile error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<UserProfileDto?> UpdateProfileAsync(string fullName, string? phoneNumber, string? address)
+    {
+        try
+        {
+            AttachBearerToken();
+            var payload = new UpdateProfileRequestDto(fullName, phoneNumber, address);
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            using var stringContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PutAsync(BuildUrl("api/auth/profile"), stringContent);
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<UserProfileDto>(content, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] UpdateProfile error: {ex.Message}");
+            return null;
+        }
+    }
 }

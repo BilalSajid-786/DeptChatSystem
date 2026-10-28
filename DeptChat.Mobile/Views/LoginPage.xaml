@@ -45,6 +45,30 @@
                         </Border>
                     </VerticalStackLayout>
 
+                    <!-- Company Code (Register Only - Required) -->
+                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
+                        <Label Text="Company / Org Code *" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
+                            <Entry Text="{Binding CompanyCode}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="e.g. MAIN or ACME" PlaceholderColor="#94A3B8" HeightRequest="40" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Phone Number (Register Only - Optional) -->
+                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
+                        <Label Text="Phone Number (Optional)" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
+                            <Entry Text="{Binding PhoneNumber}" BackgroundColor="Transparent" TextColor="#0F172A" Keyboard="Telephone" Placeholder="+1 (555) 000-0000" PlaceholderColor="#94A3B8" HeightRequest="40" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Address (Register Only - Optional) -->
+                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
+                        <Label Text="Address (Optional)" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
+                            <Entry Text="{Binding Address}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="City, State / Street" PlaceholderColor="#94A3B8" HeightRequest="40" />
+                        </Border>
+                    </VerticalStackLayout>
+
                     <!-- Email -->
                     <VerticalStackLayout Spacing="4">
                         <Label Text="Email Address" TextColor="#475569" FontSize="12" FontAttributes="Bold" />

@@ -24,17 +24,31 @@ public class ConversationsController : ControllerBase
         _presenceService = presenceService;
     }
 
+    private Guid GetClientId()
+    {
+        var claim = User.FindFirstValue("client_id");
+        if (claim != null && Guid.TryParse(claim, out var cid))
+        {
+            return cid;
+        }
+        return Guid.Parse("00000000-0000-0000-0000-000000000001");
+    }
+
     /// <summary>
     /// For a regular user: Gets or creates their single persistent conversation with a department.
     /// For a manager or admin: Lists all user conversations in this department.
+    /// Strictly scoped to caller's ClientId.
     /// </summary>
     [HttpGet("department/{departmentId}")]
     public async Task<IActionResult> GetDepartmentConversations(Guid departmentId)
     {
         var userId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
-        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == departmentId && d.IsActive);
+        var department = await _dbContext.Departments
+            .FirstOrDefaultAsync(d => d.Id == departmentId && d.ClientId == clientId && d.IsActive);
+
         if (department == null)
         {
             return NotFound(new { message = "Department not found." });
@@ -46,7 +60,7 @@ public class ConversationsController : ControllerBase
             var conversation = await _dbContext.Conversations
                 .Include(c => c.CreatedByUser)
                 .Include(c => c.Department)
-                .FirstOrDefaultAsync(c => c.DepartmentId == departmentId && c.CreatedByUserId == userId);
+                .FirstOrDefaultAsync(c => c.DepartmentId == departmentId && c.CreatedByUserId == userId && c.ClientId == clientId);
 
             if (conversation == null)
             {
@@ -54,6 +68,7 @@ public class ConversationsController : ControllerBase
                 conversation = new Conversation
                 {
                     Id = Guid.NewGuid(),
+                    ClientId = clientId,
                     DepartmentId = departmentId,
                     CreatedByUserId = userId,
                     Status = ConversationStatus.Active,
@@ -108,7 +123,7 @@ public class ConversationsController : ControllerBase
             var conversations = await _dbContext.Conversations
                 .Include(c => c.CreatedByUser)
                 .Include(c => c.Department)
-                .Where(c => c.DepartmentId == departmentId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
+                .Where(c => c.DepartmentId == departmentId && c.ClientId == clientId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
                 .OrderByDescending(c => c.UpdatedAt)
                 .ToListAsync();
 
@@ -163,11 +178,12 @@ public class ConversationsController : ControllerBase
     {
         var userId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
         var conv = await _dbContext.Conversations
             .Include(c => c.Department)
             .Include(c => c.CreatedByUser)
-            .FirstOrDefaultAsync(c => c.Id == id);
+            .FirstOrDefaultAsync(c => c.Id == id && c.ClientId == clientId);
 
         if (conv == null)
         {
@@ -227,8 +243,9 @@ public class ConversationsController : ControllerBase
     {
         var userId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
-        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id);
+        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id && c.ClientId == clientId);
         if (conv == null)
         {
             return NotFound(new { message = "Conversation not found." });
@@ -301,8 +318,9 @@ public class ConversationsController : ControllerBase
     {
         var userId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
-        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id);
+        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id && c.ClientId == clientId);
         if (conv == null)
         {
             return NotFound(new { message = "Conversation not found." });
@@ -389,19 +407,21 @@ public class ConversationsController : ControllerBase
 
     /// <summary>
     /// For Manager or Admin: returns all registered users available to start a chat with in this department.
+    /// Strictly filtered to the caller's Client organization.
     /// </summary>
     [HttpGet("department/{departmentId}/available-users")]
     public async Task<IActionResult> GetAvailableUsers(Guid departmentId)
     {
         var userId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
         if (role != UserRole.Admin && role != UserRole.Manager)
         {
             return Forbid();
         }
 
-        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == departmentId && d.IsActive);
+        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == departmentId && d.ClientId == clientId && d.IsActive);
         if (department == null)
         {
             return NotFound(new { message = "Department not found." });
@@ -422,18 +442,18 @@ public class ConversationsController : ControllerBase
             }
         }
 
-        // Get all active users (customers) who do not already have an active conversation with messages in this department
+        // Get all active users (customers) belonging strictly to the SAME client organization
         var users = await _dbContext.Users
-            .Where(u => u.Role == UserRole.User && u.Id != userId)
+            .Where(u => u.ClientId == clientId && u.Role == UserRole.User && u.Id != userId)
             .OrderBy(u => u.FullName)
             .ToListAsync();
 
         var existingConvUserIds = await _dbContext.Conversations
-            .Where(c => c.DepartmentId == departmentId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
+            .Where(c => c.DepartmentId == departmentId && c.ClientId == clientId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
             .Select(c => c.CreatedByUserId)
             .ToHashSetAsync();
 
-        // Users who haven't started chatting in this department yet (including newly registered users like User 101)
+        // Users who haven't started chatting in this department yet
         var availableUsers = users.Where(u => !existingConvUserIds.Contains(u.Id)).ToList();
 
         var result = new List<AvailableDepartmentUserDto>();
@@ -456,28 +476,30 @@ public class ConversationsController : ControllerBase
 
     /// <summary>
     /// For Manager or Admin: starts or opens a persistent conversation with a target user in this department.
+    /// Strictly assigns ClientId.
     /// </summary>
     [HttpPost("start-with-user")]
     public async Task<IActionResult> StartConversationWithUser([FromBody] StartConversationWithUserRequest request)
     {
         var staffUserId = GetUserId();
         var role = GetUserRole();
+        var clientId = GetClientId();
 
         if (role != UserRole.Admin && role != UserRole.Manager)
         {
             return Forbid();
         }
 
-        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == request.DepartmentId && d.IsActive);
+        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == request.DepartmentId && d.ClientId == clientId && d.IsActive);
         if (department == null)
         {
             return NotFound(new { message = "Department not found." });
         }
 
-        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == request.TargetUserId);
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == request.TargetUserId && u.ClientId == clientId);
         if (targetUser == null)
         {
-            return NotFound(new { message = "Target user not found." });
+            return NotFound(new { message = "Target user not found in this organization." });
         }
 
         if (role == UserRole.Manager)
@@ -495,17 +517,18 @@ public class ConversationsController : ControllerBase
             }
         }
 
-        // Check if conversation already exists for this (departmentId, targetUserId)
+        // Check if conversation already exists for this (departmentId, targetUserId, clientId)
         var conversation = await _dbContext.Conversations
             .Include(c => c.CreatedByUser)
             .Include(c => c.Department)
-            .FirstOrDefaultAsync(c => c.DepartmentId == request.DepartmentId && c.CreatedByUserId == request.TargetUserId);
+            .FirstOrDefaultAsync(c => c.ClientId == clientId && c.DepartmentId == request.DepartmentId && c.CreatedByUserId == request.TargetUserId);
 
         if (conversation == null)
         {
             conversation = new Conversation
             {
                 Id = Guid.NewGuid(),
+                ClientId = clientId,
                 DepartmentId = request.DepartmentId,
                 CreatedByUserId = request.TargetUserId,
                 Status = ConversationStatus.Active,

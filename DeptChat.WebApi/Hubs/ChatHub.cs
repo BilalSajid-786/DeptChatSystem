@@ -35,8 +35,16 @@ public class ChatHub : Hub
         var userId = GetUserId();
         var role = GetUserRole();
 
+        var clientId = GetClientId();
+
         // Join personal user group for targeted alerts
         await Groups.AddToGroupAsync(Context.ConnectionId, $"User_{userId}");
+
+        // Join tenant client group
+        if (clientId != Guid.Empty)
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"Client_{clientId}");
+        }
 
         // If manager or admin, also auto-join assigned department groups for Tier 2 In-App Toasts
         if (role == UserRole.Manager)
@@ -52,7 +60,7 @@ public class ChatHub : Hub
                 .ToListAsync();
 
             var accessibleDepts = await _dbContext.Departments
-                .Where(d => d.IsActive && (assignedDeptIds.Contains(d.Id) || !restrictedDeptIds.Contains(d.Id)))
+                .Where(d => d.IsActive && (clientId == Guid.Empty || d.ClientId == clientId) && (assignedDeptIds.Contains(d.Id) || !restrictedDeptIds.Contains(d.Id)))
                 .Select(d => d.Id)
                 .ToListAsync();
 
@@ -63,7 +71,10 @@ public class ChatHub : Hub
         }
         else if (role == UserRole.Admin)
         {
-            var allDepts = await _dbContext.Departments.Where(d => d.IsActive).Select(d => d.Id).ToListAsync();
+            var allDepts = await _dbContext.Departments
+                .Where(d => d.IsActive && (clientId == Guid.Empty || d.ClientId == clientId))
+                .Select(d => d.Id)
+                .ToListAsync();
             foreach (var deptId in allDepts)
             {
                 await Groups.AddToGroupAsync(Context.ConnectionId, $"Dept_{deptId}");
@@ -71,7 +82,14 @@ public class ChatHub : Hub
         }
 
         await _presenceService.SetUserOnlineAsync(userId, true);
-        await Clients.All.SendAsync("UserOnlineStatusChanged", userId, true);
+        if (clientId != Guid.Empty)
+        {
+            await Clients.Group($"Client_{clientId}").SendAsync("UserOnlineStatusChanged", userId, true);
+        }
+        else
+        {
+            await Clients.All.SendAsync("UserOnlineStatusChanged", userId, true);
+        }
         await base.OnConnectedAsync();
     }
 
@@ -100,7 +118,15 @@ public class ChatHub : Hub
             }
         }
 
-        await Clients.All.SendAsync("UserOnlineStatusChanged", userId, false);
+        var clientId = GetClientId();
+        if (clientId != Guid.Empty)
+        {
+            await Clients.Group($"Client_{clientId}").SendAsync("UserOnlineStatusChanged", userId, false);
+        }
+        else
+        {
+            await Clients.All.SendAsync("UserOnlineStatusChanged", userId, false);
+        }
 
         if (!string.IsNullOrEmpty(currentPresence) && currentPresence.StartsWith("room:"))
         {
@@ -178,7 +204,7 @@ public class ChatHub : Hub
                     .ToListAsync();
 
                 var adminIds = await _dbContext.Users
-                    .Where(u => u.Role == UserRole.Admin)
+                    .Where(u => u.Role == UserRole.Admin && (conv.ClientId == Guid.Empty || u.ClientId == conv.ClientId))
                     .Select(u => u.Id)
                     .ToListAsync();
 
@@ -353,13 +379,13 @@ public class ChatHub : Hub
             if (assignedManagerIds.Count == 0)
             {
                 assignedManagerIds = await _dbContext.Users
-                    .Where(u => u.Role == UserRole.Manager)
+                    .Where(u => u.Role == UserRole.Manager && (conversation.ClientId == Guid.Empty || u.ClientId == conversation.ClientId))
                     .Select(u => u.Id)
                     .ToListAsync();
             }
 
             var adminIds = await _dbContext.Users
-                .Where(u => u.Role == UserRole.Admin)
+                .Where(u => u.Role == UserRole.Admin && (conversation.ClientId == Guid.Empty || u.ClientId == conversation.ClientId))
                 .Select(u => u.Id)
                 .ToListAsync();
 
@@ -593,5 +619,11 @@ public class ChatHub : Hub
     {
         var roleClaim = Context.User?.FindFirstValue(ClaimTypes.Role);
         return Enum.TryParse<UserRole>(roleClaim, out var role) ? role : UserRole.User;
+    }
+
+    private Guid GetClientId()
+    {
+        var clientIdClaim = Context.User?.FindFirstValue("client_id");
+        return Guid.TryParse(clientIdClaim, out var id) ? id : Guid.Empty;
     }
 }

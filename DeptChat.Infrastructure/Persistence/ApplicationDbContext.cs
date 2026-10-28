@@ -10,6 +10,7 @@ public class ApplicationDbContext : DbContext
     {
     }
 
+    public DbSet<Client> Clients => Set<Client>();
     public DbSet<User> Users => Set<User>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<DepartmentManager> DepartmentManagers => Set<DepartmentManager>();
@@ -20,6 +21,31 @@ public class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // =====================================================================
+        // 0. Client Configuration (Multi-Tenancy)
+        // =====================================================================
+        modelBuilder.Entity<Client>()
+            .HasIndex(c => c.Code)
+            .IsUnique();
+
+        modelBuilder.Entity<Department>()
+            .HasOne(d => d.Client)
+            .WithMany(c => c.Departments)
+            .HasForeignKey(d => d.ClientId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<User>()
+            .HasOne(u => u.Client)
+            .WithMany(c => c.Users)
+            .HasForeignKey(u => u.ClientId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Conversation>()
+            .HasOne(c => c.Client)
+            .WithMany(cl => cl.Conversations)
+            .HasForeignKey(c => c.ClientId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // =====================================================================
         // 1. DepartmentManager (Many-to-Many Composite Key)
@@ -75,8 +101,9 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // =====================================================================
-        // 4. SEED DATA (Admin, Manager, and Default Departments)
+        // 4. SEED DATA (Default Client, Admin, Manager, and Default Departments)
         // =====================================================================
+        var defaultClientId = Guid.Parse("00000000-0000-0000-0000-000000000001");
         var adminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var managerId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
@@ -84,11 +111,25 @@ public class ApplicationDbContext : DbContext
         var itDeptId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
         var billingDeptId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
 
+        // Seed Default Client
+        modelBuilder.Entity<Client>().HasData(
+            new Client
+            {
+                Id = defaultClientId,
+                Name = "Main Organization",
+                Code = "MAIN",
+                Description = "Default organization workspace",
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            }
+        );
+
         // Seed Users
         modelBuilder.Entity<User>().HasData(
             new User
             {
                 Id = adminId,
+                ClientId = defaultClientId,
                 FullName = "System Admin",
                 Email = "admin@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:U/DqBR8Pec8uVGI+nbX02p0SRXsy8UjaWvogXMTsRd4=", // Password: Admin123!
@@ -98,6 +139,7 @@ public class ApplicationDbContext : DbContext
             new User
             {
                 Id = managerId,
+                ClientId = defaultClientId,
                 FullName = "Alex Manager",
                 Email = "manager@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:BfR+wSV3hUcPqCjeqhx9dCRNyQv+DVJF+EufQ/AMMI8=", // Password: Manager123!
@@ -111,6 +153,7 @@ public class ApplicationDbContext : DbContext
             new Department
             {
                 Id = complaintsDeptId,
+                ClientId = defaultClientId,
                 Name = "Complaints & Feedback",
                 Description = "Customer complaints, damaged deliveries, and service disputes",
                 IsActive = true
@@ -118,6 +161,7 @@ public class ApplicationDbContext : DbContext
             new Department
             {
                 Id = itDeptId,
+                ClientId = defaultClientId,
                 Name = "IT Support",
                 Description = "Password resets, VPN, email access, and hardware help",
                 IsActive = true
@@ -125,6 +169,7 @@ public class ApplicationDbContext : DbContext
             new Department
             {
                 Id = billingDeptId,
+                ClientId = defaultClientId,
                 Name = "Billing & Accounts",
                 Description = "Invoices, payment receipts, and refund requests",
                 IsActive = true

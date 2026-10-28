@@ -6,6 +6,9 @@ public class Conversation
 {
     public Guid Id { get; set; } = Guid.NewGuid();
 
+    public Guid ClientId { get; set; }
+    public Client Client { get; set; } = null!;
+
     public Guid DepartmentId { get; set; }
     public Department Department { get; set; } = null!;
 

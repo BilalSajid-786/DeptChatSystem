@@ -5,9 +5,15 @@ namespace DeptChat.Domain.Entities;
 public class User
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid ClientId { get; set; }
+    public Client Client { get; set; } = null!;
+
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    public string? PhoneNumber { get; set; }
+    public string? Address { get; set; }
     public UserRole Role { get; set; } = UserRole.User;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeenAt { get; set; }

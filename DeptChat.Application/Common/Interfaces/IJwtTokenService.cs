@@ -4,5 +4,5 @@ namespace DeptChat.Application.Common.Interfaces;
 
 public interface IJwtTokenService
 {
-    string GenerateToken(Guid userId, string fullName, string email, UserRole role, IEnumerable<Guid>? departmentIds = null);
+    string GenerateToken(Guid userId, string fullName, string email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null);
 }
