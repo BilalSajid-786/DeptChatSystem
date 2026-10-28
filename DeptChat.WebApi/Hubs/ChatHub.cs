@@ -380,10 +380,25 @@ public class ChatHub : Hub
             SentAt = DateTime.UtcNow
         };
 
-        var isVoice = message.Content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase);
-        var previewText = isVoice 
-            ? "🎙️ Voice message" 
-            : (message.Content.Length > 80 ? message.Content.Substring(0, 77) + "..." : message.Content);
+        string previewText;
+        if (message.Content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase))
+        {
+            previewText = "🎙️ Voice message";
+        }
+        else if (message.Content.StartsWith("[image:", StringComparison.OrdinalIgnoreCase))
+        {
+            previewText = "📷 Photo";
+        }
+        else if (message.Content.StartsWith("[file:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = message.Content.Trim('[', ']');
+            var parts = inner.Split(':');
+            previewText = (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])) ? $"📄 {parts[2]}" : "📎 Document";
+        }
+        else
+        {
+            previewText = message.Content.Length > 80 ? message.Content.Substring(0, 77) + "..." : message.Content;
+        }
 
         conversation.LastMessagePreview = previewText;
         conversation.LastMessageAt = message.SentAt;
@@ -412,7 +427,7 @@ public class ChatHub : Hub
         await Clients.Caller.SendAsync("MessageAck", dto.ClientGeneratedId, message.Id, message.SequenceNumber, message.Status);
 
         // 6. Notification Policy & Push Notification Routing
-        var preview = isVoice ? "🎙️ Voice message" : (message.Content.Length > 60 ? message.Content.Substring(0, 57) + "..." : message.Content);
+        var preview = previewText;
         var toast = new InAppNotificationToastDto(
             conversation.Id,
             conversation.DepartmentId,

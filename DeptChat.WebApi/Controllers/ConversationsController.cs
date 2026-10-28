@@ -79,7 +79,7 @@ public class ConversationsController : ControllerBase
                 department.Name,
                 conversation.CreatedByUserId,
                 conversation.CreatedByUser.FullName,
-                conversation.LastMessagePreview,
+                SanitizePreview(conversation.LastMessagePreview),
                 conversation.LastMessageAt,
                 unreadCount,
                 conversation.Status,
@@ -108,7 +108,7 @@ public class ConversationsController : ControllerBase
             var conversations = await _dbContext.Conversations
                 .Include(c => c.CreatedByUser)
                 .Include(c => c.Department)
-                .Where(c => c.DepartmentId == departmentId)
+                .Where(c => c.DepartmentId == departmentId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
                 .OrderByDescending(c => c.UpdatedAt)
                 .ToListAsync();
 
@@ -129,7 +129,7 @@ public class ConversationsController : ControllerBase
                     conv.Department.Name,
                     conv.CreatedByUserId,
                     conv.CreatedByUser.FullName,
-                    conv.LastMessagePreview,
+                    SanitizePreview(conv.LastMessagePreview),
                     conv.LastMessageAt,
                     unreadCounts.GetValueOrDefault(conv.Id, 0),
                     conv.Status,
@@ -139,6 +139,20 @@ public class ConversationsController : ControllerBase
 
             return Ok(list);
         }
+    }
+
+    private static string SanitizePreview(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "No messages yet";
+        if (raw.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase)) return "🎙️ Voice message";
+        if (raw.StartsWith("[image:", StringComparison.OrdinalIgnoreCase)) return "📷 Photo";
+        if (raw.StartsWith("[file:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = raw.Trim('[', ']');
+            var parts = inner.Split(':');
+            return (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])) ? $"📄 {parts[2]}" : "📎 Document";
+        }
+        return raw;
     }
 
     /// <summary>
@@ -371,6 +385,161 @@ public class ConversationsController : ControllerBase
 
         await _dbContext.SaveChangesAsync();
         return Ok(new { message = "Device token registered successfully." });
+    }
+
+    /// <summary>
+    /// For Manager or Admin: returns all registered users available to start a chat with in this department.
+    /// </summary>
+    [HttpGet("department/{departmentId}/available-users")]
+    public async Task<IActionResult> GetAvailableUsers(Guid departmentId)
+    {
+        var userId = GetUserId();
+        var role = GetUserRole();
+
+        if (role != UserRole.Admin && role != UserRole.Manager)
+        {
+            return Forbid();
+        }
+
+        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == departmentId && d.IsActive);
+        if (department == null)
+        {
+            return NotFound(new { message = "Department not found." });
+        }
+
+        if (role == UserRole.Manager)
+        {
+            var hasExplicitManagers = await _dbContext.DepartmentManagers
+                .AnyAsync(dm => dm.DepartmentId == departmentId);
+            if (hasExplicitManagers)
+            {
+                var isAssigned = await _dbContext.DepartmentManagers
+                    .AnyAsync(dm => dm.DepartmentId == departmentId && dm.UserId == userId);
+                if (!isAssigned)
+                {
+                    return Forbid();
+                }
+            }
+        }
+
+        // Get all active users (customers) who do not already have an active conversation with messages in this department
+        var users = await _dbContext.Users
+            .Where(u => u.Role == UserRole.User && u.Id != userId)
+            .OrderBy(u => u.FullName)
+            .ToListAsync();
+
+        var existingConvUserIds = await _dbContext.Conversations
+            .Where(c => c.DepartmentId == departmentId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
+            .Select(c => c.CreatedByUserId)
+            .ToHashSetAsync();
+
+        // Users who haven't started chatting in this department yet (including newly registered users like User 101)
+        var availableUsers = users.Where(u => !existingConvUserIds.Contains(u.Id)).ToList();
+
+        var result = new List<AvailableDepartmentUserDto>();
+        foreach (var u in availableUsers)
+        {
+            var isOnline = await _presenceService.IsUserOnlineAsync(u.Id);
+            result.Add(new AvailableDepartmentUserDto(
+                u.Id,
+                u.FullName,
+                u.Email,
+                u.Role,
+                isOnline,
+                false
+            ));
+        }
+
+        // Sort online users to top, then alphabetical
+        return Ok(result.OrderByDescending(u => u.IsOnline).ThenBy(u => u.FullName).ToList());
+    }
+
+    /// <summary>
+    /// For Manager or Admin: starts or opens a persistent conversation with a target user in this department.
+    /// </summary>
+    [HttpPost("start-with-user")]
+    public async Task<IActionResult> StartConversationWithUser([FromBody] StartConversationWithUserRequest request)
+    {
+        var staffUserId = GetUserId();
+        var role = GetUserRole();
+
+        if (role != UserRole.Admin && role != UserRole.Manager)
+        {
+            return Forbid();
+        }
+
+        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == request.DepartmentId && d.IsActive);
+        if (department == null)
+        {
+            return NotFound(new { message = "Department not found." });
+        }
+
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == request.TargetUserId);
+        if (targetUser == null)
+        {
+            return NotFound(new { message = "Target user not found." });
+        }
+
+        if (role == UserRole.Manager)
+        {
+            var hasExplicitManagers = await _dbContext.DepartmentManagers
+                .AnyAsync(dm => dm.DepartmentId == request.DepartmentId);
+            if (hasExplicitManagers)
+            {
+                var isAssigned = await _dbContext.DepartmentManagers
+                    .AnyAsync(dm => dm.DepartmentId == request.DepartmentId && dm.UserId == staffUserId);
+                if (!isAssigned)
+                {
+                    return Forbid();
+                }
+            }
+        }
+
+        // Check if conversation already exists for this (departmentId, targetUserId)
+        var conversation = await _dbContext.Conversations
+            .Include(c => c.CreatedByUser)
+            .Include(c => c.Department)
+            .FirstOrDefaultAsync(c => c.DepartmentId == request.DepartmentId && c.CreatedByUserId == request.TargetUserId);
+
+        if (conversation == null)
+        {
+            conversation = new Conversation
+            {
+                Id = Guid.NewGuid(),
+                DepartmentId = request.DepartmentId,
+                CreatedByUserId = request.TargetUserId,
+                Status = ConversationStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _dbContext.Conversations.Add(conversation);
+            await _dbContext.SaveChangesAsync();
+
+            conversation.CreatedByUser = targetUser;
+            conversation.Department = department;
+        }
+
+        var unreadCount = await _dbContext.Messages
+            .Where(m => m.ConversationId == conversation.Id && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read)
+            .CountAsync();
+
+        var isOnline = await _presenceService.IsUserOnlineAsync(targetUser.Id);
+
+        var summary = new ConversationSummaryDto(
+            conversation.Id,
+            conversation.DepartmentId,
+            department.Name,
+            conversation.CreatedByUserId,
+            conversation.CreatedByUser.FullName,
+            SanitizePreview(conversation.LastMessagePreview),
+            conversation.LastMessageAt,
+            unreadCount,
+            conversation.Status,
+            isOnline
+        );
+
+        return Ok(summary);
     }
 
     private Guid GetUserId()

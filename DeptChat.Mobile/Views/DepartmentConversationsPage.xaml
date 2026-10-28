@@ -2,9 +2,11 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             xmlns:dto="clr-namespace:DeptChat.Shared.DTOs;assembly=DeptChat.Shared"
              x:Class="DeptChat.Mobile.Views.DepartmentConversationsPage"
              Title="{Binding DepartmentName}"
-             BackgroundColor="#F8FAFC">
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="#F0F2F5">
 
     <ContentPage.ToolbarItems>
         <ToolbarItem Text="Refresh" Command="{Binding LoadConversationsCommand}" />
@@ -12,15 +14,17 @@
     </ContentPage.ToolbarItems>
 
     <Grid RowDefinitions="Auto, Auto, *">
-        <!-- Header Banner -->
-        <Border Grid.Row="0" BackgroundColor="#1E293B" Padding="16,14" StrokeThickness="0">
+        <!-- WhatsApp Header Banner -->
+        <Border Grid.Row="0" BackgroundColor="#008069" Padding="16,12" StrokeThickness="0">
             <VerticalStackLayout Spacing="8">
                 <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
-                    <!-- Back Button -->
+                    <!-- WhatsApp Back Button -->
                     <Button Grid.Column="0"
                             Text="← Back"
                             Command="{Binding BackCommand}"
-                            BackgroundColor="#334155"
+                            BackgroundColor="#005C4B"
+                            BorderColor="#00A884"
+                            BorderWidth="1"
                             TextColor="White"
                             FontSize="12"
                             FontAttributes="Bold"
@@ -32,14 +36,16 @@
                     <!-- Title & Subtitle -->
                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
                         <Label Text="{Binding DepartmentName}" TextColor="White" FontSize="18" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-                        <Label Text="{Binding SubtitleText}" TextColor="#38BDF8" FontSize="12" FontAttributes="Bold" />
+                        <Label Text="{Binding SubtitleText}" TextColor="#D1FAE5" FontSize="12" FontAttributes="Bold" />
                     </VerticalStackLayout>
 
                     <!-- Refresh Button -->
                     <Button Grid.Column="2"
                             Text="🔄"
                             Command="{Binding LoadConversationsCommand}"
-                            BackgroundColor="#334155"
+                            BackgroundColor="#005C4B"
+                            BorderColor="#00A884"
+                            BorderWidth="1"
                             TextColor="White"
                             FontSize="14"
                             CornerRadius="8"
@@ -51,16 +57,16 @@
             </VerticalStackLayout>
         </Border>
 
-        <!-- Search Bar (For Admins & Managers to quickly find users or messages) -->
+        <!-- Search Bar (WhatsApp Pill Design) -->
         <Border Grid.Row="1"
                 IsVisible="{Binding ShowSearchBar}"
                 BackgroundColor="White"
-                Stroke="#E2E8F0"
+                Stroke="#CBD5E1"
                 StrokeThickness="1"
-                StrokeShape="RoundRectangle 12"
+                StrokeShape="RoundRectangle 22"
                 Margin="16,10,16,4"
-                Padding="12,0"
-                HeightRequest="46"
+                Padding="14,0"
+                HeightRequest="44"
                 VerticalOptions="Center">
             <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="8" VerticalOptions="Center">
                 <Label Grid.Column="0" 
@@ -77,7 +83,7 @@
                        FontSize="14"
                        ClearButtonVisibility="Never"
                        VerticalOptions="Center"
-                       HeightRequest="42" />
+                       HeightRequest="40" />
 
                 <Button Grid.Column="2"
                         Text="✕"
@@ -99,13 +105,13 @@
             <Border VerticalOptions="Start"
                     ZIndex="10"
                     IsVisible="{Binding ShowInAppToast}" 
-                    BackgroundColor="#1E293B" 
+                    BackgroundColor="#005C4B" 
                     Padding="16,10" 
                     Margin="12,8"
                     StrokeShape="RoundRectangle 8">
                 <Grid ColumnDefinitions="*, Auto">
                     <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
-                    <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#94A3B8" Padding="6,0" HeightRequest="30" />
+                    <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#D1FAE5" Padding="6,0" HeightRequest="30" />
                 </Grid>
             </Border>
 
@@ -116,7 +122,7 @@
                                  Spacing="12"
                                  Padding="32">
                 <ActivityIndicator IsRunning="{Binding IsBusy}"
-                                   Color="#0284C7"
+                                   Color="#008069"
                                    WidthRequest="36"
                                    HeightRequest="36"
                                    HorizontalOptions="Center" />
@@ -133,13 +139,13 @@
                                  HorizontalOptions="Center"
                                  Spacing="12"
                                  Padding="32">
-                <Border BackgroundColor="#E2E8F0" StrokeShape="RoundRectangle 40" WidthRequest="80" HeightRequest="80" HorizontalOptions="Center">
+                <Border BackgroundColor="#E7F8F0" StrokeShape="RoundRectangle 40" WidthRequest="80" HeightRequest="80" HorizontalOptions="Center">
                     <Label Text="📭" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
                 <Label Text="No Customer Conversations Yet"
                        FontSize="18"
                        FontAttributes="Bold"
-                       TextColor="#0F172A"
+                       TextColor="#111B21"
                        HorizontalOptions="Center" />
                 <Label Text="When users send inquiries to this department, their chat rooms will appear here live."
                        FontSize="13"
@@ -160,7 +166,7 @@
                 <Label Text="No Users Found"
                        FontSize="18"
                        FontAttributes="Bold"
-                       TextColor="#0F172A"
+                       TextColor="#111B21"
                        HorizontalOptions="Center" />
                 <Label Text="No user conversations match your search query."
                        FontSize="13"
@@ -169,7 +175,7 @@
                        HorizontalOptions="Center" />
                 <Button Text="Clear Search"
                         Command="{Binding ClearSearchCommand}"
-                        BackgroundColor="#0284C7"
+                        BackgroundColor="#008069"
                         TextColor="White"
                         FontAttributes="Bold"
                         FontSize="13"
@@ -180,13 +186,13 @@
                         HorizontalOptions="Center" />
             </VerticalStackLayout>
 
-            <!-- Conversations List -->
+            <!-- Conversations List with generous bottom margin to prevent FAB overlap -->
             <CollectionView IsVisible="{Binding HasConversations}"
                             ItemsSource="{Binding Conversations}"
-                            Margin="16,8,16,12">
+                            Margin="16,6,16,84">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ConversationListItem">
-                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,5" Padding="14">
+                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,4" Padding="14,12">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentConversationsViewModel}}, Path=SelectConversationCommand}" 
                                                       CommandParameter="{Binding .}" />
@@ -195,24 +201,24 @@
                             <Grid ColumnDefinitions="46, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
                                 <!-- User Avatar + Online Indicator Dot -->
                                 <Grid Grid.Column="0" WidthRequest="46" HeightRequest="46">
-                                    <Border BackgroundColor="#E0F2FE" 
-                                            Stroke="#BAE6FD"
+                                    <Border BackgroundColor="#E7F8F0" 
+                                            Stroke="#C4EED9"
                                             StrokeShape="RoundRectangle 23" 
                                             WidthRequest="46" 
                                             HeightRequest="46" 
                                             HorizontalOptions="Center" 
                                             VerticalOptions="Center">
                                         <Label Text="{Binding UserInitials}" 
-                                               FontSize="18" 
+                                               FontSize="16" 
                                                FontAttributes="Bold" 
-                                               TextColor="#0284C7" 
+                                               TextColor="#008069" 
                                                HorizontalOptions="Center" 
                                                VerticalOptions="Center" />
                                     </Border>
 
-                                    <!-- Green Online Status Indicator Dot -->
+                                    <!-- WhatsApp Green Online Status Indicator Dot -->
                                     <Border IsVisible="{Binding IsOnline}"
-                                            BackgroundColor="#22C55E"
+                                            BackgroundColor="#25D366"
                                             Stroke="White"
                                             StrokeThickness="1.5"
                                             StrokeShape="RoundRectangle 6"
@@ -230,26 +236,26 @@
                                                Text="{Binding CreatedByUserName}" 
                                                FontSize="15" 
                                                FontAttributes="Bold" 
-                                               TextColor="#0F172A" 
+                                               TextColor="#111B21" 
                                                LineBreakMode="TailTruncation" />
                                         <Label Grid.Column="1" 
                                                Text="{Binding TimeFormatted}" 
                                                FontSize="11" 
-                                               TextColor="#94A3B8" 
+                                               TextColor="#667781" 
                                                HorizontalOptions="End" />
                                     </Grid>
 
                                     <Label Text="{Binding LastMessagePreview}" 
                                            FontSize="13" 
-                                           TextColor="#64748B" 
+                                           TextColor="#667781" 
                                            LineBreakMode="TailTruncation" 
                                            MaxLines="1" />
                                 </VerticalStackLayout>
 
-                                <!-- Unread Badge & Chevron -->
+                                <!-- WhatsApp Green Unread Badge & Chevron -->
                                 <HorizontalStackLayout Grid.Column="2" Spacing="6" VerticalOptions="Center">
                                     <Border IsVisible="{Binding HasUnread}"
-                                            BackgroundColor="#EF4444" 
+                                            BackgroundColor="#25D366" 
                                             StrokeShape="RoundRectangle 10" 
                                             Padding="7,2" 
                                             VerticalOptions="Center">
@@ -262,6 +268,155 @@
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
+
+            <!-- WhatsApp Floating Action Button (FAB) for Admin & Manager -->
+            <Border IsVisible="{Binding IsAdminOrManager}"
+                    BackgroundColor="#25D366"
+                    Stroke="#22C55E"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    WidthRequest="56"
+                    HeightRequest="56"
+                    HorizontalOptions="End"
+                    VerticalOptions="End"
+                    Margin="0,0,20,24"
+                    ZIndex="50">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,4" Radius="8" Opacity="0.5" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding OpenStartChatModalCommand}" />
+                </Border.GestureRecognizers>
+                <!-- White Chat Box with Green Plus Symbol Matching Reference Snippet -->
+                <Grid HorizontalOptions="Center" VerticalOptions="Center">
+                    <Border BackgroundColor="White" StrokeShape="RoundRectangle 6" WidthRequest="26" HeightRequest="22" HorizontalOptions="Center" VerticalOptions="Center">
+                        <Label Text="＋" TextColor="#25D366" FontSize="15" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" Margin="0,-1,0,0" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- WhatsApp New Chat User Selection Modal (Admin / Manager) -->
+        <Grid Grid.RowSpan="3"
+              IsVisible="{Binding IsSelectUserModalVisible}"
+              BackgroundColor="#99000000"
+              HorizontalOptions="FillAndExpand"
+              VerticalOptions="FillAndExpand"
+              ZIndex="999">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseStartChatModalCommand}" />
+            </Grid.GestureRecognizers>
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 18"
+                    WidthRequest="350"
+                    MaximumHeightRequest="560"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="20"
+                    Margin="16">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+                <Grid RowDefinitions="Auto, Auto, Auto, *">
+                    <!-- Title & Close Button -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="New Chat" FontSize="19" FontAttributes="Bold" TextColor="#111B21" />
+                            <Label Text="Select a user to chat in this channel" FontSize="12" TextColor="#667781" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseStartChatModalCommand}"
+                                BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
+                    </Grid>
+
+                    <!-- Search Input -->
+                    <Border Grid.Row="1"
+                            BackgroundColor="#F0F2F5"
+                            Stroke="#CBD5E1"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 20"
+                            Margin="0,14,0,8"
+                            Padding="12,0"
+                            HeightRequest="40">
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" VerticalOptions="Center">
+                            <Label Grid.Column="0" Text="🔍" FontSize="14" TextColor="#94A3B8" VerticalOptions="Center" />
+                            <Entry Grid.Column="1"
+                                   Text="{Binding UserSearchQuery, Mode=TwoWay}"
+                                   Placeholder="Search name or email..."
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#111B21"
+                                   FontSize="13"
+                                   VerticalOptions="Center"
+                                   HeightRequest="36" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Loading Indicator -->
+                    <ActivityIndicator Grid.Row="2"
+                                       IsRunning="{Binding IsLoadingUsers}"
+                                       IsVisible="{Binding IsLoadingUsers}"
+                                       Color="#008069"
+                                       WidthRequest="32"
+                                       HeightRequest="32"
+                                       Margin="0,12"
+                                       HorizontalOptions="Center" />
+
+                    <!-- No Users Found Notice -->
+                    <VerticalStackLayout Grid.Row="2"
+                                         IsVisible="{Binding ShowNoUsersFound}"
+                                         Padding="16"
+                                         Spacing="6"
+                                         HorizontalOptions="Center">
+                        <Label Text="No users found" FontSize="14" FontAttributes="Bold" TextColor="#64748B" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+
+                    <!-- Available Users List -->
+                    <CollectionView Grid.Row="3"
+                                    ItemsSource="{Binding FilteredUsers}"
+                                    MaximumHeightRequest="360"
+                                    Margin="0,4,0,0">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AvailableUserItem">
+                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="0,3" Padding="10,8">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentConversationsViewModel}}, Path=StartChatWithUserCommand}" 
+                                                              CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+
+                                    <Grid ColumnDefinitions="40, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                        <!-- Avatar with Online Dot -->
+                                        <Grid Grid.Column="0" WidthRequest="40" HeightRequest="40">
+                                            <Border BackgroundColor="#E7F8F0" StrokeShape="RoundRectangle 20" WidthRequest="40" HeightRequest="40">
+                                                <Label Text="👤" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
+                                            <Border IsVisible="{Binding IsOnline}"
+                                                    BackgroundColor="#25D366"
+                                                    Stroke="White"
+                                                    StrokeThickness="1.5"
+                                                    StrokeShape="RoundRectangle 5"
+                                                    WidthRequest="10"
+                                                    HeightRequest="10"
+                                                    HorizontalOptions="End"
+                                                    VerticalOptions="End"
+                                                    Margin="0,0,1,1" />
+                                        </Grid>
+
+                                        <!-- User Name & Email -->
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                            <Label Text="{Binding FullName}" FontSize="14" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding Email}" FontSize="11" TextColor="#667781" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+
+                                        <!-- Existing Chat Tag / Chevron -->
+                                        <Label Grid.Column="2" Text="➔" FontSize="16" FontAttributes="Bold" TextColor="#008069" VerticalOptions="Center" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using DeptChat.Shared.DTOs;
 
@@ -109,5 +110,73 @@ public class ChatApiService
         {
             return false;
         }
+    }
+
+    public async Task<AttachmentUploadResultDto?> UploadAttachmentAsync(Stream fileStream, string fileName, string contentType)
+    {
+        try
+        {
+            AttachBearerToken();
+            using var formData = new MultipartFormDataContent();
+            using var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            formData.Add(streamContent, "file", fileName);
+
+            var response = await _httpClient.PostAsync(BuildUrl("api/attachments/upload"), formData);
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<AttachmentUploadResultDto>(content, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] UploadAttachment error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<List<AvailableDepartmentUserDto>> GetAvailableUsersForDepartmentAsync(Guid departmentId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl($"api/conversations/department/{departmentId}/available-users"));
+            if (!response.IsSuccessStatusCode) return new List<AvailableDepartmentUserDto>();
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<List<AvailableDepartmentUserDto>>(content, JsonOptions) ?? new List<AvailableDepartmentUserDto>();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] GetAvailableUsers error: {ex.Message}");
+            return new List<AvailableDepartmentUserDto>();
+        }
+    }
+
+    public async Task<ConversationSummaryDto?> StartConversationWithUserAsync(Guid departmentId, Guid targetUserId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var payload = new StartConversationWithUserRequest(departmentId, targetUserId);
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            using var stringContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(BuildUrl("api/conversations/start-with-user"), stringContent);
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<ConversationSummaryDto>(content, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] StartConversationWithUser error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public string ResolveFullMediaUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return string.Empty;
+        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return url;
+        return $"{_serverConfig.CurrentUrl.TrimEnd('/')}/{url.TrimStart('/')}";
     }
 }

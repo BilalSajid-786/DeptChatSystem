@@ -47,7 +47,35 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
                 body = message.Data["body"];
         }
 
-        SendNotification(title, body);
+        SendNotification(title, SanitizeNotificationBody(body));
+    }
+
+    private static string SanitizeNotificationBody(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return body;
+
+        var colonIdx = body.IndexOf(':');
+        string prefix = string.Empty;
+        string content = body;
+        if (colonIdx > 0 && colonIdx < body.Length - 1)
+        {
+            prefix = body.Substring(0, colonIdx + 1) + " ";
+            content = body.Substring(colonIdx + 1).Trim();
+        }
+
+        if (content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase))
+            return $"{prefix}🎙️ Voice message";
+        if (content.StartsWith("[image:", StringComparison.OrdinalIgnoreCase))
+            return $"{prefix}📷 Photo";
+        if (content.StartsWith("[file:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = content.Trim('[', ']');
+            var parts = inner.Split(':');
+            var docName = (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])) ? $"📄 {parts[2]}" : "📎 Document";
+            return $"{prefix}{docName}";
+        }
+
+        return body;
     }
 
     private void SendNotification(string title, string body)
@@ -71,7 +99,8 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         }
 
         var builder = new NotificationCompat.Builder(this, ChannelId)
-            .SetSmallIcon(Resource.Mipmap.appicon)
+            .SetSmallIcon(Resource.Drawable.ic_stat_chat)
+            .SetColor(global::Android.Graphics.Color.ParseColor("#008069"))
             .SetContentTitle(title)
             .SetContentText(body)
             .SetAutoCancel(true)

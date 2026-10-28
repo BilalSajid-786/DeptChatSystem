@@ -38,7 +38,7 @@ public partial class LoginViewModel : ObservableObject
     public string SubmitButtonText => IsRegisterMode ? "Create Account" : "Sign In";
     public string ToggleModeText => IsRegisterMode ? "Already have an account? Sign In" : "Need an account? Register";
     public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
-    public string PasswordToggleIcon => IsPasswordHidden ? "👁️" : "🙈";
+    public string PasswordToggleIcon => IsPasswordHidden ? "👁️" : "👁️‍🗨️";
 
     public LoginViewModel(AuthService authService, SignalRService signalRService, ChatApiService chatApiService, ServerConfigService serverConfig)
     {

@@ -10,7 +10,7 @@
 		<Nullable>enable</Nullable>
 
 		<!-- Display name -->
-		<ApplicationTitle>DeptChat.Mobile</ApplicationTitle>
+		<ApplicationTitle>DeptChat</ApplicationTitle>
 
 		<!-- App Identifier -->
 		<ApplicationId>com.companyname.deptchat.mobile</ApplicationId>
@@ -54,11 +54,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- App Icon -->
-		<MauiIcon Include="Resources\appicon.svg" ForegroundFile="Resources\appiconfg.svg" Color="#512BD4" />
+		<!-- App Icon (WhatsApp Emerald Green) -->
+		<MauiIcon Include="Resources\appicon.svg" ForegroundFile="Resources\appiconfg.svg" Color="#25D366" />
 
-		<!-- Splash Screen -->
-		<MauiSplashScreen Include="Resources\appiconfg.svg" Color="#512BD4" BaseSize="128,128" />
+		<!-- Splash Screen (WhatsApp Dark Teal) -->
+		<MauiSplashScreen Include="Resources\appiconfg.svg" Color="#008069" BaseSize="128,128" />
 
 		<!-- Images -->
 		<MauiImage Include="Resources\Images\*" />

@@ -3,30 +3,30 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
              x:Class="DeptChat.Mobile.Views.LoginPage"
-             BackgroundColor="#0F172A"
+             BackgroundColor="#F0F2F5"
              Shell.NavBarIsVisible="False">
 
     <ScrollView>
-        <VerticalStackLayout Padding="28,48,28,32" Spacing="20" VerticalOptions="Center">
+        <VerticalStackLayout Padding="24,40,24,32" Spacing="18" VerticalOptions="Center">
             
-            <!-- App Icon & Title -->
+            <!-- App Icon & Title (WhatsApp Green Branding) -->
             <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
-                <Frame BackgroundColor="#1E293B" CornerRadius="28" HeightRequest="80" WidthRequest="80" Padding="0" HasShadow="True" HorizontalOptions="Center">
-                    <Label Text="💬" FontSize="40" HorizontalOptions="Center" VerticalOptions="Center"/>
+                <Frame BackgroundColor="#25D366" CornerRadius="32" HeightRequest="68" WidthRequest="68" Padding="0" HasShadow="True" HorizontalOptions="Center" BorderColor="Transparent">
+                    <Label Text="💬" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Frame>
                 <Label Text="Department Chat"
-                       FontSize="26"
+                       FontSize="24"
                        FontAttributes="Bold"
-                       TextColor="White"
+                       TextColor="#111B21"
                        HorizontalOptions="Center" />
                 <Label Text="Direct real-time support • Zero ticket queues"
                        FontSize="13"
-                       TextColor="#94A3B8"
+                       TextColor="#667781"
                        HorizontalOptions="Center" />
             </VerticalStackLayout>
 
-            <!-- Card Form -->
-            <Border StrokeThickness="0" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 16" Padding="20">
+            <!-- Login / Register Card Form -->
+            <Border Stroke="#E2E8F0" StrokeThickness="1" BackgroundColor="White" StrokeShape="RoundRectangle 16" Padding="20">
                 <VerticalStackLayout Spacing="14">
 
                     <!-- Error Alert -->
@@ -39,28 +39,28 @@
 
                     <!-- Full Name (Register Only) -->
                     <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
-                        <Label Text="Full Name" TextColor="#CBD5E1" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="White" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding FullName}" BackgroundColor="White" TextColor="#0F172A" Placeholder="John Doe" PlaceholderColor="#94A3B8" HeightRequest="40" />
+                        <Label Text="Full Name" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
+                            <Entry Text="{Binding FullName}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="John Doe" PlaceholderColor="#94A3B8" HeightRequest="40" />
                         </Border>
                     </VerticalStackLayout>
 
                     <!-- Email -->
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Email Address" TextColor="#CBD5E1" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="White" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding Email}" BackgroundColor="White" TextColor="#0F172A" Keyboard="Email" Placeholder="user@example.com" PlaceholderColor="#94A3B8" HeightRequest="40" />
+                        <Label Text="Email Address" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
+                            <Entry Text="{Binding Email}" BackgroundColor="Transparent" TextColor="#0F172A" Keyboard="Email" Placeholder="user@example.com" PlaceholderColor="#94A3B8" HeightRequest="40" />
                         </Border>
                     </VerticalStackLayout>
 
                     <!-- Password -->
                     <VerticalStackLayout Spacing="4">
-                        <Label Text="Password" TextColor="#CBD5E1" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="White" Padding="12,2" Stroke="#CBD5E1">
+                        <Label Text="Password" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
+                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
                             <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
                                 <Entry Grid.Column="0"
                                        Text="{Binding Password}"
-                                       BackgroundColor="White"
+                                       BackgroundColor="Transparent"
                                        TextColor="#0F172A"
                                        IsPassword="{Binding IsPasswordHidden}"
                                        Placeholder="••••••••"
@@ -72,7 +72,7 @@
                                         Command="{Binding TogglePasswordVisibilityCommand}"
                                         BackgroundColor="Transparent"
                                         TextColor="#64748B"
-                                        FontSize="15"
+                                        FontSize="16"
                                         Padding="6,0"
                                         HeightRequest="38"
                                         WidthRequest="40"
@@ -81,12 +81,13 @@
                         </Border>
                     </VerticalStackLayout>
 
-                    <!-- Submit Button -->
+                    <!-- Submit Button (WhatsApp Green) -->
                     <Button Text="{Binding SubmitButtonText}"
                             Command="{Binding SubmitCommand}"
-                            BackgroundColor="#10B981"
+                            BackgroundColor="#25D366"
                             TextColor="White"
                             FontAttributes="Bold"
+                            FontSize="15"
                             CornerRadius="10"
                             HeightRequest="48"
                             Margin="0,8,0,0" />
@@ -95,72 +96,71 @@
                     <Button Text="{Binding ToggleModeText}"
                             Command="{Binding ToggleModeCommand}"
                             BackgroundColor="Transparent"
-                            TextColor="#38BDF8"
+                            TextColor="#008069"
+                            FontAttributes="Bold"
                             FontSize="12" />
 
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Quick 1-Tap Demo Logins -->
-            <VerticalStackLayout Spacing="8" Margin="0,12,0,0">
+            <!-- Quick 1-Tap Demo Logins (John Customer Removed) -->
+            <VerticalStackLayout Spacing="8" Margin="0,4,0,0">
                 <Label Text="QUICK 1-CLICK DEMO LOGINS"
                        FontSize="11"
-                       TextColor="#64748B"
+                       TextColor="#667781"
                        FontAttributes="Bold"
                        HorizontalOptions="Center" />
 
-                <Grid ColumnDefinitions="*,*" RowDefinitions="40,40" RowSpacing="8" ColumnSpacing="8">
-                    <Button Grid.Row="0" Grid.Column="0"
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" HeightRequest="40">
+                    <Button Grid.Column="0"
                             Text="👑 Admin"
                             Command="{Binding QuickLoginAdminCommand}"
-                            BackgroundColor="#1E293B"
-                            BorderColor="#F59E0B"
+                            BackgroundColor="White"
+                            BorderColor="#008069"
                             BorderWidth="1"
-                            TextColor="#F59E0B"
+                            TextColor="#008069"
                             FontAttributes="Bold"
                             FontSize="12"
-                            CornerRadius="8" />
+                            CornerRadius="8"
+                            Padding="0" />
 
-                    <Button Grid.Row="0" Grid.Column="1"
+                    <Button Grid.Column="1"
                             Text="📱 User (u100)"
                             Command="{Binding QuickLoginU100Command}"
-                            BackgroundColor="#1E293B"
-                            BorderColor="#10B981"
+                            BackgroundColor="White"
+                            BorderColor="#25D366"
                             BorderWidth="1"
-                            TextColor="#10B981"
+                            TextColor="#059669"
                             FontAttributes="Bold"
                             FontSize="12"
-                            CornerRadius="8" />
+                            CornerRadius="8"
+                            Padding="0" />
 
-                    <Button Grid.Row="1" Grid.Column="0"
-                            Text="👤 Customer (John)"
-                            Command="{Binding QuickLoginCustomerCommand}"
-                            BackgroundColor="#1E293B"
-                            TextColor="#94A3B8"
-                            FontSize="11"
-                            CornerRadius="8" />
-
-                    <Button Grid.Row="1" Grid.Column="1"
+                    <Button Grid.Column="2"
                             Text="👔 Manager"
                             Command="{Binding QuickLoginManagerCommand}"
-                            BackgroundColor="#1E293B"
-                            TextColor="#38BDF8"
-                            FontSize="11"
-                            CornerRadius="8" />
+                            BackgroundColor="White"
+                            BorderColor="#0284C7"
+                            BorderWidth="1"
+                            TextColor="#0284C7"
+                            FontAttributes="Bold"
+                            FontSize="12"
+                            CornerRadius="8"
+                            Padding="0" />
                 </Grid>
             </VerticalStackLayout>
 
-            <!-- Server Connection Settings -->
-            <Border BackgroundColor="#0F172A"
-                    Stroke="#334155"
+            <!-- Server Connection Settings (WhatsApp Styled Card) -->
+            <Border BackgroundColor="White"
+                    Stroke="#C8E6C9"
                     StrokeThickness="1"
-                    StrokeShape="RoundRectangle 8"
-                    Padding="12"
-                    Margin="0,12,0,16">
-                <VerticalStackLayout Spacing="8">
+                    StrokeShape="RoundRectangle 12"
+                    Padding="14"
+                    Margin="0,6,0,16">
+                <VerticalStackLayout Spacing="10">
                     <Label Text="🌐 ACTIVE BACKEND CONNECTION"
-                           FontSize="10"
-                           TextColor="#94A3B8"
+                           FontSize="11"
+                           TextColor="#008069"
                            FontAttributes="Bold" />
 
                     <!-- Quick Switch Buttons -->
@@ -168,48 +168,49 @@
                         <Button Grid.Column="0"
                                 Text="📶 Local Wi-Fi"
                                 Command="{Binding UseLocalWifiCommand}"
-                                BackgroundColor="#064E3B"
-                                BorderColor="#10B981"
+                                BackgroundColor="#E7F8F0"
+                                BorderColor="#25D366"
                                 BorderWidth="1"
-                                TextColor="#34D399"
+                                TextColor="#059669"
                                 FontAttributes="Bold"
                                 FontSize="11"
-                                CornerRadius="6"
+                                CornerRadius="8"
                                 HeightRequest="38" />
 
                         <Button Grid.Column="1"
                                 Text="☁️ Cloudflare"
                                 Command="{Binding UseCloudflareCommand}"
-                                BackgroundColor="#1E293B"
-                                BorderColor="#38BDF8"
+                                BackgroundColor="White"
+                                BorderColor="#0284C7"
                                 BorderWidth="1"
-                                TextColor="#38BDF8"
+                                TextColor="#0284C7"
                                 FontAttributes="Bold"
                                 FontSize="11"
-                                CornerRadius="6"
+                                CornerRadius="8"
                                 HeightRequest="38" />
                     </Grid>
 
-                    <Border BackgroundColor="#1E293B"
-                            Stroke="#334155"
+                    <Border BackgroundColor="#F8FAFC"
+                            Stroke="#CBD5E1"
                             StrokeThickness="1"
-                            StrokeShape="RoundRectangle 6"
-                            Padding="8,0">
+                            StrokeShape="RoundRectangle 8"
+                            Padding="10,0">
                         <Entry Text="{Binding ServerUrl}"
-                               TextColor="White"
-                               FontSize="11"
+                               TextColor="#0F172A"
+                               FontSize="12"
                                Placeholder="Backend URL..."
-                               PlaceholderColor="#64748B"
-                               HeightRequest="36" />
+                               PlaceholderColor="#94A3B8"
+                               HeightRequest="38" />
                     </Border>
 
                     <Button Text="💾 Save Custom URL"
                             Command="{Binding SaveServerUrlCommand}"
-                            BackgroundColor="#334155"
-                            TextColor="#E2E8F0"
-                            FontSize="11"
-                            CornerRadius="6"
-                            HeightRequest="32" />
+                            BackgroundColor="#008069"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            FontSize="12"
+                            CornerRadius="8"
+                            HeightRequest="36" />
                 </VerticalStackLayout>
             </Border>
 

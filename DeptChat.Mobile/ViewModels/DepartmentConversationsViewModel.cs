@@ -32,6 +32,23 @@ public class ConversationListItem : ObservableObject
     }
 }
 
+public class AvailableUserItem : ObservableObject
+{
+    public Guid Id { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public UserRole Role { get; set; }
+    public bool HasExistingChat { get; set; }
+    public string UserInitials => string.IsNullOrWhiteSpace(FullName) ? "👤" : FullName[..1].ToUpper();
+
+    private bool _isOnline;
+    public bool IsOnline
+    {
+        get => _isOnline;
+        set => SetProperty(ref _isOnline, value);
+    }
+}
+
 [QueryProperty(nameof(DepartmentId), "deptId")]
 [QueryProperty(nameof(DepartmentName), "deptName")]
 public partial class DepartmentConversationsViewModel : ObservableObject
@@ -40,6 +57,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     private readonly AuthService? _authService;
     private readonly SignalRService? _signalRService;
     private List<ConversationListItem> _allConversations = new();
+    private List<AvailableUserItem> _allAvailableUsers = new();
 
     [ObservableProperty]
     private string _departmentId = string.Empty;
@@ -67,6 +85,25 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _inAppToastMessage = string.Empty;
+
+    // Admin & Manager WhatsApp FAB & Modal Properties
+    [ObservableProperty]
+    private bool _isAdminOrManager;
+
+    [ObservableProperty]
+    private bool _isSelectUserModalVisible = false;
+
+    [ObservableProperty]
+    private bool _isLoadingUsers = false;
+
+    [ObservableProperty]
+    private bool _showNoUsersFound = false;
+
+    [ObservableProperty]
+    private string _userSearchQuery = string.Empty;
+
+    [ObservableProperty]
+    private ObservableCollection<AvailableUserItem> _filteredUsers = new();
 
     public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchQuery);
 
@@ -98,6 +135,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _authService = authService;
         _signalRService = signalRService;
 
+        IsAdminOrManager = _authService?.Role == UserRole.Admin || _authService?.Role == UserRole.Manager;
+
         if (_signalRService != null)
         {
             _signalRService.OnInAppToast += HandleInAppToast;
@@ -123,6 +162,11 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasSearchQuery));
         ApplyFilter();
+    }
+
+    partial void OnUserSearchQueryChanged(string value)
+    {
+        ApplyUserFilter();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -174,6 +218,103 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowSearchBar));
     }
 
+    private void ApplyUserFilter()
+    {
+        var query = UserSearchQuery?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(query))
+        {
+            FilteredUsers = new ObservableCollection<AvailableUserItem>(_allAvailableUsers);
+        }
+        else
+        {
+            var matched = _allAvailableUsers.Where(u =>
+                (!string.IsNullOrEmpty(u.FullName) && u.FullName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(u.Email) && u.Email.Contains(query, StringComparison.OrdinalIgnoreCase))
+            ).ToList();
+
+            FilteredUsers = new ObservableCollection<AvailableUserItem>(matched);
+        }
+
+        ShowNoUsersFound = FilteredUsers.Count == 0 && !IsLoadingUsers;
+    }
+
+    [RelayCommand]
+    private async Task OpenStartChatModalAsync()
+    {
+        UserSearchQuery = string.Empty;
+        IsSelectUserModalVisible = true;
+        await LoadAvailableUsersAsync();
+    }
+
+    [RelayCommand]
+    private void CloseStartChatModal()
+    {
+        IsSelectUserModalVisible = false;
+        UserSearchQuery = string.Empty;
+    }
+
+    public async Task LoadAvailableUsersAsync()
+    {
+        if (_apiService == null || !Guid.TryParse(DepartmentId, out var deptGuid)) return;
+
+        try
+        {
+            IsLoadingUsers = true;
+            ShowNoUsersFound = false;
+            FilteredUsers.Clear();
+            _allAvailableUsers.Clear();
+
+            var dtos = await _apiService.GetAvailableUsersForDepartmentAsync(deptGuid);
+            var items = dtos.Select(d => new AvailableUserItem
+            {
+                Id = d.Id,
+                FullName = d.FullName,
+                Email = d.Email,
+                Role = d.Role,
+                IsOnline = d.IsOnline,
+                HasExistingChat = d.HasExistingChat
+            }).ToList();
+
+            _allAvailableUsers = items;
+            ApplyUserFilter();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DepartmentConversations] LoadAvailableUsers error: {ex.Message}");
+            ShowNoUsersFound = true;
+        }
+        finally
+        {
+            IsLoadingUsers = false;
+            ShowNoUsersFound = FilteredUsers.Count == 0;
+        }
+    }
+
+    [RelayCommand]
+    private async Task StartChatWithUserAsync(AvailableUserItem? user)
+    {
+        if (user == null || _apiService == null || !Guid.TryParse(DepartmentId, out var deptGuid)) return;
+
+        try
+        {
+            IsBusy = true;
+            IsSelectUserModalVisible = false;
+            var conv = await _apiService.StartConversationWithUserAsync(deptGuid, user.Id);
+            if (conv != null)
+            {
+                await Shell.Current.GoToAsync($"ChatRoomPage?deptId={conv.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={conv.Id}&userName={Uri.EscapeDataString(user.FullName)}&userId={user.Id}&isOnline={user.IsOnline}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DepartmentConversations] StartChatWithUser error: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     [RelayCommand]
     private void DismissToast()
     {
@@ -182,13 +323,11 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     private void HandleInAppToast(InAppNotificationToastDto toast)
     {
-        // 1. If currently in this active chat room, ignore the toast banner
         if (ChatRoomViewModel.ActiveConversationId != Guid.Empty && toast.ConversationId == ChatRoomViewModel.ActiveConversationId)
         {
             return;
         }
 
-        // 2. If this message is for the department currently displayed, refresh the list without an intrusive banner
         if (Guid.TryParse(DepartmentId, out var deptGuid) && toast.DepartmentId == deptGuid)
         {
             MainThread.BeginInvokeOnMainThread(async () =>
@@ -198,10 +337,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
             return;
         }
 
-        // 3. For other departments, show toast banner with auto-dismiss
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            InAppToastMessage = $"🔔 {toast.DepartmentName}: {toast.SenderName}: {toast.ContentPreview}";
+            InAppToastMessage = $"🔔 {toast.DepartmentName}: {toast.SenderName}: {SanitizePreview(toast.ContentPreview)}";
             ShowInAppToast = true;
 
             Task.Delay(4000).ContinueWith(_ =>
@@ -245,7 +383,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                     DepartmentName = c.DepartmentName,
                     CreatedByUserId = c.CreatedByUserId,
                     CreatedByUserName = string.IsNullOrWhiteSpace(c.CreatedByUserName) ? "Customer" : c.CreatedByUserName,
-                    LastMessagePreview = string.IsNullOrWhiteSpace(c.LastMessagePreview) ? "No messages yet" : c.LastMessagePreview,
+                    LastMessagePreview = SanitizePreview(c.LastMessagePreview),
                     LastMessageAt = c.LastMessageAt,
                     UnreadCount = c.UnreadCount,
                     Status = c.Status,
@@ -274,6 +412,12 @@ public partial class DepartmentConversationsViewModel : ObservableObject
             if (item != null)
             {
                 item.IsOnline = isOnline;
+            }
+
+            var modalUser = _allAvailableUsers.FirstOrDefault(u => u.Id == userId);
+            if (modalUser != null)
+            {
+                modalUser.IsOnline = isOnline;
             }
         });
     }
@@ -308,5 +452,39 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
         _authService?.Logout();
         await Shell.Current.GoToAsync("//LoginPage");
+    }
+
+    public static string SanitizePreview(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "No messages yet";
+        if (raw.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase)) return "🎙️ Voice message";
+        if (raw.StartsWith("[image:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = raw.Trim('[', ']');
+            var firstColon = inner.IndexOf(':');
+            if (firstColon > 0)
+            {
+                var rest = inner.Substring(firstColon + 1);
+                var secondColon = rest.IndexOf(':');
+                if (secondColon > 0 && secondColon < rest.Length - 1)
+                {
+                    var caption = rest.Substring(secondColon + 1).Trim();
+                    if (!string.IsNullOrEmpty(caption))
+                        return $"📷 {caption}";
+                }
+            }
+            return "📷 Photo";
+        }
+        if (raw.StartsWith("[file:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = raw.Trim('[', ']');
+            var parts = inner.Split(':');
+            if (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2]))
+            {
+                return $"📄 {parts[2]}";
+            }
+            return "📎 Document";
+        }
+        return raw;
     }
 }

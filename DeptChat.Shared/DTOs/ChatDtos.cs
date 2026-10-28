@@ -64,3 +64,24 @@ public record PaginatedMessagesDto(
     List<ChatMessageDto> Messages
 );
 
+public record AttachmentUploadResultDto(
+    string Url,
+    string FileName,
+    long FileSizeBytes,
+    string ContentType,
+    bool IsImage
+);
+
+public record AvailableDepartmentUserDto(
+    Guid Id,
+    string FullName,
+    string Email,
+    UserRole Role,
+    bool IsOnline,
+    bool HasExistingChat
+);
+
+public record StartConversationWithUserRequest(
+    Guid DepartmentId,
+    Guid TargetUserId
+);

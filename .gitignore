@@ -37,6 +37,10 @@ tools/
 *.zip
 *.log
 
+## User uploads
+DeptChat.WebApi/wwwroot/uploads/*
+!DeptChat.WebApi/wwwroot/uploads/.gitkeep
+
 ## OS Generated files
 Thumbs.db
 ehthumbs.db

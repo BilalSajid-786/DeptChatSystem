@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DeptChat.Mobile.Views.ImageViewerPage"
+             BackgroundColor="#0B141B"
+             NavigationPage.HasNavigationBar="False">
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Top App Bar -->
+        <Grid Grid.Row="0" 
+              ColumnDefinitions="Auto, *, Auto" 
+              Padding="12,10" 
+              BackgroundColor="#111B21">
+            <Button Grid.Column="0"
+                    Text="✕"
+                    TextColor="White"
+                    BackgroundColor="Transparent"
+                    FontSize="22"
+                    FontAttributes="Bold"
+                    WidthRequest="40"
+                    HeightRequest="40"
+                    Padding="0"
+                    Clicked="OnCloseClicked" />
+
+            <Label Grid.Column="1"
+                   Text="Photo"
+                   TextColor="White"
+                   FontSize="18"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center"
+                   Margin="8,0,0,0" />
+        </Grid>
+
+        <!-- Centered Full Image Display -->
+        <ScrollView Grid.Row="1"
+                    Orientation="Both"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+            <Image x:Name="ViewerImage"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center" />
+        </ScrollView>
+    </Grid>
+</ContentPage>

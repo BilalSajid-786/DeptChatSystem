@@ -125,11 +125,83 @@
                                                TextColor="#111B21"
                                                LineBreakMode="WordWrap">
                                             <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding IsVoiceMessage}" Value="True">
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsTextMessage}" Value="False">
                                                     <Setter Property="IsVisible" Value="False" />
                                                 </DataTrigger>
                                             </Label.Triggers>
                                         </Label>
+
+                                        <!-- WhatsApp Style Image Message -->
+                                        <VerticalStackLayout Spacing="4">
+                                            <VerticalStackLayout.Triggers>
+                                                <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsImageMessage}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                            </VerticalStackLayout.Triggers>
+
+                                            <Border Stroke="Transparent"
+                                                    StrokeShape="RoundRectangle 12"
+                                                    HeightRequest="200"
+                                                    WidthRequest="240"
+                                                    HorizontalOptions="Center">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenImageCommand}"
+                                                                          CommandParameter="{Binding .}" />
+                                                </Border.GestureRecognizers>
+                                                <Image Source="{Binding ImageUrl}"
+                                                       Aspect="AspectFill"
+                                                       HorizontalOptions="Fill"
+                                                       VerticalOptions="Fill" />
+                                            </Border>
+
+                                            <!-- Optional Image Caption -->
+                                            <Label Text="{Binding ImageCaption}"
+                                                   IsVisible="{Binding HasCaption}"
+                                                   FontSize="14"
+                                                   TextColor="#111B21"
+                                                   LineBreakMode="WordWrap"
+                                                   Margin="2,2,2,0" />
+                                        </VerticalStackLayout>
+
+                                        <!-- WhatsApp Style Document Message -->
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4">
+                                            <Grid.Triggers>
+                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDocumentMessage}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                            </Grid.Triggers>
+                                            <Grid.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenDocumentCommand}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </Grid.GestureRecognizers>
+
+                                            <!-- File Icon Badge -->
+                                            <Border Grid.Column="0"
+                                                    BackgroundColor="#F1F5F9"
+                                                    Stroke="#CBD5E1"
+                                                    StrokeShape="RoundRectangle 8"
+                                                    WidthRequest="38"
+                                                    HeightRequest="42"
+                                                    VerticalOptions="Center">
+                                                <Label Text="📄"
+                                                       FontSize="20"
+                                                       HorizontalOptions="Center"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+
+                                            <!-- File Details -->
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                <Label Text="{Binding DocumentFileName}"
+                                                       FontSize="13"
+                                                       FontAttributes="Bold"
+                                                       TextColor="#0F172A"
+                                                       LineBreakMode="TailTruncation"
+                                                       MaxLines="1" />
+                                                <Label Text="{Binding DocumentFileSizeText}"
+                                                       FontSize="11"
+                                                       TextColor="#64748B" />
+                                            </VerticalStackLayout>
+                                        </Grid>
 
                                         <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
                                         <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2">
@@ -323,7 +395,7 @@
                             <!-- Camera Button -->
                             <Button Grid.Column="3"
                                     Text="📷"
-                                    Command="{Binding AttachFileCommand}"
+                                    Command="{Binding CapturePhotoCommand}"
                                     BackgroundColor="Transparent"
                                     TextColor="#8696A0"
                                     FontSize="17"
