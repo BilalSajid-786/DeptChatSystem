@@ -1,0 +1,139 @@
+using System.Security.Claims;
+using DeptChat.Application.Common.Interfaces;
+using DeptChat.Domain.Entities;
+using DeptChat.Infrastructure.Persistence;
+using DeptChat.Shared.DTOs;
+using DeptChat.Shared.Enums;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace DeptChat.WebApi.Controllers;
+
+[Authorize(Roles = "Admin")]
+[ApiController]
+[Route("api/users")]
+public class UsersController : ControllerBase
+{
+    private readonly ApplicationDbContext _dbContext;
+    private readonly IPasswordHasher _passwordHasher;
+
+    public UsersController(ApplicationDbContext dbContext, IPasswordHasher passwordHasher)
+    {
+        _dbContext = dbContext;
+        _passwordHasher = passwordHasher;
+    }
+
+    private Guid GetClientId()
+    {
+        var claim = User.FindFirstValue("client_id");
+        if (claim != null && Guid.TryParse(claim, out var cid))
+        {
+            return cid;
+        }
+        return Guid.Parse("00000000-0000-0000-0000-000000000001");
+    }
+
+    /// <summary>
+    /// Admin-only: Creates a new user (Employee, Manager, or Admin) inside the Admin's client organization.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.FullName))
+        {
+            return BadRequest(new { message = "Full name is required." });
+        }
+
+        if (string.IsNullOrWhiteSpace(dto.Password) || dto.Password.Length < 6)
+        {
+            return BadRequest(new { message = "Password must be at least 6 characters long." });
+        }
+
+        var hasEmail = !string.IsNullOrWhiteSpace(dto.Email);
+        var hasPhone = !string.IsNullOrWhiteSpace(dto.PhoneNumber);
+
+        if (!hasEmail && !hasPhone)
+        {
+            return BadRequest(new { message = "Please provide either an email address or a phone number." });
+        }
+
+        var clientId = GetClientId();
+
+        string? normalizedEmail = null;
+        if (hasEmail)
+        {
+            normalizedEmail = dto.Email!.Trim().ToLowerInvariant();
+            var emailExists = await _dbContext.Users.AnyAsync(u => u.Email != null && u.Email == normalizedEmail);
+            if (emailExists)
+            {
+                return Conflict(new { message = "An account with this email address already exists." });
+            }
+        }
+
+        string? normalizedPhone = null;
+        if (hasPhone)
+        {
+            normalizedPhone = dto.PhoneNumber!.Trim();
+            var phoneExists = await _dbContext.Users.AnyAsync(u => u.PhoneNumber != null && u.PhoneNumber == normalizedPhone);
+            if (phoneExists)
+            {
+                return Conflict(new { message = "An account with this phone number already exists." });
+            }
+        }
+
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            ClientId = clientId,
+            FullName = dto.FullName.Trim(),
+            Email = normalizedEmail,
+            PhoneNumber = normalizedPhone,
+            PasswordHash = _passwordHasher.HashPassword(dto.Password),
+            Role = dto.Role,
+            Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
+            CreatedAt = DateTime.UtcNow,
+            LastSeenAt = null
+        };
+
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+
+        var summary = new UserSummaryDto(
+            user.Id,
+            user.FullName,
+            user.Email,
+            user.PhoneNumber,
+            user.Role,
+            user.Address,
+            user.CreatedAt
+        );
+
+        return StatusCode(StatusCodes.Status201Created, summary);
+    }
+
+    /// <summary>
+    /// Admin-only: Retrieves all users belonging to the Admin's client organization.
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetUsers()
+    {
+        var clientId = GetClientId();
+
+        var users = await _dbContext.Users
+            .Where(u => u.ClientId == clientId)
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new UserSummaryDto(
+                u.Id,
+                u.FullName,
+                u.Email,
+                u.PhoneNumber,
+                u.Role,
+                u.Address,
+                u.CreatedAt
+            ))
+            .ToListAsync();
+
+        return Ok(users);
+    }
+}

@@ -50,3 +50,22 @@ public record RegisterDeviceTokenDto(
     string Token,
     string Platform
 );
+
+public record CreateUserRequestDto(
+    string FullName,
+    string? Email,
+    string? PhoneNumber,
+    string Password,
+    UserRole Role,
+    string? Address = null
+);
+
+public record UserSummaryDto(
+    Guid Id,
+    string FullName,
+    string? Email,
+    string? PhoneNumber,
+    UserRole Role,
+    string? Address,
+    DateTime CreatedAt
+);

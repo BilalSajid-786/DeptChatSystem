@@ -35,11 +35,27 @@ public class ApplicationDbContext : DbContext
             .HasForeignKey(d => d.ClientId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        modelBuilder.Entity<User>()
-            .HasOne(u => u.Client)
-            .WithMany(c => c.Users)
-            .HasForeignKey(u => u.ClientId)
-            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasOne(u => u.Client)
+                .WithMany(c => c.Users)
+                .HasForeignKey(u => u.ClientId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(u => u.Email)
+                .HasMaxLength(256);
+
+            entity.Property(u => u.PhoneNumber)
+                .HasMaxLength(50);
+
+            entity.HasIndex(u => u.Email)
+                .IsUnique()
+                .HasFilter("[Email] IS NOT NULL");
+
+            entity.HasIndex(u => u.PhoneNumber)
+                .IsUnique()
+                .HasFilter("[PhoneNumber] IS NOT NULL");
+        });
 
         modelBuilder.Entity<Conversation>()
             .HasOne(c => c.Client)

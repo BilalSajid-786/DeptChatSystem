@@ -2,6 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using DeptChat.Mobile.Services;
+using DeptChat.Shared.Enums;
+using DeptChat.Shared.DTOs;
 
 namespace DeptChat.Mobile.ViewModels;
 
@@ -82,6 +84,54 @@ public partial class DepartmentsViewModel : ObservableObject
     private string _addDepartmentErrorMessage = string.Empty;
 
     public bool HasAddDepartmentError => !string.IsNullOrWhiteSpace(AddDepartmentErrorMessage);
+
+    [ObservableProperty]
+    private bool _isAddUserModalVisible;
+
+    [ObservableProperty]
+    private string _newUserName = string.Empty;
+
+    [ObservableProperty]
+    private string _newUserEmail = string.Empty;
+
+    [ObservableProperty]
+    private string _newUserPhone = string.Empty;
+
+    [ObservableProperty]
+    private string _newUserPassword = string.Empty;
+
+    [ObservableProperty]
+    private string _newUserAddress = string.Empty;
+
+    [ObservableProperty]
+    private UserRole _selectedUserRole = UserRole.User;
+
+    [ObservableProperty]
+    private bool _isNewUserPasswordHidden = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAddUserError))]
+    private string _addUserErrorMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveUser))]
+    private bool _isAddUserBusy;
+
+    public bool CanSaveUser => !IsAddUserBusy;
+    public bool HasAddUserError => !string.IsNullOrWhiteSpace(AddUserErrorMessage);
+    public bool IsRoleEmployee => SelectedUserRole == UserRole.User;
+    public bool IsRoleManager => SelectedUserRole == UserRole.Manager;
+    public bool IsRoleAdmin => SelectedUserRole == UserRole.Admin;
+    public string NewUserPasswordToggleIcon => IsNewUserPasswordHidden ? "👁️" : "👁️‍🗨️";
+
+    public string RoleEmployeeBgColor => IsRoleEmployee ? "#008069" : "#F1F5F9";
+    public string RoleEmployeeTextColor => IsRoleEmployee ? "White" : "#475569";
+
+    public string RoleManagerBgColor => IsRoleManager ? "#008069" : "#F1F5F9";
+    public string RoleManagerTextColor => IsRoleManager ? "White" : "#475569";
+
+    public string RoleAdminBgColor => IsRoleAdmin ? "#008069" : "#F1F5F9";
+    public string RoleAdminTextColor => IsRoleAdmin ? "White" : "#475569";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanSaveDepartment))]
@@ -394,6 +444,117 @@ public partial class DepartmentsViewModel : ObservableObject
         finally
         {
             IsCreatingDepartment = false;
+        }
+    }
+
+    partial void OnSelectedUserRoleChanged(UserRole value)
+    {
+        OnPropertyChanged(nameof(IsRoleEmployee));
+        OnPropertyChanged(nameof(IsRoleManager));
+        OnPropertyChanged(nameof(IsRoleAdmin));
+        OnPropertyChanged(nameof(RoleEmployeeBgColor));
+        OnPropertyChanged(nameof(RoleEmployeeTextColor));
+        OnPropertyChanged(nameof(RoleManagerBgColor));
+        OnPropertyChanged(nameof(RoleManagerTextColor));
+        OnPropertyChanged(nameof(RoleAdminBgColor));
+        OnPropertyChanged(nameof(RoleAdminTextColor));
+    }
+
+    [RelayCommand]
+    private void OpenAddUserModal()
+    {
+        NewUserName = string.Empty;
+        NewUserEmail = string.Empty;
+        NewUserPhone = string.Empty;
+        NewUserPassword = string.Empty;
+        NewUserAddress = string.Empty;
+        SelectedUserRole = UserRole.User;
+        AddUserErrorMessage = string.Empty;
+        IsNewUserPasswordHidden = true;
+        IsAddUserModalVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseAddUserModal()
+    {
+        IsAddUserModalVisible = false;
+        AddUserErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private void SelectUserRole(string roleName)
+    {
+        if (Enum.TryParse<UserRole>(roleName, out var role))
+        {
+            SelectedUserRole = role;
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleNewUserPasswordVisibility()
+    {
+        IsNewUserPasswordHidden = !IsNewUserPasswordHidden;
+        OnPropertyChanged(nameof(NewUserPasswordToggleIcon));
+    }
+
+    [RelayCommand]
+    private async Task CreateUserAsync()
+    {
+        if (_apiService == null || !IsAdmin) return;
+
+        AddUserErrorMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(NewUserName))
+        {
+            AddUserErrorMessage = "Full name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewUserEmail) && string.IsNullOrWhiteSpace(NewUserPhone))
+        {
+            AddUserErrorMessage = "Please enter either an email address or a phone number.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewUserPassword) || NewUserPassword.Length < 6)
+        {
+            AddUserErrorMessage = "Password must be at least 6 characters long.";
+            return;
+        }
+
+        try
+        {
+            IsAddUserBusy = true;
+            var request = new CreateUserRequestDto(
+                NewUserName.Trim(),
+                string.IsNullOrWhiteSpace(NewUserEmail) ? null : NewUserEmail.Trim(),
+                string.IsNullOrWhiteSpace(NewUserPhone) ? null : NewUserPhone.Trim(),
+                NewUserPassword,
+                SelectedUserRole,
+                string.IsNullOrWhiteSpace(NewUserAddress) ? null : NewUserAddress.Trim()
+            );
+
+            var (success, errorMsg, user) = await _apiService.CreateUserAsync(request);
+            if (success && user != null)
+            {
+                IsAddUserModalVisible = false;
+                if (Shell.Current != null)
+                {
+                    await Shell.Current.DisplayAlert("User Created", $"Successfully added {user.FullName} ({user.Role}) to your organization.", "OK");
+                }
+            }
+            else
+            {
+                AddUserErrorMessage = errorMsg ?? "Failed to create user.";
+            }
+        }
+        catch (Exception ex)
+        {
+            AddUserErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsAddUserBusy = false;
         }
     }
 

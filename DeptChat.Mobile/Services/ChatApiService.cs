@@ -81,6 +81,56 @@ public class ChatApiService
         return JsonSerializer.Deserialize<DepartmentDto>(responseString, JsonOptions);
     }
 
+    public async Task<(bool Success, string? ErrorMessage, UserSummaryDto? User)> CreateUserAsync(CreateUserRequestDto dto)
+    {
+        try
+        {
+            AttachBearerToken();
+            var json = JsonSerializer.Serialize(dto, JsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(BuildUrl("api/users"), content);
+            var responseString = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var createdUser = JsonSerializer.Deserialize<UserSummaryDto>(responseString, JsonOptions);
+                return (true, null, createdUser);
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(responseString);
+                if (doc.RootElement.TryGetProperty("message", out var msgElement))
+                {
+                    return (false, msgElement.GetString(), null);
+                }
+            }
+            catch { }
+
+            return (false, $"Failed to create user ({(int)response.StatusCode})", null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Connection error: {ex.Message}", null);
+        }
+    }
+
+    public async Task<List<UserSummaryDto>> GetUsersAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/users"));
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<UserSummaryDto>>(json, JsonOptions) ?? new();
+            }
+        }
+        catch { }
+        return new();
+    }
+
     public async Task<bool> RegisterDeviceTokenAsync(string token, string platform = "Android")
     {
         try
