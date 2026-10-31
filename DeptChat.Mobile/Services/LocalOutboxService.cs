@@ -16,6 +16,8 @@ public class LocalOutboxMessage
     public string ClientGeneratedId { get; set; } = string.Empty;
 
     public Guid? ServerMessageId { get; set; }
+    public Guid SenderId { get; set; }
+    public UserRole SenderRole { get; set; } = UserRole.User;
     public long SequenceNumber { get; set; }
     public string Content { get; set; } = string.Empty;
     public string SenderName { get; set; } = string.Empty;
@@ -39,7 +41,7 @@ public class LocalOutboxService
     {
         try
         {
-            const int CurrentCacheVersion = 2;
+            const int CurrentCacheVersion = 3;
             var cachedVer = Preferences.Default.Get("outbox_cache_version", 0);
             if (cachedVer < CurrentCacheVersion)
             {
@@ -60,7 +62,7 @@ public class LocalOutboxService
         await _initTcs.Task;
     }
 
-    public async Task<LocalOutboxMessage> EnqueueAsync(Guid conversationId, string clientGeneratedId, string content, string senderName)
+    public async Task<LocalOutboxMessage> EnqueueAsync(Guid conversationId, string clientGeneratedId, string content, string senderName, Guid senderId = default, UserRole senderRole = UserRole.User)
     {
         await EnsureInitializedAsync();
         var existing = await _db.Table<LocalOutboxMessage>()
@@ -70,6 +72,8 @@ public class LocalOutboxService
         {
             existing.Content = content;
             existing.SenderName = senderName;
+            existing.SenderId = senderId;
+            existing.SenderRole = senderRole;
             existing.Status = MessageDeliveryStatus.Pending;
             existing.Timestamp = DateTime.UtcNow;
             await _db.UpdateAsync(existing);
@@ -82,6 +86,8 @@ public class LocalOutboxService
             ClientGeneratedId = clientGeneratedId,
             Content = content,
             SenderName = senderName,
+            SenderId = senderId,
+            SenderRole = senderRole,
             IsOutgoing = true,
             Status = MessageDeliveryStatus.Pending,
             Timestamp = DateTime.UtcNow
@@ -141,7 +147,7 @@ public class LocalOutboxService
         }
     }
 
-    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt)
+    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, Guid senderId, UserRole senderRole, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt)
     {
         await EnsureInitializedAsync();
         var existing = await _db.Table<LocalOutboxMessage>()
@@ -150,9 +156,12 @@ public class LocalOutboxService
         if (existing != null)
         {
             existing.ServerMessageId = serverMsgId;
+            existing.SenderId = senderId;
+            existing.SenderRole = senderRole;
             existing.SequenceNumber = sequenceNumber;
             existing.Status = status;
             existing.Content = content;
+            existing.IsOutgoing = isOutgoing;
             await _db.UpdateAsync(existing);
         }
         else
@@ -161,6 +170,8 @@ public class LocalOutboxService
             {
                 ConversationId = conversationId,
                 ServerMessageId = serverMsgId,
+                SenderId = senderId,
+                SenderRole = senderRole,
                 ClientGeneratedId = clientGenId,
                 Content = content,
                 SenderName = senderName,
@@ -170,6 +181,22 @@ public class LocalOutboxService
                 Timestamp = sentAt
             };
             await _db.InsertAsync(msg);
+        }
+    }
+
+    public Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt)
+        => SaveServerMessageAsync(conversationId, serverMsgId, Guid.Empty, UserRole.User, clientGenId, content, senderName, isOutgoing, sequenceNumber, status, sentAt);
+
+    public async Task ClearAllAsync()
+    {
+        try
+        {
+            await EnsureInitializedAsync();
+            await _db.DeleteAllAsync<LocalOutboxMessage>();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LocalOutboxService] ClearAllAsync error: {ex.Message}");
         }
     }
 

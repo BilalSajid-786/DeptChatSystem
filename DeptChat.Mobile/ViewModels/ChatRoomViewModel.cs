@@ -11,6 +11,7 @@ public class ChatMessageItem : ObservableObject
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SenderId { get; set; }
+    public UserRole SenderRole { get; set; } = UserRole.User;
     public string ClientGeneratedId { get; set; } = string.Empty;
     public string SenderName { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
@@ -114,7 +115,12 @@ public class ChatMessageItem : ObservableObject
                 : new CornerRadius(16, 16, 16, 6)
         };
 
-    public bool ShowSenderName => !IsOutgoing && !string.IsNullOrWhiteSpace(SenderName);
+    private bool _showSenderName;
+    public bool ShowSenderName
+    {
+        get => _showSenderName;
+        set => SetProperty(ref _showSenderName, value);
+    }
 }
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
@@ -258,6 +264,8 @@ public partial class ChatRoomViewModel : ObservableObject
                                 _ = _outboxService.SaveServerMessageAsync(
                                     convId,
                                     m.Id,
+                                    m.SenderId,
+                                    m.SenderRole,
                                     m.ClientGeneratedId,
                                     m.Content,
                                     m.SenderName,
@@ -348,6 +356,8 @@ public partial class ChatRoomViewModel : ObservableObject
                                 _ = _outboxService.SaveServerMessageAsync(
                                     convId,
                                     m.Id,
+                                    m.SenderId,
+                                    m.SenderRole,
                                     m.ClientGeneratedId,
                                     m.Content,
                                     m.SenderName,
@@ -425,6 +435,8 @@ public partial class ChatRoomViewModel : ObservableObject
                                 _ = _outboxService.SaveServerMessageAsync(
                                     _conversationId,
                                     m.Id,
+                                    m.SenderId,
+                                    m.SenderRole,
                                     m.ClientGeneratedId,
                                     m.Content,
                                     m.SenderName,
@@ -1377,15 +1389,16 @@ public partial class ChatRoomViewModel : ObservableObject
         }
 
         var clientMsgId = Guid.NewGuid().ToString();
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+        var myName = _authService?.CurrentUser?.FullName ?? "You";
 
         // Optimistic UI update: instant speech bubble
         var pendingItem = new ChatMessageItem
         {
             ClientGeneratedId = clientMsgId,
-            SenderName = _authService?.CurrentUser?.FullName ?? "You",
             Content = content,
             TimeFormatted = DateTime.Now.ToString("h:mm tt"),
-            IsOutgoing = true,
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
             StatusColor = Color.FromArgb("#94A3B8"),
@@ -1395,6 +1408,7 @@ public partial class ChatRoomViewModel : ObservableObject
             CurrentPlaybackTime = isVoice ? $"0:{duration:D2}" : string.Empty,
             LocalAudioPath = localPath
         };
+        ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, myName);
 
         Messages.Add(pendingItem);
         RequestScrollToBottom?.Invoke();
@@ -1414,7 +1428,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 if (_outboxService != null)
                 {
-                    await _outboxService.EnqueueAsync(convId, clientMsgId, content, pendingItem.SenderName);
+                    await _outboxService.EnqueueAsync(convId, clientMsgId, content, myName, myUserId, myRole);
                 }
 
                 if (_signalRService != null)
@@ -1701,22 +1715,23 @@ public partial class ChatRoomViewModel : ObservableObject
 
         var clientMsgId = Guid.NewGuid().ToString();
         var timeFormatted = DateTime.Now.ToString("h:mm tt");
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
         var senderName = _authService?.CurrentUser?.FullName ?? "You";
 
         // 2. Instant optimistic bubble with local thumbnail
         var pendingItem = new ChatMessageItem
         {
             ClientGeneratedId = clientMsgId,
-            SenderName = senderName,
             Content = "[image:uploading...]",
             TimeFormatted = timeFormatted,
-            IsOutgoing = true,
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
             StatusColor = Color.FromArgb("#94A3B8"),
             IsImageMessage = true,
             ImageUrl = compressedPath
         };
+        ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
         RequestScrollToBottom?.Invoke();
@@ -1747,7 +1762,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 if (_outboxService != null)
                 {
-                    await _outboxService.EnqueueAsync(convId, clientMsgId, imagePayload, senderName);
+                    await _outboxService.EnqueueAsync(convId, clientMsgId, imagePayload, senderName, myUserId, myRole);
                 }
 
                 if (_signalRService != null)
@@ -1772,6 +1787,8 @@ public partial class ChatRoomViewModel : ObservableObject
 
         var clientMsgId = Guid.NewGuid().ToString();
         var timeFormatted = DateTime.Now.ToString("h:mm tt");
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
         var senderName = _authService?.CurrentUser?.FullName ?? "You";
         var fileInfo = new FileInfo(localPath);
         var sizeBytes = fileInfo.Length;
@@ -1780,10 +1797,8 @@ public partial class ChatRoomViewModel : ObservableObject
         var pendingItem = new ChatMessageItem
         {
             ClientGeneratedId = clientMsgId,
-            SenderName = senderName,
             Content = $"[file:uploading:{originalFileName}:{sizeBytes}]",
             TimeFormatted = timeFormatted,
-            IsOutgoing = true,
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
             StatusColor = Color.FromArgb("#94A3B8"),
@@ -1792,6 +1807,7 @@ public partial class ChatRoomViewModel : ObservableObject
             DocumentFileSizeText = FormatFileSize(sizeBytes),
             DocumentUrl = localPath
         };
+        ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
         RequestScrollToBottom?.Invoke();
@@ -1821,7 +1837,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 if (_outboxService != null)
                 {
-                    await _outboxService.EnqueueAsync(convId, clientMsgId, docPayload, senderName);
+                    await _outboxService.EnqueueAsync(convId, clientMsgId, docPayload, senderName, myUserId, myRole);
                 }
 
                 if (_signalRService != null)
@@ -1915,6 +1931,8 @@ public partial class ChatRoomViewModel : ObservableObject
             _ = _outboxService.SaveServerMessageAsync(
                 _conversationId,
                 msg.Id,
+                msg.SenderId,
+                msg.SenderRole,
                 msg.ClientGeneratedId,
                 msg.Content,
                 msg.SenderName,
@@ -1926,15 +1944,55 @@ public partial class ChatRoomViewModel : ObservableObject
         }
     }
 
+    private void ApplyRoleAwareAlignment(ChatMessageItem item, Guid senderId, UserRole senderRole, string senderName)
+    {
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+        var isStaffViewer = myRole == UserRole.Admin || myRole == UserRole.Manager;
+
+        item.SenderId = senderId;
+        item.SenderRole = senderRole;
+        item.SenderName = senderName;
+
+        if (isStaffViewer)
+        {
+            if (senderRole == UserRole.Admin || senderRole == UserRole.Manager)
+            {
+                item.IsOutgoing = true;
+                // Colleague staff message on sender side shows who texted what!
+                item.ShowSenderName = (senderId != myUserId) && !string.IsNullOrWhiteSpace(senderName);
+            }
+            else
+            {
+                item.IsOutgoing = false;
+                // 1-on-1 customer message on receiver side (header already says customer name)
+                item.ShowSenderName = false;
+            }
+        }
+        else
+        {
+            if (senderRole == UserRole.User || senderId == myUserId)
+            {
+                item.IsOutgoing = true;
+                item.ShowSenderName = false;
+            }
+            else
+            {
+                item.IsOutgoing = false;
+                // Customer sees who from staff texted them!
+                item.ShowSenderName = !string.IsNullOrWhiteSpace(senderName);
+            }
+        }
+    }
+
     private void AddOrUpdateServerMessage(ChatMessageDto msg, bool reorder = true, bool scroll = true)
     {
-        var isOutgoing = msg.SenderId == (_authService?.UserId ?? Guid.Empty);
-
         var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == msg.ClientGeneratedId || m.Id == msg.Id);
         if (existing != null)
         {
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
+            ApplyRoleAwareAlignment(existing, msg.SenderId, msg.SenderRole, msg.SenderName);
             UpdateStatusVisuals(existing, msg.Status);
             if (reorder) ReorderMessageIfNeeded(existing);
         }
@@ -1943,15 +2001,13 @@ public partial class ChatRoomViewModel : ObservableObject
             var newItem = new ChatMessageItem
             {
                 Id = msg.Id,
-                SenderId = msg.SenderId,
                 ClientGeneratedId = msg.ClientGeneratedId,
-                SenderName = msg.SenderName,
                 Content = msg.Content,
                 TimeFormatted = msg.SentAt.ToLocalTime().ToString("h:mm tt"),
-                IsOutgoing = isOutgoing,
                 SequenceNumber = msg.SequenceNumber
             };
 
+            ApplyRoleAwareAlignment(newItem, msg.SenderId, msg.SenderRole, msg.SenderName);
             ParseMessagePayload(newItem, msg.Content);
             UpdateStatusVisuals(newItem, msg.Status);
 
@@ -1977,13 +2033,12 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             Id = lm.ServerMessageId ?? Guid.NewGuid(),
             ClientGeneratedId = lm.ClientGeneratedId,
-            SenderName = lm.SenderName,
             Content = lm.Content,
             TimeFormatted = lm.Timestamp.ToLocalTime().ToString("h:mm tt"),
-            IsOutgoing = lm.IsOutgoing,
             SequenceNumber = lm.SequenceNumber
         };
 
+        ApplyRoleAwareAlignment(item, lm.SenderId, lm.SenderRole, lm.SenderName);
         ParseMessagePayload(item, lm.Content);
         UpdateStatusVisuals(item, lm.Status);
         return item;

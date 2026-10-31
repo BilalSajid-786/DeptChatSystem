@@ -24,10 +24,13 @@ public class AuthService
     public string? Address => CurrentUser?.Address;
     public List<Guid> DepartmentIds => CurrentUser?.DepartmentIds ?? new();
 
-    public AuthService(HttpClient httpClient, ServerConfigService serverConfig)
+    private readonly LocalOutboxService? _outboxService;
+
+    public AuthService(HttpClient httpClient, ServerConfigService serverConfig, LocalOutboxService? outboxService = null)
     {
         _httpClient = httpClient;
         _serverConfig = serverConfig;
+        _outboxService = outboxService;
         TryRestoreUser();
     }
 
@@ -171,5 +174,7 @@ public class AuthService
             Preferences.Default.Remove(AuthStorageKey);
         }
         catch { }
+
+        _ = _outboxService?.ClearAllAsync();
     }
 }

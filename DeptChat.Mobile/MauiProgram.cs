@@ -25,6 +25,11 @@ public static class MauiProgram
         var httpClient = new HttpClient(httpClientHandler, disposeHandler: false);
         builder.Services.AddSingleton(httpClient);
 
+        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "deptchat_outbox.db3");
+        var outboxService = new LocalOutboxService(dbPath);
+        _ = outboxService.InitializeAsync();
+        builder.Services.AddSingleton(outboxService);
+
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddSingleton<ChatApiService>();
 
@@ -34,11 +39,6 @@ public static class MauiProgram
             signalR.UpdateBaseUrl(newUrl);
         };
         builder.Services.AddSingleton(signalR);
-
-        var dbPath = Path.Combine(FileSystem.AppDataDirectory, "deptchat_outbox.db3");
-        var outboxService = new LocalOutboxService(dbPath);
-        _ = outboxService.InitializeAsync();
-        builder.Services.AddSingleton(outboxService);
 
 #if ANDROID
         builder.Services.AddSingleton<IAudioService, Platforms.Android.AndroidAudioService>();
