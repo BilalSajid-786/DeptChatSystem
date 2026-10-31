@@ -2,8 +2,8 @@ namespace DeptChat.Mobile.Services;
 
 public class ServerConfigService
 {
-    public const string LocalWifiUrl = "http://192.168.0.108:5051";
-    public const string CloudflareUrl = "https://cosmetics-environmental-respected-periods.trycloudflare.com";
+    public const string LocalWifiUrl = "http://192.168.0.109:5051";
+    public const string CloudflareUrl = "https://happened-minute-agricultural-heath.trycloudflare.com";
     public const string DefaultUrl = CloudflareUrl;
     private const string PrefKey = "DeptChat_ServerUrl";
 
@@ -13,7 +13,8 @@ public class ServerConfigService
         {
             var saved = Preferences.Default.Get(PrefKey, DefaultUrl);
             if (string.IsNullOrWhiteSpace(saved) || 
-                (saved.Contains("trycloudflare.com") && !saved.Contains("cosmetics-environmental-respected-periods")) ||
+                (saved.Contains("trycloudflare.com") && !saved.Contains("happened-minute-agricultural-heath")) ||
+                saved.Contains("cosmetics-environmental-respected-periods") ||
                 saved.Contains("drinks-mass-noon-preview") ||
                 saved.Contains("subscription-left-legs-kingston") ||
                 saved.Contains("lived-varying-consent-atom") ||
