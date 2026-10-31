@@ -17,7 +17,7 @@ public class JwtTokenService : IJwtTokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(Guid userId, string fullName, string email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null)
+    public string GenerateToken(Guid userId, string fullName, string? email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
         var secret = jwtSettings["Secret"] ?? "A_VERY_LONG_SUPER_SECRET_KEY_FOR_JWT_AUTHENTICATION_1234567890";
@@ -32,7 +32,7 @@ public class JwtTokenService : IJwtTokenService
         {
             new(ClaimTypes.NameIdentifier, userId.ToString()),
             new(ClaimTypes.Name, fullName),
-            new(ClaimTypes.Email, email),
+            new(ClaimTypes.Email, email ?? string.Empty),
             new(ClaimTypes.Role, role.ToString()),
             new("client_id", clientId.ToString()),
             new("client_name", clientName)

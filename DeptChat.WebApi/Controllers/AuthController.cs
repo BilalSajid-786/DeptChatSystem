@@ -30,14 +30,23 @@ public class AuthController : ControllerBase
 
     /// <summary>
     /// Public user self-registration with mandatory Company Code.
+    /// Supports registration via Email OR Phone Number (or both).
     /// Strictly assigns Role = User (Privilege escalation prevention).
     /// </summary>
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequestDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+        if (string.IsNullOrWhiteSpace(dto.FullName) || string.IsNullOrWhiteSpace(dto.Password))
         {
-            return BadRequest(new { message = "Full name, email, and password are required." });
+            return BadRequest(new { message = "Full name and password are required." });
+        }
+
+        var hasEmail = !string.IsNullOrWhiteSpace(dto.Email);
+        var hasPhone = !string.IsNullOrWhiteSpace(dto.PhoneNumber);
+
+        if (!hasEmail && !hasPhone)
+        {
+            return BadRequest(new { message = "Please provide either an email address or a phone number to register." });
         }
 
         if (string.IsNullOrWhiteSpace(dto.CompanyCode))
@@ -60,12 +69,26 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = $"Company code '{dto.CompanyCode.Trim()}' was not found or is inactive. Please contact your administrator." });
         }
 
-        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
-
-        var emailExists = await _dbContext.Users.AnyAsync(u => u.Email == normalizedEmail);
-        if (emailExists)
+        string? normalizedEmail = null;
+        if (hasEmail)
         {
-            return Conflict(new { message = "An account with this email already exists." });
+            normalizedEmail = dto.Email!.Trim().ToLowerInvariant();
+            var emailExists = await _dbContext.Users.AnyAsync(u => u.Email != null && u.Email == normalizedEmail);
+            if (emailExists)
+            {
+                return Conflict(new { message = "An account with this email already exists." });
+            }
+        }
+
+        string? normalizedPhone = null;
+        if (hasPhone)
+        {
+            normalizedPhone = dto.PhoneNumber!.Trim();
+            var phoneExists = await _dbContext.Users.AnyAsync(u => u.PhoneNumber != null && u.PhoneNumber == normalizedPhone);
+            if (phoneExists)
+            {
+                return Conflict(new { message = "An account with this phone number already exists." });
+            }
         }
 
         // Strictly enforce Role = User. Public signups can NEVER become Admin or Manager.
@@ -75,8 +98,8 @@ public class AuthController : ControllerBase
             ClientId = client.Id,
             FullName = dto.FullName.Trim(),
             Email = normalizedEmail,
+            PhoneNumber = normalizedPhone,
             PasswordHash = _passwordHasher.HashPassword(dto.Password),
-            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
             Address = string.IsNullOrWhiteSpace(dto.Address) ? null : dto.Address.Trim(),
             Role = UserRole.User,
             CreatedAt = DateTime.UtcNow,
@@ -106,26 +129,29 @@ public class AuthController : ControllerBase
 
     /// <summary>
     /// Login for all roles (Admin, Manager, and User).
-    /// Automatically identifies user's client workspace.
+    /// Automatically identifies user's client workspace via Email or Phone Number.
     /// </summary>
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequestDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
         {
-            return BadRequest(new { message = "Email and password are required." });
+            return BadRequest(new { message = "Email or phone number, and password are required." });
         }
 
-        var normalizedEmail = dto.Email.Trim().ToLowerInvariant();
+        var identifier = dto.Email.Trim();
+        var normalizedEmail = identifier.ToLowerInvariant();
 
         var user = await _dbContext.Users
             .Include(u => u.Client)
             .Include(u => u.DepartmentAssignments)
-            .FirstOrDefaultAsync(u => u.Email == normalizedEmail);
+            .FirstOrDefaultAsync(u => 
+                (u.Email != null && u.Email == normalizedEmail) ||
+                (u.PhoneNumber != null && u.PhoneNumber == identifier));
 
         if (user == null || !_passwordHasher.VerifyPassword(dto.Password, user.PasswordHash))
         {
-            return Unauthorized(new { message = "Invalid email or password." });
+            return Unauthorized(new { message = "Invalid email/phone or password." });
         }
 
         if (user.Client != null && !user.Client.IsActive)

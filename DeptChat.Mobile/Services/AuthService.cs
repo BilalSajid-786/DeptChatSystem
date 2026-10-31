@@ -50,12 +50,12 @@ public class AuthService
 
     public string? LastError { get; private set; }
 
-    public async Task<bool> LoginAsync(string email, string password)
+    public async Task<bool> LoginAsync(string identifier, string password)
     {
         LastError = null;
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/login"), new LoginRequestDto(email, password));
+            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/login"), new LoginRequestDto(identifier, password));
             if (!response.IsSuccessStatusCode)
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || 
@@ -88,12 +88,12 @@ public class AuthService
         }
     }
 
-    public async Task<bool> RegisterAsync(string fullName, string email, string password, string companyCode, string? phoneNumber = null, string? address = null)
+    public async Task<bool> RegisterAsync(string fullName, string? email, string password, string companyCode, string? phoneNumber = null, string? address = null)
     {
         LastError = null;
         try
         {
-            var reqDto = new RegisterRequestDto(fullName, email, password, companyCode, phoneNumber, address);
+            var reqDto = new RegisterRequestDto(fullName, string.IsNullOrWhiteSpace(email) ? null : email.Trim(), password, companyCode, string.IsNullOrWhiteSpace(phoneNumber) ? null : phoneNumber.Trim(), address);
             var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/register"), reqDto);
             if (!response.IsSuccessStatusCode)
             {

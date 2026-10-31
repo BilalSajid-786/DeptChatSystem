@@ -463,7 +463,7 @@ public class ConversationsController : ControllerBase
             result.Add(new AvailableDepartmentUserDto(
                 u.Id,
                 u.FullName,
-                u.Email,
+                u.Email ?? u.PhoneNumber ?? "",
                 u.Role,
                 isOnline,
                 false

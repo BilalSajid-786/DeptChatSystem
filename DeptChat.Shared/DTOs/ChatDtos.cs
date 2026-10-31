@@ -75,7 +75,7 @@ public record AttachmentUploadResultDto(
 public record AvailableDepartmentUserDto(
     Guid Id,
     string FullName,
-    string Email,
+    string? Email,
     UserRole Role,
     bool IsOnline,
     bool HasExistingChat

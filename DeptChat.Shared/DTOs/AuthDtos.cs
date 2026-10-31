@@ -4,7 +4,7 @@ namespace DeptChat.Shared.DTOs;
 
 public record RegisterRequestDto(
     string FullName,
-    string Email,
+    string? Email,
     string Password,
     string CompanyCode,
     string? PhoneNumber = null,
@@ -12,14 +12,14 @@ public record RegisterRequestDto(
 );
 
 public record LoginRequestDto(
-    string Email,
+    string Email, // Can be Email address or Phone number
     string Password
 );
 
 public record AuthResponseDto(
     Guid UserId,
     string FullName,
-    string Email,
+    string? Email,
     UserRole Role,
     string Token,
     List<Guid> DepartmentIds,
@@ -32,7 +32,7 @@ public record AuthResponseDto(
 public record UserProfileDto(
     Guid UserId,
     string FullName,
-    string Email,
+    string? Email,
     UserRole Role,
     Guid ClientId,
     string ClientName,
