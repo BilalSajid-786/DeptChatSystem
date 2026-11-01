@@ -445,6 +445,17 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     [RelayCommand]
     public async Task LogoutAsync()
     {
+        if (_apiService != null)
+        {
+            try
+            {
+                await _apiService.LogoutAsync();
+            }
+            catch
+            {
+            }
+        }
+
         if (_signalRService != null)
         {
             try

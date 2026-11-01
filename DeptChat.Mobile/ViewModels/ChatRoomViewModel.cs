@@ -149,14 +149,25 @@ public class ChatMessageItem : ObservableObject
     }
 }
 
+public class ForwardDepartmentItem
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string Icon { get; set; } = "📁";
+}
+
 public class ForwardUserItem
 {
     public Guid UserId { get; set; }
     public string FullName { get; set; } = string.Empty;
     public Guid DepartmentId { get; set; }
     public string DepartmentName { get; set; } = string.Empty;
+    public string Subtitle { get; set; } = string.Empty;
     public bool IsOnline { get; set; }
-    public string AvatarInitial => !string.IsNullOrWhiteSpace(FullName) ? FullName[..1].ToUpperInvariant() : "?";
+    public string AvatarInitial => !string.IsNullOrWhiteSpace(FullName) ? FullName[..1].ToUpperInvariant() : "👤";
+    public string OnlineBadgeText => IsOnline ? "ONLINE" : "";
+    public bool ShowOnlineBadge => IsOnline;
 }
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
@@ -693,16 +704,66 @@ public partial class ChatRoomViewModel : ObservableObject
     private bool _isCurrentUserBlocked;
 
     [ObservableProperty]
+    private bool _isMessageMenuVisible;
+
+    [ObservableProperty]
+    private ChatMessageItem? _selectedMenuMessage;
+
+    [ObservableProperty]
+    private string _selectedMessagePreviewText = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedMessageSenderName = string.Empty;
+
+    [ObservableProperty]
+    private string _selectedMessageTime = string.Empty;
+
+    [ObservableProperty]
+    private bool _canCopySelectedMessage;
+
+    [ObservableProperty]
+    private bool _canForwardSelectedMessage;
+
+    [ObservableProperty]
+    private bool _canDeleteSelectedMessage;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsForwardStep0))]
+    [NotifyPropertyChangedFor(nameof(IsForwardStep1))]
+    private int _forwardStep = 0; // 0 = Dept, 1 = User
+
+    public bool IsForwardStep0 => ForwardStep == 0;
+    public bool IsForwardStep1 => ForwardStep == 1;
+
+    [ObservableProperty]
     private bool _isForwardModalVisible;
 
     [ObservableProperty]
     private ChatMessageItem? _messageToForward;
 
     [ObservableProperty]
-    private string _forwardSearchText = string.Empty;
+    private ForwardDepartmentItem? _selectedForwardDepartment;
 
-    public ObservableCollection<ForwardUserItem> AllForwardUsers { get; } = new();
-    public ObservableCollection<ForwardUserItem> FilteredForwardUsers { get; } = new();
+    [ObservableProperty]
+    private ObservableCollection<ForwardDepartmentItem> _forwardDepartments = new();
+
+    [ObservableProperty]
+    private ObservableCollection<ForwardDepartmentItem> _filteredForwardDepartments = new();
+
+    [ObservableProperty]
+    private string _forwardDeptSearchText = string.Empty;
+
+    [ObservableProperty]
+    private ObservableCollection<ForwardUserItem> _departmentForwardUsers = new();
+
+    [ObservableProperty]
+    private ObservableCollection<ForwardUserItem> _filteredDepartmentForwardUsers = new();
+
+    [ObservableProperty]
+    private string _forwardUserSearchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isLoadingForwardData;
 
     [ObservableProperty]
     private string _inputMessage = string.Empty;
@@ -2571,108 +2632,247 @@ public partial class ChatRoomViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ShowMessageOptionsAsync(ChatMessageItem? item)
+    private void ShowMessageMenu(ChatMessageItem? item)
     {
         if (item == null) return;
+
+        try
+        {
+            HapticFeedback.Default.Perform(HapticFeedbackType.LongPress);
+        }
+        catch { }
+
+        try
+        {
+            Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(50));
+        }
+        catch { }
 
         var myUserId = _authService?.UserId ?? Guid.Empty;
         var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
 
-        var actions = new List<string>();
+        SelectedMenuMessage = item;
+        SelectedMessageSenderName = item.IsOutgoing ? "You" : (string.IsNullOrWhiteSpace(item.SenderName) ? "User" : item.SenderName);
+        SelectedMessageTime = item.TimeFormatted;
+        SelectedMessagePreviewText = !string.IsNullOrWhiteSpace(item.Content) 
+            ? item.Content 
+            : (item.IsVoiceMessage ? "🎙️ Voice message" : (item.IsImageMessage ? "📷 Image" : (item.IsDocumentMessage ? "📄 Document" : "Message")));
 
-        // Copy text (if not deleted and has content)
-        if (!item.IsDeleted && !string.IsNullOrWhiteSpace(item.Content))
-        {
-            actions.Add("📋 Copy Text");
-        }
+        CanCopySelectedMessage = !item.IsDeleted && !string.IsNullOrWhiteSpace(item.Content);
+        CanForwardSelectedMessage = myRole == UserRole.Admin && !item.IsDeleted;
+        CanDeleteSelectedMessage = !item.IsDeleted && (
+            myRole == UserRole.Admin ||
+            (myRole == UserRole.Manager && (item.SenderId == myUserId || item.IsOutgoing))
+        );
 
-        // Forward option: strictly Admin only
-        if (myRole == UserRole.Admin && !item.IsDeleted)
-        {
-            actions.Add("↪️ Forward Message");
-        }
+        IsMessageMenuVisible = true;
+    }
 
-        // Delete option:
-        // Admin: can delete any staff or own message
-        // Manager: can delete ONLY their own messages
-        // User: CANNOT delete anything!
-        if (!item.IsDeleted)
+    [RelayCommand]
+    private void CloseMessageMenu()
+    {
+        IsMessageMenuVisible = false;
+        SelectedMenuMessage = null;
+    }
+
+    [RelayCommand]
+    private async Task CopyMessageFromMenuAsync()
+    {
+        var msg = SelectedMenuMessage;
+        IsMessageMenuVisible = false;
+        if (msg != null && !string.IsNullOrWhiteSpace(msg.Content))
         {
-            if (myRole == UserRole.Admin)
+            await Clipboard.Default.SetTextAsync(msg.Content);
+            if (Application.Current?.MainPage != null)
             {
-                actions.Add("🗑️ Delete for Everyone");
-            }
-            else if (myRole == UserRole.Manager && (item.SenderId == myUserId || item.IsOutgoing))
-            {
-                actions.Add("🗑️ Delete for Everyone");
+                await Application.Current.MainPage.DisplayAlertAsync("Copied", "Message text copied to clipboard.", "OK");
             }
         }
+        SelectedMenuMessage = null;
+    }
 
-        if (actions.Count == 0) return;
-
-        var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
-            "Message Options",
-            "Cancel",
-            null,
-            actions.ToArray()
-        )!;
-
-        if (string.IsNullOrEmpty(choice) || choice == "Cancel") return;
-
-        if (choice == "📋 Copy Text")
+    [RelayCommand]
+    private async Task TriggerForwardFromMenuAsync()
+    {
+        var msg = SelectedMenuMessage;
+        IsMessageMenuVisible = false;
+        SelectedMenuMessage = null;
+        if (msg != null)
         {
-            await Clipboard.Default.SetTextAsync(item.Content);
+            await OpenForwardModalAsync(msg);
         }
-        else if (choice == "🗑️ Delete for Everyone")
+    }
+
+    [RelayCommand]
+    private async Task TriggerDeleteFromMenuAsync()
+    {
+        var msg = SelectedMenuMessage;
+        IsMessageMenuVisible = false;
+        SelectedMenuMessage = null;
+        if (msg != null)
         {
-            var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
-                "Delete Message",
-                "Are you sure you want to delete this message for everyone?",
-                "Delete",
-                "Cancel"
-            )!;
+            var confirm = Application.Current?.MainPage != null
+                ? await Application.Current.MainPage.DisplayAlertAsync(
+                    "Delete Message",
+                    "Are you sure you want to delete this message for everyone?",
+                    "Delete",
+                    "Cancel")
+                : false;
 
             if (confirm && _signalRService != null)
             {
-                await _signalRService.DeleteMessageAsync(item.Id);
+                await _signalRService.DeleteMessageAsync(msg.Id);
             }
         }
-        else if (choice == "↪️ Forward Message")
-        {
-            await OpenForwardModalAsync(item);
-        }
+    }
+
+    // Also alias ShowMessageOptions to ShowMessageMenu
+    [RelayCommand]
+    private void ShowMessageOptions(ChatMessageItem? item)
+    {
+        ShowMessageMenu(item);
     }
 
     private async Task OpenForwardModalAsync(ChatMessageItem item)
     {
         MessageToForward = item;
-        ForwardSearchText = string.Empty;
-        AllForwardUsers.Clear();
-        FilteredForwardUsers.Clear();
+        ForwardStep = 0;
+        SelectedForwardDepartment = null;
+        ForwardDeptSearchText = string.Empty;
+        ForwardDepartments.Clear();
+        FilteredForwardDepartments.Clear();
+        DepartmentForwardUsers.Clear();
+        FilteredDepartmentForwardUsers.Clear();
+        IsLoadingForwardData = true;
+        IsForwardModalVisible = true;
 
-        if (_apiService != null)
+        try
         {
-            var depts = await _apiService.GetDepartmentsAsync();
-            foreach (var dept in depts)
+            if (_apiService != null)
             {
-                var convs = await _apiService.GetConversationsForDepartmentAsync(dept.Id);
-                foreach (var c in convs)
+                var depts = await _apiService.GetDepartmentsAsync();
+                foreach (var d in depts)
                 {
-                    var fwd = new ForwardUserItem
+                    var fwdDept = new ForwardDepartmentItem
+                    {
+                        Id = d.Id,
+                        Name = d.Name,
+                        Description = d.Description,
+                        Icon = GetDepartmentIcon(d.Name)
+                    };
+                    ForwardDepartments.Add(fwdDept);
+                    FilteredForwardDepartments.Add(fwdDept);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoomViewModel] OpenForwardModalAsync error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingForwardData = false;
+        }
+    }
+
+    partial void OnForwardDeptSearchTextChanged(string value)
+    {
+        FilteredForwardDepartments.Clear();
+        var q = value?.Trim().ToLowerInvariant() ?? "";
+        foreach (var d in ForwardDepartments)
+        {
+            if (string.IsNullOrEmpty(q) || d.Name.ToLowerInvariant().Contains(q) || d.Description.ToLowerInvariant().Contains(q))
+            {
+                FilteredForwardDepartments.Add(d);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task SelectForwardDepartmentAsync(ForwardDepartmentItem? dept)
+    {
+        if (dept == null || _apiService == null) return;
+
+        SelectedForwardDepartment = dept;
+        ForwardStep = 1;
+        ForwardUserSearchText = string.Empty;
+        DepartmentForwardUsers.Clear();
+        FilteredDepartmentForwardUsers.Clear();
+        IsLoadingForwardData = true;
+
+        try
+        {
+            var convs = await _apiService.GetConversationsForDepartmentAsync(dept.Id);
+            var seenUserIds = new HashSet<Guid>();
+
+            foreach (var c in convs)
+            {
+                if (c.CreatedByUserId != Guid.Empty && seenUserIds.Add(c.CreatedByUserId))
+                {
+                    var userItem = new ForwardUserItem
                     {
                         UserId = c.CreatedByUserId,
                         FullName = c.CreatedByUserName,
                         DepartmentId = dept.Id,
                         DepartmentName = dept.Name,
+                        Subtitle = c.Status == ConversationStatus.Active ? "Active Chat" : "Chat Closed",
                         IsOnline = c.IsOnline
                     };
-                    AllForwardUsers.Add(fwd);
-                    FilteredForwardUsers.Add(fwd);
+                    DepartmentForwardUsers.Add(userItem);
+                    FilteredDepartmentForwardUsers.Add(userItem);
+                }
+            }
+
+            var allUsers = await _apiService.GetUsersAsync();
+            foreach (var u in allUsers.Where(x => x.Role == UserRole.User))
+            {
+                if (seenUserIds.Add(u.Id))
+                {
+                    var userItem = new ForwardUserItem
+                    {
+                        UserId = u.Id,
+                        FullName = u.FullName,
+                        DepartmentId = dept.Id,
+                        DepartmentName = dept.Name,
+                        Subtitle = !string.IsNullOrWhiteSpace(u.Email) ? u.Email : "Customer",
+                        IsOnline = false
+                    };
+                    DepartmentForwardUsers.Add(userItem);
+                    FilteredDepartmentForwardUsers.Add(userItem);
                 }
             }
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoomViewModel] SelectForwardDepartmentAsync error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingForwardData = false;
+        }
+    }
 
-        IsForwardModalVisible = true;
+    partial void OnForwardUserSearchTextChanged(string value)
+    {
+        FilteredDepartmentForwardUsers.Clear();
+        var q = value?.Trim().ToLowerInvariant() ?? "";
+        foreach (var u in DepartmentForwardUsers)
+        {
+            if (string.IsNullOrEmpty(q) || u.FullName.ToLowerInvariant().Contains(q) || u.Subtitle.ToLowerInvariant().Contains(q))
+            {
+                FilteredDepartmentForwardUsers.Add(u);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private void StepBackToDepartments()
+    {
+        ForwardStep = 0;
+        SelectedForwardDepartment = null;
+        ForwardUserSearchText = string.Empty;
+        DepartmentForwardUsers.Clear();
+        FilteredDepartmentForwardUsers.Clear();
     }
 
     [RelayCommand]
@@ -2680,19 +2880,8 @@ public partial class ChatRoomViewModel : ObservableObject
     {
         IsForwardModalVisible = false;
         MessageToForward = null;
-    }
-
-    partial void OnForwardSearchTextChanged(string value)
-    {
-        FilteredForwardUsers.Clear();
-        var q = value?.Trim().ToLowerInvariant() ?? "";
-        foreach (var u in AllForwardUsers)
-        {
-            if (string.IsNullOrEmpty(q) || u.FullName.ToLowerInvariant().Contains(q) || u.DepartmentName.ToLowerInvariant().Contains(q))
-            {
-                FilteredForwardUsers.Add(u);
-            }
-        }
+        SelectedForwardDepartment = null;
+        ForwardStep = 0;
     }
 
     [RelayCommand]
@@ -2701,15 +2890,39 @@ public partial class ChatRoomViewModel : ObservableObject
         if (target == null || MessageToForward == null || _signalRService == null) return;
 
         IsForwardModalVisible = false;
-        await _signalRService.ForwardMessageAsync(MessageToForward.Id, target.DepartmentId, target.UserId);
-
-        await Application.Current?.MainPage?.DisplayAlertAsync(
-            "Forwarded",
-            $"Message forwarded to {target.FullName} in {target.DepartmentName}.",
-            "OK"
-        )!;
+        var msgId = MessageToForward.Id;
+        var targetDeptId = target.DepartmentId;
+        var targetUserId = target.UserId;
+        var targetName = target.FullName;
+        var targetDeptName = target.DepartmentName;
 
         MessageToForward = null;
+        SelectedForwardDepartment = null;
+        ForwardStep = 0;
+
+        await _signalRService.ForwardMessageAsync(msgId, targetDeptId, targetUserId);
+
+        if (Application.Current?.MainPage != null)
+        {
+            await Application.Current.MainPage.DisplayAlertAsync(
+                "Forwarded",
+                $"Message forwarded to {targetName} in {targetDeptName}.",
+                "OK"
+            );
+        }
+    }
+
+    private static string GetDepartmentIcon(string name)
+    {
+        if (name.Contains("Complaint", StringComparison.OrdinalIgnoreCase)) return "⚠️";
+        if (name.Contains("IT", StringComparison.OrdinalIgnoreCase) || name.Contains("Tech", StringComparison.OrdinalIgnoreCase)) return "💻";
+        if (name.Contains("Billing", StringComparison.OrdinalIgnoreCase) || name.Contains("Account", StringComparison.OrdinalIgnoreCase) || name.Contains("Finance", StringComparison.OrdinalIgnoreCase)) return "💳";
+        if (name.Contains("HR", StringComparison.OrdinalIgnoreCase) || name.Contains("Human", StringComparison.OrdinalIgnoreCase)) return "👥";
+        if (name.Contains("Sale", StringComparison.OrdinalIgnoreCase) || name.Contains("Marketing", StringComparison.OrdinalIgnoreCase)) return "📈";
+        if (name.Contains("Logistic", StringComparison.OrdinalIgnoreCase) || name.Contains("Delivery", StringComparison.OrdinalIgnoreCase) || name.Contains("Ship", StringComparison.OrdinalIgnoreCase)) return "🚚";
+        if (name.Contains("Legal", StringComparison.OrdinalIgnoreCase)) return "⚖️";
+        if (name.Contains("Support", StringComparison.OrdinalIgnoreCase) || name.Contains("Help", StringComparison.OrdinalIgnoreCase)) return "🎧";
+        return "📁";
     }
 
     [RelayCommand]

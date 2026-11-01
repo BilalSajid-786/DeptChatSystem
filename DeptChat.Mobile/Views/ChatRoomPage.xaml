@@ -2,6 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             xmlns:behaviors="clr-namespace:DeptChat.Mobile.Behaviors"
              x:Class="DeptChat.Mobile.Views.ChatRoomPage"
              Shell.NavBarIsVisible="False"
              SafeAreaEdges="None"
@@ -121,8 +122,6 @@
                                 ItemsSource="{Binding Messages}"
                                 BackgroundColor="Transparent"
                                 Margin="8,4"
-                                ItemSizingStrategy="MeasureAllItems"
-                                ItemsUpdatingScrollMode="KeepLastItemInView"
                                 Scrolled="OnMessagesScrolled">
                     <CollectionView.Header>
                         <VerticalStackLayout IsVisible="{Binding IsLoadingOlderMessages}" Padding="8" HorizontalOptions="Center">
@@ -139,8 +138,13 @@
                                         StrokeShape="{Binding BubbleShape}"
                                         Padding="10,6,10,6"
                                         MaximumWidthRequest="300">
+                                    <Border.Behaviors>
+                                        <behaviors:LongPressBehavior Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageMenuCommand}"
+                                                                     CommandParameter="{Binding .}" />
+                                    </Border.Behaviors>
                                     <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageOptionsCommand}"
+                                        <TapGestureRecognizer NumberOfTapsRequired="2"
+                                                              Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageMenuCommand}"
                                                               CommandParameter="{Binding .}" />
                                     </Border.GestureRecognizers>
 
@@ -687,7 +691,124 @@
             </Grid>
         </Grid>
 
-        <!-- 3. Forward Message Modal Overlay (Admin Only) -->
+        <!-- Enhanced Message Context Menu Modal (WhatsApp Floating Card Style) -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsMessageMenuVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="99">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseMessageMenuCommand}" />
+            </Grid.GestureRecognizers>
+
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="24,0"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="360">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+
+                <VerticalStackLayout Spacing="0">
+                    <!-- Message Preview Card -->
+                    <Border BackgroundColor="#F8FAFC"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 12"
+                            Margin="16,16,16,12"
+                            Padding="12,10">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <Label Grid.Column="0"
+                                       Text="{Binding SelectedMessageSenderName}"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       TextColor="#008069"
+                                       LineBreakMode="TailTruncation" />
+                                <Label Grid.Column="1"
+                                       Text="{Binding SelectedMessageTime}"
+                                       FontSize="11"
+                                       TextColor="#94A3B8" />
+                            </Grid>
+                            <Label Text="{Binding SelectedMessagePreviewText}"
+                                   FontSize="14"
+                                   TextColor="#334155"
+                                   MaxLines="3"
+                                   LineBreakMode="TailTruncation" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                    <!-- Action 1: Copy Text -->
+                    <Grid Padding="20,14"
+                          ColumnDefinitions="32, *"
+                          IsVisible="{Binding CanCopySelectedMessage}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding CopyMessageFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="📋" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Copy Text" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+                            <Label Text="Copy message text to clipboard" FontSize="11" TextColor="#64748B" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanCopySelectedMessage}" />
+
+                    <!-- Action 2: Forward Message (Admin Only) -->
+                    <Grid Padding="20,14"
+                          ColumnDefinitions="32, *"
+                          IsVisible="{Binding CanForwardSelectedMessage}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding TriggerForwardFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="↪️" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Forward Message" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+                            <Label Text="Forward to any user in any department" FontSize="11" TextColor="#64748B" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanForwardSelectedMessage}" />
+
+                    <!-- Action 3: Delete for Everyone (Admin or Manager own message) -->
+                    <Grid Padding="20,14"
+                          ColumnDefinitions="32, *"
+                          IsVisible="{Binding CanDeleteSelectedMessage}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding TriggerDeleteFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="🗑️" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Delete for Everyone" FontSize="15" FontAttributes="Bold" TextColor="#DC2626" />
+                            <Label Text="Remove this message for all participants" FontSize="11" TextColor="#EF4444" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <BoxView HeightRequest="1" Color="#E2E8F0" />
+
+                    <!-- Close / Dismiss Button -->
+                    <Button Text="Cancel"
+                            Command="{Binding CloseMessageMenuCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#64748B"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HeightRequest="44"
+                            Margin="16,4,16,12" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- 3. Forward Message Modal Overlay (Admin Only - 2-Step Workflow) -->
         <Grid Grid.RowSpan="2"
               IsVisible="{Binding IsForwardModalVisible}"
               BackgroundColor="#80000000"
@@ -696,26 +817,28 @@
                     Stroke="#CBD5E1"
                     StrokeThickness="1"
                     StrokeShape="RoundRectangle 16"
-                    Margin="20,40"
+                    Margin="20,30"
                     Padding="0"
                     HorizontalOptions="Fill"
                     VerticalOptions="Center"
-                    MaximumHeightRequest="520">
+                    MaximumHeightRequest="560">
                 <Border.Shadow>
                     <Shadow Brush="#40000000" Offset="0,6" Radius="16" Opacity="0.3" />
                 </Border.Shadow>
+
                 <Grid RowDefinitions="Auto, Auto, *, Auto">
-                    <!-- Modal Header -->
+                    <!-- Step 0 Header (Select Department) -->
                     <Grid Grid.Row="0"
                           BackgroundColor="#075E54"
                           Padding="16,12"
-                          ColumnDefinitions="*, Auto">
+                          ColumnDefinitions="*, Auto"
+                          IsVisible="{Binding IsForwardStep0}">
                         <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="Forward Message"
+                            <Label Text="Forward Message (1/2)"
                                    TextColor="White"
                                    FontAttributes="Bold"
                                    FontSize="16" />
-                            <Label Text="Select a recipient in any department"
+                            <Label Text="Select the target department"
                                    TextColor="#E2E8F0"
                                    FontSize="12" />
                         </VerticalStackLayout>
@@ -731,7 +854,45 @@
                                 VerticalOptions="Center" />
                     </Grid>
 
-                    <!-- Search Bar -->
+                    <!-- Step 1 Header (Select User within Department) -->
+                    <Grid Grid.Row="0"
+                          BackgroundColor="#075E54"
+                          Padding="10,12,16,12"
+                          ColumnDefinitions="Auto, *, Auto"
+                          IsVisible="{Binding IsForwardStep1}">
+                        <Button Grid.Column="0"
+                                Text="←"
+                                Command="{Binding StepBackToDepartmentsCommand}"
+                                BackgroundColor="Transparent"
+                                TextColor="White"
+                                FontSize="20"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                Padding="0"
+                                VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" Margin="4,0,0,0">
+                            <Label Text="Forward Message (2/2)"
+                                   TextColor="White"
+                                   FontAttributes="Bold"
+                                   FontSize="16" />
+                            <Label Text="{Binding SelectedForwardDepartment.Name, StringFormat='Select user in {0}'}"
+                                   TextColor="#E2E8F0"
+                                   FontSize="12"
+                                   LineBreakMode="TailTruncation" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="2"
+                                Text="✕"
+                                Command="{Binding CloseForwardModalCommand}"
+                                BackgroundColor="Transparent"
+                                TextColor="White"
+                                FontSize="18"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                Padding="0"
+                                VerticalOptions="Center" />
+                    </Grid>
+
+                    <!-- Search Bar Step 0: Department Search -->
                     <Border Grid.Row="1"
                             BackgroundColor="#F1F5F9"
                             Stroke="#CBD5E1"
@@ -739,12 +900,13 @@
                             StrokeShape="RoundRectangle 20"
                             Margin="12,10,12,6"
                             Padding="12,0"
-                            HeightRequest="40">
+                            HeightRequest="40"
+                            IsVisible="{Binding IsForwardStep0}">
                         <Grid ColumnDefinitions="Auto, *">
                             <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
                             <Entry Grid.Column="1"
-                                   Text="{Binding ForwardSearchText}"
-                                   Placeholder="Search user or department..."
+                                   Text="{Binding ForwardDeptSearchText}"
+                                   Placeholder="Search department..."
                                    PlaceholderColor="#94A3B8"
                                    TextColor="#0F172A"
                                    FontSize="13"
@@ -752,66 +914,137 @@
                         </Grid>
                     </Border>
 
-                    <!-- Recipient List -->
+                    <!-- Search Bar Step 1: User Search -->
+                    <Border Grid.Row="1"
+                            BackgroundColor="#F1F5F9"
+                            Stroke="#CBD5E1"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 20"
+                            Margin="12,10,12,6"
+                            Padding="12,0"
+                            HeightRequest="40"
+                            IsVisible="{Binding IsForwardStep1}">
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
+                            <Entry Grid.Column="1"
+                                   Text="{Binding ForwardUserSearchText}"
+                                   Placeholder="Search user by name or email..."
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#0F172A"
+                                   FontSize="13"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Loading Indicator -->
+                    <ActivityIndicator Grid.Row="2"
+                                       IsRunning="{Binding IsLoadingForwardData}"
+                                       IsVisible="{Binding IsLoadingForwardData}"
+                                       Color="#075E54"
+                                       WidthRequest="36"
+                                       HeightRequest="36"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+
+                    <!-- Step 0 List: Departments -->
                     <CollectionView Grid.Row="2"
-                                    ItemsSource="{Binding FilteredForwardUsers}"
+                                    ItemsSource="{Binding FilteredForwardDepartments}"
                                     Margin="8,4"
-                                    EmptyView="No recipients found.">
+                                    IsVisible="{Binding IsForwardStep0}"
+                                    EmptyView="No departments found.">
                         <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ForwardUserItem">
-                                <Grid Padding="10,8" ColumnDefinitions="Auto, *, Auto">
-                                    <Grid.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ExecuteForwardCommand}"
+                            <DataTemplate x:DataType="vm:ForwardDepartmentItem">
+                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=SelectForwardDepartmentCommand}"
                                                               CommandParameter="{Binding .}" />
-                                    </Grid.GestureRecognizers>
-                                    <!-- Avatar Initial -->
-                                    <Border Grid.Column="0"
-                                            BackgroundColor="#00A884"
-                                            Stroke="Transparent"
-                                            StrokeShape="RoundRectangle 18"
-                                            WidthRequest="36"
-                                            HeightRequest="36"
-                                            VerticalOptions="Center">
-                                        <Label Text="{Binding AvatarInitial}"
-                                               TextColor="White"
-                                               FontAttributes="Bold"
-                                               FontSize="15"
-                                               HorizontalOptions="Center"
-                                               VerticalOptions="Center" />
-                                    </Border>
-                                    <!-- Name & Department -->
-                                    <VerticalStackLayout Grid.Column="1" Spacing="2" Margin="10,0,0,0" VerticalOptions="Center">
-                                        <Label Text="{Binding FullName}"
-                                               FontAttributes="Bold"
-                                               FontSize="14"
-                                               TextColor="#0F172A"
-                                               LineBreakMode="TailTruncation" />
-                                        <Label Text="{Binding DepartmentName}"
-                                               FontSize="12"
-                                               TextColor="#64748B"
-                                               LineBreakMode="TailTruncation" />
-                                    </VerticalStackLayout>
-                                    <!-- Forward Action Icon -->
-                                    <Label Grid.Column="2"
-                                           Text="↪️"
-                                           FontSize="18"
-                                           VerticalOptions="Center"
-                                           Padding="8,0" />
-                                </Grid>
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="36, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                        <Label Grid.Column="0" Text="{Binding Icon}" FontSize="22" VerticalOptions="Center" HorizontalOptions="Center" />
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="14" TextColor="#0F172A" LineBreakMode="TailTruncation" />
+                                            <Label Text="{Binding Description}" FontSize="12" TextColor="#64748B" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" Padding="4,0" />
+                                    </Grid>
+                                </Border>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <!-- Modal Footer -->
-                    <Button Grid.Row="3"
-                            Text="Cancel"
-                            Command="{Binding CloseForwardModalCommand}"
-                            BackgroundColor="#F1F5F9"
-                            TextColor="#475569"
-                            FontAttributes="Bold"
-                            Margin="12,6,12,12"
-                            HeightRequest="42"
-                            CornerRadius="8" />
+                    <!-- Step 1 List: Users in Selected Department -->
+                    <CollectionView Grid.Row="2"
+                                    ItemsSource="{Binding FilteredDepartmentForwardUsers}"
+                                    Margin="8,4"
+                                    IsVisible="{Binding IsForwardStep1}"
+                                    EmptyView="No users found in this department.">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ForwardUserItem">
+                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ExecuteForwardCommand}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                        <!-- Avatar -->
+                                        <Border Grid.Column="0"
+                                                BackgroundColor="#00A884"
+                                                Stroke="Transparent"
+                                                StrokeShape="RoundRectangle 18"
+                                                WidthRequest="36"
+                                                HeightRequest="36"
+                                                VerticalOptions="Center">
+                                            <Label Text="{Binding AvatarInitial}"
+                                                   TextColor="White"
+                                                   FontAttributes="Bold"
+                                                   FontSize="15"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center" />
+                                        </Border>
+                                        <!-- Details -->
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                                <Label Text="{Binding FullName}"
+                                                       FontAttributes="Bold"
+                                                       FontSize="14"
+                                                       TextColor="#0F172A"
+                                                       LineBreakMode="TailTruncation" />
+                                                <Border BackgroundColor="#DCFCE7"
+                                                        Stroke="Transparent"
+                                                        StrokeShape="RoundRectangle 4"
+                                                        Padding="6,1"
+                                                        VerticalOptions="Center"
+                                                        IsVisible="{Binding ShowOnlineBadge}">
+                                                    <Label Text="ONLINE" TextColor="#166534" FontSize="9" FontAttributes="Bold" />
+                                                </Border>
+                                            </HorizontalStackLayout>
+                                            <Label Text="{Binding Subtitle}"
+                                                   FontSize="12"
+                                                   TextColor="#64748B"
+                                                   LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                        <!-- Forward Icon -->
+                                        <Label Grid.Column="2"
+                                               Text="↪️"
+                                               FontSize="18"
+                                               VerticalOptions="Center"
+                                               Padding="8,0" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <!-- Footer: Cancel Button -->
+                    <Grid Grid.Row="3" Margin="12,6,12,12">
+                        <Button Text="Cancel"
+                                Command="{Binding CloseForwardModalCommand}"
+                                BackgroundColor="#F1F5F9"
+                                TextColor="#475569"
+                                FontAttributes="Bold"
+                                HeightRequest="42"
+                                CornerRadius="8" />
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

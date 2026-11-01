@@ -307,4 +307,25 @@ public class AuthController : ControllerBase
         await _dbContext.SaveChangesAsync();
         return Ok(new { message = "Device token registered successfully." });
     }
+
+    /// <summary>
+    /// Logs out the user and clears all registered device tokens from the database.
+    /// </summary>
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && Guid.TryParse(userIdClaim, out var userId))
+        {
+            var tokens = await _dbContext.DeviceTokens.Where(dt => dt.UserId == userId).ToListAsync();
+            if (tokens.Count > 0)
+            {
+                _dbContext.DeviceTokens.RemoveRange(tokens);
+                await _dbContext.SaveChangesAsync();
+            }
+        }
+        return Ok(new { message = "Logged out successfully and device tokens removed." });
+    }
 }
+

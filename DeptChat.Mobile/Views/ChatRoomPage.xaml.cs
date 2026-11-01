@@ -76,13 +76,19 @@ public partial class ChatRoomPage : ContentPage
         });
     }
 
+    private DateTime _lastOlderMessagesFetchTime = DateTime.MinValue;
+
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
         if (_vm == null) return;
 
         if (e.FirstVisibleItemIndex <= 1 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages)
         {
-            _vm.LoadOlderMessagesCommand.Execute(null);
+            if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 1200)
+            {
+                _lastOlderMessagesFetchTime = DateTime.UtcNow;
+                _vm.LoadOlderMessagesCommand.Execute(null);
+            }
         }
     }
 

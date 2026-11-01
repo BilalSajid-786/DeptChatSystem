@@ -386,4 +386,19 @@ public class ChatApiService
             return (false, ex.Message);
         }
     }
+
+    public async Task<bool> LogoutAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl("api/auth/logout"), null);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] LogoutAsync error: {ex.Message}");
+            return false;
+        }
+    }
 }

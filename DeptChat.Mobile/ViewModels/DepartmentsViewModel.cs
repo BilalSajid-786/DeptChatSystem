@@ -174,22 +174,48 @@ public partial class DepartmentsViewModel : ObservableObject
     private bool _isManageAccountsModalVisible;
 
     [ObservableProperty]
-    private int _manageAccountsTab; // 0 = Managers, 1 = Clients
+    private int _manageAccountsTab; // 0 = Managers, 1 = Users
 
     public bool IsManagersTabActive => ManageAccountsTab == 0;
-    public bool IsClientsTabActive => ManageAccountsTab == 1;
+    public bool IsUsersTabActive => ManageAccountsTab == 1;
 
     public string ManagersTabBgColor => IsManagersTabActive ? "#008069" : "#F1F5F9";
     public string ManagersTabTextColor => IsManagersTabActive ? "White" : "#475569";
 
-    public string ClientsTabBgColor => IsClientsTabActive ? "#008069" : "#F1F5F9";
-    public string ClientsTabTextColor => IsClientsTabActive ? "White" : "#475569";
+    public string UsersTabBgColor => IsUsersTabActive ? "#008069" : "#F1F5F9";
+    public string UsersTabTextColor => IsUsersTabActive ? "White" : "#475569";
 
     [ObservableProperty]
     private ObservableCollection<ManagedAccountItem> _managedManagers = new();
 
     [ObservableProperty]
-    private ObservableCollection<ManagedAccountItem> _managedClients = new();
+    private ObservableCollection<ManagedAccountItem> _managedUsers = new();
+
+    private List<ManagedAccountItem> _allUsers = new();
+
+    [ObservableProperty]
+    private string _userSearchText = string.Empty;
+
+    partial void OnUserSearchTextChanged(string value)
+    {
+        FilterUsers();
+    }
+
+    private void FilterUsers()
+    {
+        if (string.IsNullOrWhiteSpace(UserSearchText))
+        {
+            ManagedUsers = new ObservableCollection<ManagedAccountItem>(_allUsers);
+        }
+        else
+        {
+            var q = UserSearchText.Trim().ToLowerInvariant();
+            var filtered = _allUsers.Where(u =>
+                (u.Title != null && u.Title.ToLowerInvariant().Contains(q)) ||
+                (u.Subtitle != null && u.Subtitle.ToLowerInvariant().Contains(q))).ToList();
+            ManagedUsers = new ObservableCollection<ManagedAccountItem>(filtered);
+        }
+    }
 
     [ObservableProperty]
     private bool _isLoadingAccounts;
@@ -201,11 +227,11 @@ public partial class DepartmentsViewModel : ObservableObject
         {
             ManageAccountsTab = idx;
             OnPropertyChanged(nameof(IsManagersTabActive));
-            OnPropertyChanged(nameof(IsClientsTabActive));
+            OnPropertyChanged(nameof(IsUsersTabActive));
             OnPropertyChanged(nameof(ManagersTabBgColor));
             OnPropertyChanged(nameof(ManagersTabTextColor));
-            OnPropertyChanged(nameof(ClientsTabBgColor));
-            OnPropertyChanged(nameof(ClientsTabTextColor));
+            OnPropertyChanged(nameof(UsersTabBgColor));
+            OnPropertyChanged(nameof(UsersTabTextColor));
         }
     }
 
@@ -217,16 +243,18 @@ public partial class DepartmentsViewModel : ObservableObject
         IsLoadingAccounts = true;
         ManageAccountsTab = 0;
         OnPropertyChanged(nameof(IsManagersTabActive));
-        OnPropertyChanged(nameof(IsClientsTabActive));
+        OnPropertyChanged(nameof(IsUsersTabActive));
         OnPropertyChanged(nameof(ManagersTabBgColor));
         OnPropertyChanged(nameof(ManagersTabTextColor));
-        OnPropertyChanged(nameof(ClientsTabBgColor));
-        OnPropertyChanged(nameof(ClientsTabTextColor));
+        OnPropertyChanged(nameof(UsersTabBgColor));
+        OnPropertyChanged(nameof(UsersTabTextColor));
 
         try
         {
             ManagedManagers.Clear();
-            ManagedClients.Clear();
+            ManagedUsers.Clear();
+            _allUsers.Clear();
+            UserSearchText = string.Empty;
 
             var managers = await _apiService.GetManagersAsync();
             foreach (var m in managers)
@@ -241,17 +269,19 @@ public partial class DepartmentsViewModel : ObservableObject
                 });
             }
 
-            var clients = await _apiService.GetClientsAsync();
-            foreach (var c in clients)
+            var allAppUsers = await _apiService.GetUsersAsync();
+            foreach (var u in allAppUsers.Where(x => x.Role == UserRole.User))
             {
-                ManagedClients.Add(new ManagedAccountItem
+                var item = new ManagedAccountItem
                 {
-                    Id = c.Id,
-                    Title = c.Name,
-                    Subtitle = !string.IsNullOrWhiteSpace(c.Code) ? c.Code : "Client Org",
-                    AccountType = "Client",
-                    IsBlocked = c.IsBlocked
-                });
+                    Id = u.Id,
+                    Title = u.FullName,
+                    Subtitle = !string.IsNullOrWhiteSpace(u.Email) ? u.Email : (!string.IsNullOrWhiteSpace(u.PhoneNumber) ? u.PhoneNumber : "Customer"),
+                    AccountType = "User",
+                    IsBlocked = u.IsBlocked
+                };
+                _allUsers.Add(item);
+                ManagedUsers.Add(item);
             }
         }
         catch (Exception ex)
@@ -316,45 +346,45 @@ public partial class DepartmentsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ToggleBlockClientAsync(ManagedAccountItem? item)
+    private async Task ToggleBlockUserAsync(ManagedAccountItem? item)
     {
         if (item == null || _apiService == null) return;
 
         if (item.IsBlocked)
         {
-            var (success, msg) = await _apiService.UnblockClientAsync(item.Id);
+            var (success, msg) = await _apiService.UnblockUserAsync(item.Id);
             if (success)
             {
                 item.IsBlocked = false;
                 if (Application.Current?.MainPage != null)
                 {
-                    await Application.Current.MainPage.DisplayAlertAsync("Client Unblocked", $"Client '{item.Title}' has been unblocked.", "OK");
+                    await Application.Current.MainPage.DisplayAlertAsync("Customer Unblocked", $"{item.Title} has been unblocked.", "OK");
                 }
             }
             else if (Application.Current?.MainPage != null)
             {
-                await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to unblock client.", "OK");
+                await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to unblock customer.", "OK");
             }
         }
         else
         {
             var confirm = Application.Current?.MainPage != null
-                ? await Application.Current.MainPage.DisplayAlertAsync("Block Client Organization", $"Are you sure you want to block client '{item.Title}'? All users in this client will be blocked from logging in.", "Block Client", "Cancel")
+                ? await Application.Current.MainPage.DisplayAlertAsync("Block Customer", $"Are you sure you want to block {item.Title}? They will not be able to log in or send messages.", "Block Customer", "Cancel")
                 : false;
             if (confirm)
             {
-                var (success, msg) = await _apiService.BlockClientAsync(item.Id);
+                var (success, msg) = await _apiService.BlockUserAsync(item.Id, "Blocked by Administrator");
                 if (success)
                 {
                     item.IsBlocked = true;
                     if (Application.Current?.MainPage != null)
                     {
-                        await Application.Current.MainPage.DisplayAlertAsync("Client Blocked", $"Client '{item.Title}' has been blocked.", "OK");
+                        await Application.Current.MainPage.DisplayAlertAsync("Customer Blocked", $"{item.Title} has been blocked.", "OK");
                     }
                 }
                 else if (Application.Current?.MainPage != null)
                 {
-                    await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to block client.", "OK");
+                    await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to block customer.", "OK");
                 }
             }
         }
@@ -535,6 +565,18 @@ public partial class DepartmentsViewModel : ObservableObject
     [RelayCommand]
     public async Task LogoutAsync()
     {
+        if (_apiService != null)
+        {
+            try
+            {
+                await _apiService.LogoutAsync();
+            }
+            catch
+            {
+                // Ignore API error during logout
+            }
+        }
+
         if (_signalRService != null)
         {
             try
