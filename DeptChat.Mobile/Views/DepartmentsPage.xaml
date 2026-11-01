@@ -1129,8 +1129,6 @@
 
         </Grid>
 
-</Grid>
-
 
     <!-- Manage Accounts & Security Modal (Admin Only) -->
     <Grid Grid.RowSpan="2"
@@ -1304,5 +1302,6 @@
                         CornerRadius="8" />
             </Grid>
         </Border>
+    </Grid>
     </Grid>
 </ContentPage>
