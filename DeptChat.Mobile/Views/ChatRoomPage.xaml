@@ -116,19 +116,30 @@
                     </Grid>
                 </Border>
 
+                <!-- Floating Top Older Messages Loading Indicator (Overlay, non-disruptive) -->
+                <Border Grid.Row="1"
+                        IsVisible="{Binding IsLoadingOlderMessages}"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Start"
+                        BackgroundColor="#075E54"
+                        StrokeShape="RoundRectangle 16"
+                        Padding="14,6"
+                        Margin="0,8"
+                        ZIndex="25"
+                        InputTransparent="True">
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <ActivityIndicator IsRunning="{Binding IsLoadingOlderMessages}" Color="White" WidthRequest="16" HeightRequest="16" VerticalOptions="Center" />
+                        <Label Text="Loading older messages..." TextColor="White" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+
                 <!-- Scrollable Messages Canvas -->
                 <CollectionView x:Name="MessagesCollectionView"
                                 Grid.Row="1"
                                 ItemsSource="{Binding Messages}"
                                 BackgroundColor="Transparent"
                                 Margin="8,4"
-                                ItemsUpdatingScrollMode="KeepItemsInView"
                                 Scrolled="OnMessagesScrolled">
-                    <CollectionView.Header>
-                        <VerticalStackLayout IsVisible="{Binding IsLoadingOlderMessages}" Padding="8" HorizontalOptions="Center">
-                            <ActivityIndicator IsRunning="{Binding IsLoadingOlderMessages}" Color="#075E54" WidthRequest="24" HeightRequest="24" />
-                        </VerticalStackLayout>
-                    </CollectionView.Header>
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChatMessageItem">
                             <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
@@ -138,12 +149,7 @@
                                         StrokeThickness="0.4"
                                         StrokeShape="RoundRectangle 14"
                                         Padding="10,6,10,6"
-                                        MaximumWidthRequest="300"
-                                        Loaded="OnMessageBorderLoaded">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageMenuCommand}"
-                                                              CommandParameter="{Binding .}" />
-                                    </Border.GestureRecognizers>
+                                        MaximumWidthRequest="300">
 
                                     <VerticalStackLayout Spacing="3">
                                         <!-- Forwarded Indicator -->

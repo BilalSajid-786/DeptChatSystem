@@ -5,6 +5,7 @@ public partial class ChatRoomPage : ContentPage
     private ViewModels.ChatRoomViewModel? _vm;
 #if ANDROID
     private Platforms.Android.KeyboardHeightObserver? _keyboardObserver;
+    private MessageRecyclerViewTouchListener? _rvTouchListener;
 #endif
 
     public ChatRoomPage(ViewModels.ChatRoomViewModel vm)
@@ -12,6 +13,7 @@ public partial class ChatRoomPage : ContentPage
         InitializeComponent();
         BindingContext = _vm = vm;
         AttachScrollHandler();
+        MessagesCollectionView.HandlerChanged += OnCollectionViewHandlerChanged;
     }
 
     public ChatRoomPage()
@@ -19,6 +21,12 @@ public partial class ChatRoomPage : ContentPage
         InitializeComponent();
         BindingContext = _vm = new ViewModels.ChatRoomViewModel();
         AttachScrollHandler();
+        MessagesCollectionView.HandlerChanged += OnCollectionViewHandlerChanged;
+    }
+
+    private void OnCollectionViewHandlerChanged(object? sender, EventArgs e)
+    {
+        SetupRecyclerView();
     }
 
     private void AttachScrollHandler()
@@ -56,15 +64,42 @@ public partial class ChatRoomPage : ContentPage
     protected override void OnHandlerChanged()
     {
         base.OnHandlerChanged();
+        SetupRecyclerView();
+    }
+
+    private void SetupRecyclerView()
+    {
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.SetItemViewCacheSize(20);
+            rv.SetItemViewCacheSize(25);
             rv.SetItemAnimator(null);
-            rv.HasFixedSize = false;
-            rv.NestedScrollingEnabled = false;
+            rv.NestedScrollingEnabled = true;
+
+            if (_rvTouchListener != null)
+            {
+                rv.RemoveOnItemTouchListener(_rvTouchListener);
+            }
+
+            var ctx = rv.Context ?? Android.App.Application.Context;
+            _rvTouchListener = new MessageRecyclerViewTouchListener(
+                ctx,
+                rv,
+                GetMessageAtAdapterPosition,
+                TriggerMessageActionMenu);
+
+            rv.AddOnItemTouchListener(_rvTouchListener);
         }
 #endif
+    }
+
+    private ViewModels.ChatMessageItem? GetMessageAtAdapterPosition(int position)
+    {
+        if (_vm != null && position >= 0 && position < _vm.Messages.Count)
+        {
+            return _vm.Messages[position];
+        }
+        return null;
     }
 
     private void OnMessagesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -83,6 +118,18 @@ public partial class ChatRoomPage : ContentPage
         {
             try
             {
+#if ANDROID
+                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+                    rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+                {
+                    int targetIndex = _vm?.Messages.IndexOf(item) ?? -1;
+                    if (targetIndex >= 0)
+                    {
+                        lm.ScrollToPositionWithOffset(targetIndex, 0);
+                        return;
+                    }
+                }
+#endif
                 await Task.Delay(40);
                 MessagesCollectionView.ScrollTo(item, position: ScrollToPosition.Start, animate: false);
             }
@@ -164,36 +211,6 @@ public partial class ChatRoomPage : ContentPage
         catch { }
     }
 
-    private void OnMessageBorderLoaded(object? sender, EventArgs e)
-    {
-#if ANDROID
-        if (sender is Border border && border.Handler?.PlatformView is Android.Views.View nativeView)
-        {
-            nativeView.Tag = new MauiViewTagHolder(border);
-            nativeView.LongClickable = true;
-            nativeView.LongClick -= OnNativeMessageLongClick;
-            nativeView.LongClick += OnNativeMessageLongClick;
-        }
-#endif
-    }
-
-#if ANDROID
-    private void OnNativeMessageLongClick(object? sender, Android.Views.View.LongClickEventArgs e)
-    {
-        e.Handled = true;
-        if (sender is Android.Views.View nativeView &&
-            nativeView.Tag is MauiViewTagHolder holder &&
-            holder.BorderRef.TryGetTarget(out var border) &&
-            border.BindingContext is ViewModels.ChatMessageItem item)
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                TriggerMessageActionMenu(item);
-            });
-        }
-    }
-#endif
-
     private void TriggerMessageActionMenu(ViewModels.ChatMessageItem item)
     {
         try
@@ -272,6 +289,8 @@ public partial class ChatRoomPage : ContentPage
     {
         base.OnAppearing();
 
+        SetupRecyclerView();
+
 #if ANDROID
         if (Microsoft.Maui.ApplicationModel.Platform.CurrentActivity != null)
         {
@@ -316,12 +335,94 @@ public partial class ChatRoomPage : ContentPage
 }
 
 #if ANDROID
-public class MauiViewTagHolder : Java.Lang.Object
+public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.RecyclerView.Widget.RecyclerView.IOnItemTouchListener
 {
-    public WeakReference<Border> BorderRef { get; }
-    public MauiViewTagHolder(Border border)
+    private readonly Android.Views.GestureDetector _gestureDetector;
+    private readonly AndroidX.RecyclerView.Widget.RecyclerView _recyclerView;
+    private readonly Func<int, ViewModels.ChatMessageItem?> _getItemAtPosition;
+    private readonly Action<ViewModels.ChatMessageItem> _onLongPress;
+
+    public MessageRecyclerViewTouchListener(
+        Android.Content.Context context,
+        AndroidX.RecyclerView.Widget.RecyclerView recyclerView,
+        Func<int, ViewModels.ChatMessageItem?> getItemAtPosition,
+        Action<ViewModels.ChatMessageItem> onLongPress)
     {
-        BorderRef = new WeakReference<Border>(border);
+        _recyclerView = recyclerView;
+        _getItemAtPosition = getItemAtPosition;
+        _onLongPress = onLongPress;
+
+        _gestureDetector = new Android.Views.GestureDetector(context, new LongPressGestureListener(this));
+        _gestureDetector.IsLongpressEnabled = true;
+    }
+
+    public bool OnInterceptTouchEvent(AndroidX.RecyclerView.Widget.RecyclerView rv, Android.Views.MotionEvent e)
+    {
+        // Deliver event to GestureDetector to track long press holding
+        _gestureDetector.OnTouchEvent(e);
+
+        // Always return false: allows RecyclerView to receive the full touch stream
+        // and handle smooth scrolling and flinging without any interference or delays!
+        return false;
+    }
+
+    public void OnTouchEvent(AndroidX.RecyclerView.Widget.RecyclerView rv, Android.Views.MotionEvent e)
+    {
+        _gestureDetector.OnTouchEvent(e);
+    }
+
+    public void OnRequestDisallowInterceptTouchEvent(bool disallowIntercept)
+    {
+    }
+
+    private void HandleLongPress(Android.Views.MotionEvent e)
+    {
+        var child = _recyclerView.FindChildViewUnder(e.GetX(), e.GetY());
+        if (child == null) return;
+
+        var holder = _recyclerView.FindContainingViewHolder(child);
+        if (holder == null) return;
+
+        int pos = holder.BindingAdapterPosition;
+        if (pos == AndroidX.RecyclerView.Widget.RecyclerView.NoPosition)
+        {
+            pos = holder.AbsoluteAdapterPosition;
+        }
+
+        if (pos >= 0)
+        {
+            var item = _getItemAtPosition(pos);
+            if (item != null)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    _onLongPress(item);
+                });
+            }
+        }
+    }
+
+    private class LongPressGestureListener : Android.Views.GestureDetector.SimpleOnGestureListener
+    {
+        private readonly MessageRecyclerViewTouchListener _parent;
+
+        public LongPressGestureListener(MessageRecyclerViewTouchListener parent)
+        {
+            _parent = parent;
+        }
+
+        public override void OnLongPress(Android.Views.MotionEvent? e)
+        {
+            if (e != null)
+            {
+                _parent.HandleLongPress(e);
+            }
+        }
+
+        public override bool OnDown(Android.Views.MotionEvent? e)
+        {
+            return true;
+        }
     }
 }
 #endif
