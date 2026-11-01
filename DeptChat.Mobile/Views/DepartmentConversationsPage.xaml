@@ -232,12 +232,24 @@
                                 <!-- User Name, Last Message, Timestamp -->
                                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="3">
                                     <Grid ColumnDefinitions="*, Auto">
-                                        <Label Grid.Column="0" 
-                                               Text="{Binding CreatedByUserName}" 
-                                               FontSize="15" 
-                                               FontAttributes="Bold" 
-                                               TextColor="#111B21" 
-                                               LineBreakMode="TailTruncation" />
+                                        <HorizontalStackLayout Grid.Column="0" Spacing="6" VerticalOptions="Center">
+                                            <Label Text="{Binding CreatedByUserName}" 
+                                                   FontSize="15" 
+                                                   FontAttributes="Bold" 
+                                                   TextColor="#111B21" 
+                                                   LineBreakMode="TailTruncation" />
+                                            <Border BackgroundColor="#FEE2E2"
+                                                    Stroke="Transparent"
+                                                    StrokeShape="RoundRectangle 4"
+                                                    Padding="6,1"
+                                                    IsVisible="{Binding IsUserBlocked}"
+                                                    VerticalOptions="Center">
+                                                <Label Text="BLOCKED"
+                                                       TextColor="#DC2626"
+                                                       FontSize="10"
+                                                       FontAttributes="Bold" />
+                                            </Border>
+                                        </HorizontalStackLayout>
                                         <Label Grid.Column="1" 
                                                Text="{Binding TimeFormatted}" 
                                                FontSize="11" 
@@ -404,7 +416,20 @@
 
                                         <!-- User Name & Email -->
                                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                                            <Label Text="{Binding FullName}" FontSize="14" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
+                                            <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                                <Label Text="{Binding FullName}" FontSize="14" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
+                                                <Border BackgroundColor="#FEE2E2"
+                                                        Stroke="Transparent"
+                                                        StrokeShape="RoundRectangle 4"
+                                                        Padding="4,1"
+                                                        IsVisible="{Binding IsBlocked}"
+                                                        VerticalOptions="Center">
+                                                    <Label Text="BLOCKED"
+                                                           TextColor="#DC2626"
+                                                           FontSize="9"
+                                                           FontAttributes="Bold" />
+                                                </Border>
+                                            </HorizontalStackLayout>
                                             <Label Text="{Binding Email}" FontSize="11" TextColor="#667781" LineBreakMode="TailTruncation" />
                                         </VerticalStackLayout>
 

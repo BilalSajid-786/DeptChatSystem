@@ -17,6 +17,9 @@ public class User
     public UserRole Role { get; set; } = UserRole.User;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeenAt { get; set; }
+    public bool IsBlocked { get; set; } = false;
+    public DateTime? BlockedAt { get; set; }
+    public Guid? BlockedByUserId { get; set; }
 
     public ICollection<DepartmentManager> DepartmentAssignments { get; set; } = new List<DepartmentManager>();
     public ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();

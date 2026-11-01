@@ -40,6 +40,9 @@ public class SignalRService
     public event Action<Guid, bool>? OnUserOnlineStatusChanged;
     public event Action<Guid, Guid, bool, bool, DateTime?>? OnUserPresenceState;
     public event Action<Guid, Guid, bool>? OnDepartmentPresenceState;
+    public event Action<Guid, Guid>? OnMessageDeleted;
+    public event Action<Guid, Guid, Guid>? OnMessageForwarded;
+    public event Action<string>? OnErrorMessage;
 
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
@@ -143,6 +146,21 @@ public class SignalRService
         _hubConnection.On<Guid, Guid, string, bool>("UserTyping", (convId, userId, userName, isTyping) =>
         {
             OnUserTyping?.Invoke(convId, userId, userName, isTyping);
+        });
+
+        _hubConnection.On<Guid, Guid>("MessageDeleted", (convId, msgId) =>
+        {
+            OnMessageDeleted?.Invoke(convId, msgId);
+        });
+
+        _hubConnection.On<Guid, Guid, Guid>("MessageForwarded", (srcMsgId, targetConvId, fwdMsgId) =>
+        {
+            OnMessageForwarded?.Invoke(srcMsgId, targetConvId, fwdMsgId);
+        });
+
+        _hubConnection.On<string>("ErrorMessage", (error) =>
+        {
+            OnErrorMessage?.Invoke(error);
         });
 
         _hubConnection.On<Guid, bool>("UserOnlineStatusChanged", (userId, isOnline) =>
@@ -348,5 +366,35 @@ public class SignalRService
         }
         catch { }
         return null;
+    }
+
+    public async Task DeleteMessageAsync(Guid messageId)
+    {
+        try
+        {
+            if (IsConnected)
+            {
+                await _hubConnection!.SendAsync("DeleteMessage", messageId);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SignalR] DeleteMessage error: {ex.Message}");
+        }
+    }
+
+    public async Task ForwardMessageAsync(Guid messageId, Guid targetDepartmentId, Guid targetUserId)
+    {
+        try
+        {
+            if (IsConnected)
+            {
+                await _hubConnection!.SendAsync("ForwardMessage", messageId, targetDepartmentId, targetUserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SignalR] ForwardMessage error: {ex.Message}");
+        }
     }
 }

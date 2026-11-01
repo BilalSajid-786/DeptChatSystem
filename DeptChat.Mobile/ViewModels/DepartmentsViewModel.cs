@@ -17,6 +17,37 @@ public class DepartmentItem
     public bool HasUnread => UnreadCount > 0;
 }
 
+public class ManagedAccountItem : ObservableObject
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Subtitle { get; set; } = string.Empty;
+    public string AccountType { get; set; } = "Manager"; // "Manager" or "Client"
+    private bool _isBlocked;
+    public bool IsBlocked
+    {
+        get => _isBlocked;
+        set
+        {
+            if (SetProperty(ref _isBlocked, value))
+            {
+                OnPropertyChanged(nameof(StatusBadgeText));
+                OnPropertyChanged(nameof(StatusBadgeColor));
+                OnPropertyChanged(nameof(StatusBadgeTextColor));
+                OnPropertyChanged(nameof(ActionBtnText));
+                OnPropertyChanged(nameof(ActionBtnColor));
+                OnPropertyChanged(nameof(ActionBtnTextColor));
+            }
+        }
+    }
+    public string StatusBadgeText => IsBlocked ? "BLOCKED" : "ACTIVE";
+    public string StatusBadgeColor => IsBlocked ? "#FEE2E2" : "#DCFCE7";
+    public string StatusBadgeTextColor => IsBlocked ? "#991B1B" : "#166534";
+    public string ActionBtnText => IsBlocked ? "Unblock" : "Block";
+    public string ActionBtnColor => IsBlocked ? "#DCFCE7" : "#FEE2E2";
+    public string ActionBtnTextColor => IsBlocked ? "#166534" : "#DC2626";
+}
+
 public partial class DepartmentsViewModel : ObservableObject
 {
     private readonly ChatApiService? _apiService;
@@ -138,6 +169,196 @@ public partial class DepartmentsViewModel : ObservableObject
     private bool _isCreatingDepartment;
 
     public bool CanSaveDepartment => !IsCreatingDepartment;
+
+        [ObservableProperty]
+    private bool _isManageAccountsModalVisible;
+
+    [ObservableProperty]
+    private int _manageAccountsTab; // 0 = Managers, 1 = Clients
+
+    public bool IsManagersTabActive => ManageAccountsTab == 0;
+    public bool IsClientsTabActive => ManageAccountsTab == 1;
+
+    public string ManagersTabBgColor => IsManagersTabActive ? "#008069" : "#F1F5F9";
+    public string ManagersTabTextColor => IsManagersTabActive ? "White" : "#475569";
+
+    public string ClientsTabBgColor => IsClientsTabActive ? "#008069" : "#F1F5F9";
+    public string ClientsTabTextColor => IsClientsTabActive ? "White" : "#475569";
+
+    [ObservableProperty]
+    private ObservableCollection<ManagedAccountItem> _managedManagers = new();
+
+    [ObservableProperty]
+    private ObservableCollection<ManagedAccountItem> _managedClients = new();
+
+    [ObservableProperty]
+    private bool _isLoadingAccounts;
+
+    [RelayCommand]
+    private void SelectManageAccountsTab(string tabIndex)
+    {
+        if (int.TryParse(tabIndex, out var idx))
+        {
+            ManageAccountsTab = idx;
+            OnPropertyChanged(nameof(IsManagersTabActive));
+            OnPropertyChanged(nameof(IsClientsTabActive));
+            OnPropertyChanged(nameof(ManagersTabBgColor));
+            OnPropertyChanged(nameof(ManagersTabTextColor));
+            OnPropertyChanged(nameof(ClientsTabBgColor));
+            OnPropertyChanged(nameof(ClientsTabTextColor));
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenManageAccountsModalAsync()
+    {
+        if (_apiService == null) return;
+        IsManageAccountsModalVisible = true;
+        IsLoadingAccounts = true;
+        ManageAccountsTab = 0;
+        OnPropertyChanged(nameof(IsManagersTabActive));
+        OnPropertyChanged(nameof(IsClientsTabActive));
+        OnPropertyChanged(nameof(ManagersTabBgColor));
+        OnPropertyChanged(nameof(ManagersTabTextColor));
+        OnPropertyChanged(nameof(ClientsTabBgColor));
+        OnPropertyChanged(nameof(ClientsTabTextColor));
+
+        try
+        {
+            ManagedManagers.Clear();
+            ManagedClients.Clear();
+
+            var managers = await _apiService.GetManagersAsync();
+            foreach (var m in managers)
+            {
+                ManagedManagers.Add(new ManagedAccountItem
+                {
+                    Id = m.Id,
+                    Title = m.FullName,
+                    Subtitle = m.Email,
+                    AccountType = "Manager",
+                    IsBlocked = m.IsBlocked
+                });
+            }
+
+            var clients = await _apiService.GetClientsAsync();
+            foreach (var c in clients)
+            {
+                ManagedClients.Add(new ManagedAccountItem
+                {
+                    Id = c.Id,
+                    Title = c.Name,
+                    Subtitle = !string.IsNullOrWhiteSpace(c.Code) ? c.Code : "Client Org",
+                    AccountType = "Client",
+                    IsBlocked = c.IsBlocked
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DepartmentsViewModel] OpenManageAccountsModal error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingAccounts = false;
+        }
+    }
+
+    [RelayCommand]
+    private void CloseManageAccountsModal()
+    {
+        IsManageAccountsModalVisible = false;
+    }
+
+    [RelayCommand]
+    private async Task ToggleBlockManagerAsync(ManagedAccountItem? item)
+    {
+        if (item == null || _apiService == null) return;
+
+        if (item.IsBlocked)
+        {
+            var (success, msg) = await _apiService.UnblockUserAsync(item.Id);
+            if (success)
+            {
+                item.IsBlocked = false;
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Manager Unblocked", $"{item.Title} has been unblocked.", "OK");
+                }
+            }
+            else if (Application.Current?.MainPage != null)
+            {
+                await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to unblock manager.", "OK");
+            }
+        }
+        else
+        {
+            var confirm = Application.Current?.MainPage != null
+                ? await Application.Current.MainPage.DisplayAlertAsync("Block Manager", $"Are you sure you want to block {item.Title}? They will not be able to log in or manage department chats.", "Block", "Cancel")
+                : false;
+            if (confirm)
+            {
+                var (success, msg) = await _apiService.BlockUserAsync(item.Id, "Blocked by Administrator");
+                if (success)
+                {
+                    item.IsBlocked = true;
+                    if (Application.Current?.MainPage != null)
+                    {
+                        await Application.Current.MainPage.DisplayAlertAsync("Manager Blocked", $"{item.Title} has been blocked.", "OK");
+                    }
+                }
+                else if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to block manager.", "OK");
+                }
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleBlockClientAsync(ManagedAccountItem? item)
+    {
+        if (item == null || _apiService == null) return;
+
+        if (item.IsBlocked)
+        {
+            var (success, msg) = await _apiService.UnblockClientAsync(item.Id);
+            if (success)
+            {
+                item.IsBlocked = false;
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Client Unblocked", $"Client '{item.Title}' has been unblocked.", "OK");
+                }
+            }
+            else if (Application.Current?.MainPage != null)
+            {
+                await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to unblock client.", "OK");
+            }
+        }
+        else
+        {
+            var confirm = Application.Current?.MainPage != null
+                ? await Application.Current.MainPage.DisplayAlertAsync("Block Client Organization", $"Are you sure you want to block client '{item.Title}'? All users in this client will be blocked from logging in.", "Block Client", "Cancel")
+                : false;
+            if (confirm)
+            {
+                var (success, msg) = await _apiService.BlockClientAsync(item.Id);
+                if (success)
+                {
+                    item.IsBlocked = true;
+                    if (Application.Current?.MainPage != null)
+                    {
+                        await Application.Current.MainPage.DisplayAlertAsync("Client Blocked", $"Client '{item.Title}' has been blocked.", "OK");
+                    }
+                }
+                else if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Error", msg ?? "Failed to block client.", "OK");
+                }
+            }
+        }
+    }
 
     public DepartmentsViewModel(ChatApiService apiService, AuthService authService, SignalRService signalRService)
     {

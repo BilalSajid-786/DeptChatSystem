@@ -24,6 +24,8 @@ public class LocalOutboxMessage
     public bool IsOutgoing { get; set; }
     public MessageDeliveryStatus Status { get; set; } = MessageDeliveryStatus.Pending;
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public bool IsDeleted { get; set; } = false;
+    public bool IsForwarded { get; set; } = false;
 }
 
 public class LocalOutboxService
@@ -41,7 +43,7 @@ public class LocalOutboxService
     {
         try
         {
-            const int CurrentCacheVersion = 3;
+            const int CurrentCacheVersion = 4;
             var cachedVer = Preferences.Default.Get("outbox_cache_version", 0);
             if (cachedVer < CurrentCacheVersion)
             {
@@ -147,7 +149,7 @@ public class LocalOutboxService
         }
     }
 
-    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, Guid senderId, UserRole senderRole, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt)
+    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, Guid senderId, UserRole senderRole, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt, bool isDeleted = false, bool isForwarded = false)
     {
         await EnsureInitializedAsync();
         var existing = await _db.Table<LocalOutboxMessage>()
@@ -162,6 +164,8 @@ public class LocalOutboxService
             existing.Status = status;
             existing.Content = content;
             existing.IsOutgoing = isOutgoing;
+            existing.IsDeleted = isDeleted;
+            existing.IsForwarded = isForwarded;
             await _db.UpdateAsync(existing);
         }
         else
@@ -178,9 +182,24 @@ public class LocalOutboxService
                 IsOutgoing = isOutgoing,
                 SequenceNumber = sequenceNumber,
                 Status = status,
-                Timestamp = sentAt
+                Timestamp = sentAt,
+                IsDeleted = isDeleted,
+                IsForwarded = isForwarded
             };
             await _db.InsertAsync(msg);
+        }
+    }
+
+    public async Task MarkMessageDeletedAsync(Guid serverMessageId)
+    {
+        await EnsureInitializedAsync();
+        var existing = await _db.Table<LocalOutboxMessage>()
+            .FirstOrDefaultAsync(m => m.ServerMessageId == serverMessageId);
+        if (existing != null)
+        {
+            existing.IsDeleted = true;
+            existing.Content = "🚫 This message was deleted";
+            await _db.UpdateAsync(existing);
         }
     }
 

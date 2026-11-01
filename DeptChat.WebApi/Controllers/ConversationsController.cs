@@ -148,7 +148,8 @@ public class ConversationsController : ControllerBase
                     conv.LastMessageAt,
                     unreadCounts.GetValueOrDefault(conv.Id, 0),
                     conv.Status,
-                    isOnline
+                    isOnline,
+                    conv.CreatedByUser?.IsBlocked ?? false
                 ));
             }
 
@@ -300,7 +301,9 @@ public class ConversationsController : ControllerBase
             m.SequenceNumber,
             m.Content,
             m.Status,
-            m.SentAt
+            m.SentAt,
+            m.IsDeleted,
+            m.IsForwarded
         )).ToList();
 
         long? earliestSeq = messageDtos.Count > 0 ? messageDtos.Min(m => m.SequenceNumber) : null;
@@ -368,7 +371,9 @@ public class ConversationsController : ControllerBase
             m.SequenceNumber,
             m.Content,
             m.Status,
-            m.SentAt
+            m.SentAt,
+            m.IsDeleted,
+            m.IsForwarded
         )).ToList();
 
         return Ok(new ConversationSyncResponseDto(id, lastSeq, messageDtos));
@@ -466,7 +471,8 @@ public class ConversationsController : ControllerBase
                 u.Email ?? u.PhoneNumber ?? "",
                 u.Role,
                 isOnline,
-                false
+                false,
+                u.IsBlocked
             ));
         }
 

@@ -67,5 +67,16 @@ public record UserSummaryDto(
     string? PhoneNumber,
     UserRole Role,
     string? Address,
+    DateTime CreatedAt,
+    bool IsBlocked = false
+);
+
+public record ClientSummaryDto(
+    Guid Id,
+    string Name,
+    string Code,
+    string? Description,
+    bool IsActive,
+    bool IsBlocked,
     DateTime CreatedAt
 );

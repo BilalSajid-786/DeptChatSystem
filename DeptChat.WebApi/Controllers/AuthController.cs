@@ -154,9 +154,14 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Invalid email/phone or password." });
         }
 
-        if (user.Client != null && !user.Client.IsActive)
+        if (user.Client != null && (!user.Client.IsActive || user.Client.IsBlocked))
         {
-            return Unauthorized(new { message = "Your organization workspace has been deactivated. Please contact support." });
+            return Unauthorized(new { message = "Your organization workspace has been suspended or blocked. Please contact support." });
+        }
+
+        if (user.IsBlocked)
+        {
+            return Unauthorized(new { message = "Your account has been blocked by an administrator. Please contact support." });
         }
 
         var clientName = user.Client?.Name ?? "Main Organization";

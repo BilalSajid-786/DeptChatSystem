@@ -9,12 +9,12 @@
 
     <Grid RowDefinitions="Auto, *">
 
-        <!-- 1. WhatsApp Top App Bar (Clean Header without call or menu buttons) -->
+        <!-- 1. WhatsApp Top App Bar (Header with Avatar, Presence & Staff Menu) -->
         <Grid Grid.Row="0"
               BackgroundColor="#075E54"
               HeightRequest="60"
               Padding="6,4,12,4"
-              ColumnDefinitions="Auto, *">
+              ColumnDefinitions="Auto, *, Auto">
 
             <!-- Back Arrow + Contact Avatar + Title -->
             <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
@@ -48,11 +48,26 @@
 
                 <!-- Department / Contact Title & Real-Time Presence Subtitle (WhatsApp Style) -->
                 <VerticalStackLayout VerticalOptions="Center" Spacing="1" Margin="4,0,0,0">
-                    <Label Text="{Binding ContactTitle}"
-                           TextColor="White"
-                           FontAttributes="Bold"
-                           FontSize="16"
-                           LineBreakMode="TailTruncation" />
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                        <Label Text="{Binding ContactTitle}"
+                               TextColor="White"
+                               FontAttributes="Bold"
+                               FontSize="16"
+                               LineBreakMode="TailTruncation" />
+
+                        <!-- Target Customer Blocked Badge -->
+                        <Border BackgroundColor="#DC2626"
+                                Stroke="Transparent"
+                                StrokeShape="RoundRectangle 4"
+                                Padding="6,1"
+                                IsVisible="{Binding IsTargetUserBlocked}"
+                                VerticalOptions="Center">
+                            <Label Text="BLOCKED"
+                                   TextColor="White"
+                                   FontSize="10"
+                                   FontAttributes="Bold" />
+                        </Border>
+                    </HorizontalStackLayout>
 
                     <Label Text="{Binding PresenceStatusText}"
                            TextColor="{Binding PresenceTextColor}"
@@ -61,6 +76,20 @@
                            LineBreakMode="TailTruncation" />
                 </VerticalStackLayout>
             </HorizontalStackLayout>
+
+            <!-- Staff More Menu (⋮) for Block / Unblock Customer -->
+            <Button Grid.Column="2"
+                    Text="⋮"
+                    Command="{Binding ShowChatMenuOptionsCommand}"
+                    IsVisible="{Binding IsStaff}"
+                    BackgroundColor="Transparent"
+                    TextColor="White"
+                    FontSize="22"
+                    FontAttributes="Bold"
+                    Padding="0"
+                    WidthRequest="36"
+                    HeightRequest="44"
+                    VerticalOptions="Center" />
         </Grid>
 
         <!-- 2. Chat Area: WhatsApp Doodle Wallpaper + Messages + Floating Input -->
@@ -110,14 +139,41 @@
                                         StrokeShape="{Binding BubbleShape}"
                                         Padding="10,6,10,6"
                                         MaximumWidthRequest="300">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageOptionsCommand}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
 
                                     <VerticalStackLayout Spacing="3">
+                                        <!-- Forwarded Indicator -->
+                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2">
+                                            <HorizontalStackLayout.Triggers>
+                                                <DataTrigger TargetType="HorizontalStackLayout" Binding="{Binding IsForwarded}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="HorizontalStackLayout" Binding="{Binding IsDeleted}" Value="True">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                            </HorizontalStackLayout.Triggers>
+                                            <Label Text="↪️" FontSize="11" TextColor="#64748B" VerticalOptions="Center" />
+                                            <Label Text="Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
                                         <!-- Sender Name (Only shown on incoming departmental messages) -->
                                         <Label Text="{Binding SenderName}"
                                                FontSize="12"
                                                TextColor="#075E54"
                                                FontAttributes="Bold"
                                                IsVisible="{Binding ShowSenderName}" />
+
+                                        <!-- Deleted Message Indicator -->
+                                        <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsDeleted}" Margin="0,2">
+                                            <Label Text="🚫" FontSize="13" TextColor="#64748B" VerticalOptions="Center" />
+                                            <Label Text="This message was deleted"
+                                                   FontSize="14"
+                                                   FontAttributes="Italic"
+                                                   TextColor="#64748B"
+                                                   VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
 
                                         <!-- Regular Text Message -->
                                         <Label Text="{Binding Content}"
@@ -128,6 +184,9 @@
                                                 <DataTrigger TargetType="Label" Binding="{Binding IsTextMessage}" Value="False">
                                                     <Setter Property="IsVisible" Value="False" />
                                                 </DataTrigger>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsDeleted}" Value="True">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
                                             </Label.Triggers>
                                         </Label>
 
@@ -135,6 +194,9 @@
                                         <VerticalStackLayout Spacing="4">
                                             <VerticalStackLayout.Triggers>
                                                 <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsImageMessage}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsDeleted}" Value="True">
                                                     <Setter Property="IsVisible" Value="False" />
                                                 </DataTrigger>
                                             </VerticalStackLayout.Triggers>
@@ -167,6 +229,9 @@
                                         <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4">
                                             <Grid.Triggers>
                                                 <DataTrigger TargetType="Grid" Binding="{Binding IsDocumentMessage}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDeleted}" Value="True">
                                                     <Setter Property="IsVisible" Value="False" />
                                                 </DataTrigger>
                                             </Grid.Triggers>
@@ -207,6 +272,9 @@
                                         <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2">
                                             <Grid.Triggers>
                                                 <DataTrigger TargetType="Grid" Binding="{Binding IsVoiceMessage}" Value="False">
+                                                    <Setter Property="IsVisible" Value="False" />
+                                                </DataTrigger>
+                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDeleted}" Value="True">
                                                     <Setter Property="IsVisible" Value="False" />
                                                 </DataTrigger>
                                             </Grid.Triggers>
@@ -263,9 +331,14 @@
                                             <Label Text="{Binding StatusIcon}" 
                                                    TextColor="{Binding StatusColor}" 
                                                    FontSize="11" 
-                                                   IsVisible="{Binding IsOutgoing}" 
                                                    FontAttributes="Bold"
-                                                   VerticalOptions="Center" />
+                                                   VerticalOptions="Center">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding IsStatusVisible}" Value="False">
+                                                        <Setter Property="IsVisible" Value="False" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
                                         </HorizontalStackLayout>
                                     </VerticalStackLayout>
                                 </Border>
@@ -331,6 +404,25 @@
                     </HorizontalStackLayout>
                 </Border>
 
+                <!-- Blocked User Warning (Replaces input bar when blocked) -->
+                <Border Grid.Row="2"
+                        IsVisible="{Binding IsCurrentUserBlocked}"
+                        BackgroundColor="#FEE2E2"
+                        Stroke="#FCA5A5"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,12"
+                        Margin="10,4,10,8">
+                    <HorizontalStackLayout Spacing="8" HorizontalOptions="Center" VerticalOptions="Center">
+                        <Label Text="🚫" FontSize="16" VerticalOptions="Center" />
+                        <Label Text="You have been blocked from sending messages in this chat."
+                               TextColor="#991B1B"
+                               FontAttributes="Bold"
+                               FontSize="13"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+
                 <!-- 3. WhatsApp Bottom Input Area (Floating Capsule + Green FAB) -->
                 <Grid Grid.Row="2"
                       ColumnDefinitions="*, Auto"
@@ -338,6 +430,11 @@
                       Padding="6,4,6,8"
                       BackgroundColor="Transparent"
                       VerticalOptions="End">
+                    <Grid.Triggers>
+                        <DataTrigger TargetType="Grid" Binding="{Binding IsCurrentUserBlocked}" Value="True">
+                            <Setter Property="IsVisible" Value="False" />
+                        </DataTrigger>
+                    </Grid.Triggers>
 
                     <!-- Capsule Pill (1. Normal Text Entry Mode) -->
                     <Border Grid.Column="0"
@@ -588,6 +685,135 @@
                     </Button>
                 </Grid>
             </Grid>
+        </Grid>
+
+        <!-- 3. Forward Message Modal Overlay (Admin Only) -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsForwardModalVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="100">
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="20,40"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumHeightRequest="520">
+                <Border.Shadow>
+                    <Shadow Brush="#40000000" Offset="0,6" Radius="16" Opacity="0.3" />
+                </Border.Shadow>
+                <Grid RowDefinitions="Auto, Auto, *, Auto">
+                    <!-- Modal Header -->
+                    <Grid Grid.Row="0"
+                          BackgroundColor="#075E54"
+                          Padding="16,12"
+                          ColumnDefinitions="*, Auto">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Forward Message"
+                                   TextColor="White"
+                                   FontAttributes="Bold"
+                                   FontSize="16" />
+                            <Label Text="Select a recipient in any department"
+                                   TextColor="#E2E8F0"
+                                   FontSize="12" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1"
+                                Text="✕"
+                                Command="{Binding CloseForwardModalCommand}"
+                                BackgroundColor="Transparent"
+                                TextColor="White"
+                                FontSize="18"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                Padding="0"
+                                VerticalOptions="Center" />
+                    </Grid>
+
+                    <!-- Search Bar -->
+                    <Border Grid.Row="1"
+                            BackgroundColor="#F1F5F9"
+                            Stroke="#CBD5E1"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 20"
+                            Margin="12,10,12,6"
+                            Padding="12,0"
+                            HeightRequest="40">
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
+                            <Entry Grid.Column="1"
+                                   Text="{Binding ForwardSearchText}"
+                                   Placeholder="Search user or department..."
+                                   PlaceholderColor="#94A3B8"
+                                   TextColor="#0F172A"
+                                   FontSize="13"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <!-- Recipient List -->
+                    <CollectionView Grid.Row="2"
+                                    ItemsSource="{Binding FilteredForwardUsers}"
+                                    Margin="8,4"
+                                    EmptyView="No recipients found.">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ForwardUserItem">
+                                <Grid Padding="10,8" ColumnDefinitions="Auto, *, Auto">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ExecuteForwardCommand}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Grid.GestureRecognizers>
+                                    <!-- Avatar Initial -->
+                                    <Border Grid.Column="0"
+                                            BackgroundColor="#00A884"
+                                            Stroke="Transparent"
+                                            StrokeShape="RoundRectangle 18"
+                                            WidthRequest="36"
+                                            HeightRequest="36"
+                                            VerticalOptions="Center">
+                                        <Label Text="{Binding AvatarInitial}"
+                                               TextColor="White"
+                                               FontAttributes="Bold"
+                                               FontSize="15"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+                                    <!-- Name & Department -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="2" Margin="10,0,0,0" VerticalOptions="Center">
+                                        <Label Text="{Binding FullName}"
+                                               FontAttributes="Bold"
+                                               FontSize="14"
+                                               TextColor="#0F172A"
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding DepartmentName}"
+                                               FontSize="12"
+                                               TextColor="#64748B"
+                                               LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+                                    <!-- Forward Action Icon -->
+                                    <Label Grid.Column="2"
+                                           Text="↪️"
+                                           FontSize="18"
+                                           VerticalOptions="Center"
+                                           Padding="8,0" />
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <!-- Modal Footer -->
+                    <Button Grid.Row="3"
+                            Text="Cancel"
+                            Command="{Binding CloseForwardModalCommand}"
+                            BackgroundColor="#F1F5F9"
+                            TextColor="#475569"
+                            FontAttributes="Bold"
+                            Margin="12,6,12,12"
+                            HeightRequest="42"
+                            CornerRadius="8" />
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </ContentPage>

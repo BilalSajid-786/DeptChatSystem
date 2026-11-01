@@ -366,6 +366,20 @@ public class ChatHub : Hub
         var role = GetUserRole();
         var senderName = Context.User?.Identity?.Name ?? (role == UserRole.User ? "Customer" : "Support Staff");
 
+        var senderUser = await _dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        if (senderUser != null && senderUser.IsBlocked)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "You have been blocked from sending messages.");
+            return;
+        }
+
+        var client = await _dbContext.Clients.AsNoTracking().FirstOrDefaultAsync(c => c.Id == (senderUser != null ? senderUser.ClientId : Guid.Empty));
+        if (client != null && (client.IsBlocked || !client.IsActive))
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Your organization workspace is currently blocked.");
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(dto.Content) || string.IsNullOrWhiteSpace(dto.ClientGeneratedId))
         {
             return;
@@ -442,7 +456,9 @@ public class ChatHub : Hub
             SequenceNumber = nextSeq,
             Content = dto.Content.Trim(),
             Status = initialStatus,
-            SentAt = DateTime.UtcNow
+            SentAt = DateTime.UtcNow,
+            IsDeleted = false,
+            IsForwarded = false
         };
 
         string previewText;
@@ -482,7 +498,9 @@ public class ChatHub : Hub
             message.SequenceNumber,
             message.Content,
             message.Status,
-            message.SentAt
+            message.SentAt,
+            message.IsDeleted,
+            message.IsForwarded
         );
 
         // 5. Tier 1: Real-time SignalR sub-100ms broadcast to room
@@ -684,4 +702,188 @@ public class ChatHub : Hub
         var clientIdClaim = Context.User?.FindFirstValue("client_id");
         return Guid.TryParse(clientIdClaim, out var id) ? id : Guid.Empty;
     }
+
+    /// <summary>
+    /// Soft-deletes a message.
+    /// Admin can delete their own or staff messages.
+    /// Manager can delete only their own messages.
+    /// Regular Users (Customers) cannot delete any message.
+    /// Preserves monotonic sequence number integrity.
+    /// </summary>
+    public async Task DeleteMessage(Guid messageId)
+    {
+        var userId = GetUserId();
+        var role = GetUserRole();
+
+        if (role == UserRole.User)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Customers cannot delete messages.");
+            return;
+        }
+
+        var message = await _dbContext.Messages.FirstOrDefaultAsync(m => m.Id == messageId);
+        if (message == null || message.IsDeleted) return;
+
+        // Manager can only delete their own messages
+        if (role == UserRole.Manager && message.SenderId != userId)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Managers can only delete their own messages.");
+            return;
+        }
+
+        message.IsDeleted = true;
+        message.DeletedAt = DateTime.UtcNow;
+        message.Content = "🚫 This message was deleted";
+
+        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == message.ConversationId);
+        if (conv != null && conv.LastMessageAt <= message.SentAt)
+        {
+            conv.LastMessagePreview = "🚫 This message was deleted";
+            conv.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        // Broadcast deletion event to room
+        await Clients.Group($"Room_{message.ConversationId}").SendAsync("MessageDeleted", message.ConversationId, message.Id);
+        _logger.LogInformation("Message {MessageId} in conversation {ConversationId} deleted by user {UserId}", messageId, message.ConversationId, userId);
+    }
+
+    /// <summary>
+    /// Forwards a message to any user in any department.
+    /// Strictly restricted to Administrators.
+    /// </summary>
+    public async Task ForwardMessage(Guid messageId, Guid targetDepartmentId, Guid targetUserId)
+    {
+        var role = GetUserRole();
+        var userId = GetUserId();
+        var clientId = GetClientId();
+
+        if (role != UserRole.Admin)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Only administrators can forward messages across departments.");
+            return;
+        }
+
+        var sourceMsg = await _dbContext.Messages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == messageId);
+        if (sourceMsg == null || sourceMsg.IsDeleted)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Source message not found or has been deleted.");
+            return;
+        }
+
+        var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == targetDepartmentId && d.ClientId == clientId);
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == targetUserId && u.ClientId == clientId);
+        if (department == null || targetUser == null)
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "Target department or user not found.");
+            return;
+        }
+
+        var targetConv = await _dbContext.Conversations
+            .Include(c => c.Department)
+            .Include(c => c.CreatedByUser)
+            .FirstOrDefaultAsync(c => c.DepartmentId == targetDepartmentId && c.CreatedByUserId == targetUserId && c.ClientId == clientId);
+
+        if (targetConv == null)
+        {
+            targetConv = new Conversation
+            {
+                Id = Guid.NewGuid(),
+                ClientId = clientId,
+                DepartmentId = targetDepartmentId,
+                CreatedByUserId = targetUserId,
+                Status = ConversationStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _dbContext.Conversations.Add(targetConv);
+            await _dbContext.SaveChangesAsync();
+            targetConv.Department = department;
+            targetConv.CreatedByUser = targetUser;
+        }
+
+        var maxSeq = await _dbContext.Messages
+            .Where(m => m.ConversationId == targetConv.Id)
+            .Select(m => (long?)m.SequenceNumber)
+            .MaxAsync() ?? 0;
+
+        var adminName = Context.User?.Identity?.Name ?? "System Admin";
+        var clientGenId = Guid.NewGuid().ToString();
+
+        var forwardedMsg = new Message
+        {
+            Id = Guid.NewGuid(),
+            ConversationId = targetConv.Id,
+            SenderId = userId,
+            SenderRole = UserRole.Admin,
+            ClientGeneratedId = clientGenId,
+            SequenceNumber = maxSeq + 1,
+            Content = sourceMsg.Content,
+            IsForwarded = true,
+            IsDeleted = false,
+            Status = MessageDeliveryStatus.Sent,
+            SentAt = DateTime.UtcNow
+        };
+
+        string previewText;
+        if (forwardedMsg.Content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase))
+        {
+            previewText = "↪️ Voice message";
+        }
+        else if (forwardedMsg.Content.StartsWith("[image:", StringComparison.OrdinalIgnoreCase))
+        {
+            previewText = "↪️ Photo";
+        }
+        else if (forwardedMsg.Content.StartsWith("[file:", StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = forwardedMsg.Content.Trim('[', ']');
+            var parts = inner.Split(':');
+            previewText = (parts.Length >= 3 && !string.IsNullOrWhiteSpace(parts[2])) ? $"↪️ {parts[2]}" : "↪️ Document";
+        }
+        else
+        {
+            previewText = "↪️ " + (forwardedMsg.Content.Length > 75 ? forwardedMsg.Content.Substring(0, 72) + "..." : forwardedMsg.Content);
+        }
+
+        targetConv.LastMessagePreview = previewText;
+        targetConv.LastMessageAt = forwardedMsg.SentAt;
+        targetConv.UpdatedAt = forwardedMsg.SentAt;
+
+        _dbContext.Messages.Add(forwardedMsg);
+        await _dbContext.SaveChangesAsync();
+
+        var messageDto = new ChatMessageDto(
+            forwardedMsg.Id,
+            forwardedMsg.ConversationId,
+            forwardedMsg.SenderId,
+            adminName,
+            forwardedMsg.SenderRole,
+            forwardedMsg.ClientGeneratedId,
+            forwardedMsg.SequenceNumber,
+            forwardedMsg.Content,
+            forwardedMsg.Status,
+            forwardedMsg.SentAt,
+            forwardedMsg.IsDeleted,
+            forwardedMsg.IsForwarded
+        );
+
+        // Broadcast to target room
+        await Clients.Group($"Room_{targetConv.Id}").SendAsync("ReceiveMessage", messageDto);
+
+        // Broadcast Tier 2 In-App Toast
+        var toast = new InAppNotificationToastDto(
+            targetConv.Id,
+            targetConv.DepartmentId,
+            targetConv.Department.Name,
+            adminName,
+            previewText,
+            forwardedMsg.SentAt
+        );
+        await Clients.Group($"Dept_{targetConv.DepartmentId}").SendAsync("InAppToast", toast);
+
+        // Notify admin that forward was successful
+        await Clients.Caller.SendAsync("MessageForwarded", sourceMsg.Id, targetConv.Id, forwardedMsg.Id);
+    }
+
 }

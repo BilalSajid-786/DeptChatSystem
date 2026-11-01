@@ -30,6 +30,8 @@ public class ConversationListItem : ObservableObject
         get => _isOnline;
         set => SetProperty(ref _isOnline, value);
     }
+
+    public bool IsUserBlocked { get; set; }
 }
 
 public class AvailableUserItem : ObservableObject
@@ -47,6 +49,8 @@ public class AvailableUserItem : ObservableObject
         get => _isOnline;
         set => SetProperty(ref _isOnline, value);
     }
+
+    public bool IsBlocked { get; set; }
 }
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
@@ -272,7 +276,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                 Email = d.Email,
                 Role = d.Role,
                 IsOnline = d.IsOnline,
-                HasExistingChat = d.HasExistingChat
+                HasExistingChat = d.HasExistingChat,
+                IsBlocked = d.IsBlocked
             }).ToList();
 
             _allAvailableUsers = items;
@@ -302,7 +307,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
             var conv = await _apiService.StartConversationWithUserAsync(deptGuid, user.Id);
             if (conv != null)
             {
-                await Shell.Current.GoToAsync($"ChatRoomPage?deptId={conv.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={conv.Id}&userName={Uri.EscapeDataString(user.FullName)}&userId={user.Id}&isOnline={user.IsOnline}");
+                await Shell.Current.GoToAsync($"ChatRoomPage?deptId={conv.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={conv.Id}&userName={Uri.EscapeDataString(user.FullName)}&userId={user.Id}&isOnline={user.IsOnline}&isBlocked={user.IsBlocked}");
             }
         }
         catch (Exception ex)
@@ -387,7 +392,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                     LastMessageAt = c.LastMessageAt,
                     UnreadCount = c.UnreadCount,
                     Status = c.Status,
-                    IsOnline = c.IsOnline
+                    IsOnline = c.IsOnline,
+                    IsUserBlocked = c.IsUserBlocked
                 });
             }
 
@@ -427,7 +433,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     {
         if (item == null) return;
 
-        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}&userId={item.CreatedByUserId}&isOnline={item.IsOnline}");
+        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}&userId={item.CreatedByUserId}&isOnline={item.IsOnline}&isBlocked={item.IsUserBlocked}");
     }
 
     [RelayCommand]

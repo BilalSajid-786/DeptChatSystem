@@ -267,4 +267,123 @@ public class ChatApiService
             return null;
         }
     }
+
+    public async Task<(bool Success, string? Message)> BlockUserAsync(Guid userId, string? reason = null)
+    {
+        try
+        {
+            AttachBearerToken();
+            var dto = new BlockUserRequestDto(reason);
+            var json = JsonSerializer.Serialize(dto, JsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(BuildUrl($"api/users/{userId}/block"), content);
+            var responseString = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "User blocked successfully.");
+            }
+            try
+            {
+                using var doc = JsonDocument.Parse(responseString);
+                if (doc.RootElement.TryGetProperty("message", out var msgElement))
+                {
+                    return (false, msgElement.GetString());
+                }
+            }
+            catch { }
+            return (false, "Failed to block user.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Success, string? Message)> UnblockUserAsync(Guid userId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl($"api/users/{userId}/unblock"), null);
+            var responseString = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "User unblocked successfully.");
+            }
+            try
+            {
+                using var doc = JsonDocument.Parse(responseString);
+                if (doc.RootElement.TryGetProperty("message", out var msgElement))
+                {
+                    return (false, msgElement.GetString());
+                }
+            }
+            catch { }
+            return (false, "Failed to unblock user.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<List<UserSummaryDto>> GetManagersAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/users/managers"));
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<UserSummaryDto>>(json, JsonOptions) ?? new();
+            }
+        }
+        catch { }
+        return new();
+    }
+
+    public async Task<List<ClientSummaryDto>> GetClientsAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/clients"));
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                return JsonSerializer.Deserialize<List<ClientSummaryDto>>(json, JsonOptions) ?? new();
+            }
+        }
+        catch { }
+        return new();
+    }
+
+    public async Task<(bool Success, string? Message)> BlockClientAsync(Guid clientId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl($"api/clients/{clientId}/block"), null);
+            return (response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "Client blocked." : "Failed to block client.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Success, string? Message)> UnblockClientAsync(Guid clientId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl($"api/clients/{clientId}/unblock"), null);
+            return (response.IsSuccessStatusCode, response.IsSuccessStatusCode ? "Client unblocked." : "Failed to unblock client.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
 }

@@ -12,7 +12,8 @@ public record ConversationSummaryDto(
     DateTime? LastMessageAt,
     int UnreadCount,
     ConversationStatus Status,
-    bool IsOnline = false
+    bool IsOnline = false,
+    bool IsUserBlocked = false
 );
 
 public record ChatMessageDto(
@@ -25,7 +26,9 @@ public record ChatMessageDto(
     long SequenceNumber,
     string Content,
     MessageDeliveryStatus Status,
-    DateTime SentAt
+    DateTime SentAt,
+    bool IsDeleted = false,
+    bool IsForwarded = false
 );
 
 public record SendMessageDto(
@@ -78,7 +81,18 @@ public record AvailableDepartmentUserDto(
     string? Email,
     UserRole Role,
     bool IsOnline,
-    bool HasExistingChat
+    bool HasExistingChat,
+    bool IsBlocked = false
+);
+
+public record ForwardMessageRequestDto(
+    Guid MessageId,
+    Guid TargetDepartmentId,
+    Guid TargetUserId
+);
+
+public record BlockUserRequestDto(
+    string? Reason = null
 );
 
 public record StartConversationWithUserRequest(

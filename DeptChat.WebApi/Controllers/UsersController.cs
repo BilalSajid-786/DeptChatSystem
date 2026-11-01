@@ -10,7 +10,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DeptChat.WebApi.Controllers;
 
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Manager")]
 [ApiController]
 [Route("api/users")]
 public class UsersController : ControllerBase
@@ -38,6 +38,7 @@ public class UsersController : ControllerBase
     /// Admin-only: Creates a new user (Employee, Manager, or Admin) inside the Admin's client organization.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.FullName))
@@ -116,6 +117,7 @@ public class UsersController : ControllerBase
     /// Admin-only: Retrieves all users belonging to the Admin's client organization.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetUsers()
     {
         var clientId = GetClientId();
@@ -130,10 +132,104 @@ public class UsersController : ControllerBase
                 u.PhoneNumber,
                 u.Role,
                 u.Address,
-                u.CreatedAt
+                u.CreatedAt,
+                u.IsBlocked
             ))
             .ToListAsync();
 
         return Ok(users);
+    }
+
+    /// <summary>
+    /// Blocks a user.
+    /// Admin can block Users and Managers.
+    /// Manager can ONLY block Users.
+    /// </summary>
+    [HttpPost("{id}/block")]
+    public async Task<IActionResult> BlockUser(Guid id, [FromBody] BlockUserRequestDto? dto)
+    {
+        var callerRole = User.FindFirstValue(ClaimTypes.Role);
+        var callerIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        Guid.TryParse(callerIdClaim, out var callerId);
+        var clientId = GetClientId();
+
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == id && u.ClientId == clientId);
+        if (targetUser == null)
+        {
+            return NotFound(new { message = "User not found in your organization." });
+        }
+
+        // Managers can ONLY block Customers (Users)
+        if (callerRole == UserRole.Manager.ToString() && targetUser.Role != UserRole.User)
+        {
+            return Forbid();
+        }
+
+        // Admins can block Users and Managers, but not other Admins or themselves
+        if (targetUser.Role == UserRole.Admin || targetUser.Id == callerId)
+        {
+            return BadRequest(new { message = "Cannot block an administrator account." });
+        }
+
+        targetUser.IsBlocked = true;
+        targetUser.BlockedAt = DateTime.UtcNow;
+        targetUser.BlockedByUserId = callerId;
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { message = $"User '{targetUser.FullName}' has been blocked successfully." });
+    }
+
+    /// <summary>
+    /// Unblocks a user.
+    /// </summary>
+    [HttpPost("{id}/unblock")]
+    public async Task<IActionResult> UnblockUser(Guid id)
+    {
+        var callerRole = User.FindFirstValue(ClaimTypes.Role);
+        var clientId = GetClientId();
+
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == id && u.ClientId == clientId);
+        if (targetUser == null)
+        {
+            return NotFound(new { message = "User not found in your organization." });
+        }
+
+        if (callerRole == UserRole.Manager.ToString() && targetUser.Role != UserRole.User)
+        {
+            return Forbid();
+        }
+
+        targetUser.IsBlocked = false;
+        targetUser.BlockedAt = null;
+        targetUser.BlockedByUserId = null;
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { message = $"User '{targetUser.FullName}' has been unblocked successfully." });
+    }
+
+    /// <summary>
+    /// Admin-only: Retrieves all Managers in the organization with their blocked status.
+    /// </summary>
+    [HttpGet("managers")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetManagers()
+    {
+        var clientId = GetClientId();
+        var managers = await _dbContext.Users
+            .Where(u => u.ClientId == clientId && u.Role == UserRole.Manager)
+            .OrderBy(u => u.FullName)
+            .Select(u => new UserSummaryDto(
+                u.Id,
+                u.FullName,
+                u.Email,
+                u.PhoneNumber,
+                u.Role,
+                u.Address,
+                u.CreatedAt,
+                u.IsBlocked
+            ))
+            .ToListAsync();
+
+        return Ok(managers);
     }
 }

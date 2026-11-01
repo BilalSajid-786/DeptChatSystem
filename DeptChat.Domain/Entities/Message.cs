@@ -18,4 +18,8 @@ public class Message
     public string Content { get; set; } = string.Empty;
     public MessageDeliveryStatus Status { get; set; } = MessageDeliveryStatus.Sent;
     public DateTime SentAt { get; set; } = DateTime.UtcNow;
+
+    public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
+    public bool IsForwarded { get; set; } = false;
 }

@@ -7,6 +7,8 @@ public class Client
     public string Code { get; set; } = string.Empty; // Unique company code (e.g. "MAIN", "ACME")
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsBlocked { get; set; } = false;
+    public DateTime? BlockedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Department> Departments { get; set; } = new List<Department>();

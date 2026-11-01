@@ -57,7 +57,33 @@ public class ChatMessageItem : ObservableObject
     public string? DocumentFileName { get; set; }
     public string? DocumentFileSizeText { get; set; }
 
-    public bool IsTextMessage => !IsVoiceMessage && !IsImageMessage && !IsDocumentMessage;
+    private bool _isDeleted;
+    public bool IsDeleted
+    {
+        get => _isDeleted;
+        set
+        {
+            if (SetProperty(ref _isDeleted, value))
+            {
+                OnPropertyChanged(nameof(IsTextMessage));
+                OnPropertyChanged(nameof(IsMediaMessage));
+                OnPropertyChanged(nameof(IsStatusVisible));
+                OnPropertyChanged(nameof(DisplayText));
+            }
+        }
+    }
+
+    private bool _isForwarded;
+    public bool IsForwarded
+    {
+        get => _isForwarded;
+        set => SetProperty(ref _isForwarded, value);
+    }
+
+    public string DisplayText => IsDeleted ? "🚫 This message was deleted" : Content;
+    public bool IsMediaMessage => !IsDeleted && (IsImageMessage || IsVoiceMessage || IsDocumentMessage);
+    public bool IsStatusVisible => !IsDeleted && IsOutgoing;
+    public bool IsTextMessage => IsDeleted || (!IsVoiceMessage && !IsImageMessage && !IsDocumentMessage);
 
     private double _playbackProgress;
     public double PlaybackProgress
@@ -123,12 +149,23 @@ public class ChatMessageItem : ObservableObject
     }
 }
 
+public class ForwardUserItem
+{
+    public Guid UserId { get; set; }
+    public string FullName { get; set; } = string.Empty;
+    public Guid DepartmentId { get; set; }
+    public string DepartmentName { get; set; } = string.Empty;
+    public bool IsOnline { get; set; }
+    public string AvatarInitial => !string.IsNullOrWhiteSpace(FullName) ? FullName[..1].ToUpperInvariant() : "?";
+}
+
 [QueryProperty(nameof(DepartmentId), "deptId")]
 [QueryProperty(nameof(DepartmentName), "deptName")]
 [QueryProperty(nameof(ConversationIdString), "convId")]
 [QueryProperty(nameof(CustomerName), "userName")]
 [QueryProperty(nameof(OtherUserIdString), "userId")]
 [QueryProperty(nameof(InitialIsOnlineString), "isOnline")]
+[QueryProperty(nameof(InitialIsBlockedString), "isBlocked")]
 public partial class ChatRoomViewModel : ObservableObject
 {
     private readonly SignalRService? _signalRService;
@@ -272,7 +309,9 @@ public partial class ChatRoomViewModel : ObservableObject
                                     m.SenderId == (_authService?.UserId ?? Guid.Empty),
                                     m.SequenceNumber,
                                     m.Status,
-                                    m.SentAt
+                                    m.SentAt,
+                                    m.IsDeleted,
+                                    m.IsForwarded
                                 );
                             }
                         }
@@ -369,7 +408,9 @@ public partial class ChatRoomViewModel : ObservableObject
                                     m.SenderId == (_authService?.UserId ?? Guid.Empty),
                                     m.SequenceNumber,
                                     m.Status,
-                                    m.SentAt
+                                    m.SentAt,
+                                    m.IsDeleted,
+                                    m.IsForwarded
                                 );
                             }
                         }
@@ -629,8 +670,39 @@ public partial class ChatRoomViewModel : ObservableObject
     private bool _isOtherUserTyping;
 
     public bool IsCustomer => _authService?.Role == UserRole.User || _authService?.CurrentUser?.Role == UserRole.User;
+    public bool IsStaffViewer => !IsCustomer;
+    public bool IsAdmin => _authService?.Role == UserRole.Admin || _authService?.CurrentUser?.Role == UserRole.Admin;
 
     public Guid OtherUserId { get; set; } = Guid.Empty;
+
+    [ObservableProperty]
+    private string _initialIsBlockedString = string.Empty;
+
+    partial void OnInitialIsBlockedStringChanged(string value)
+    {
+        if (bool.TryParse(value, out var b))
+        {
+            IsTargetUserBlocked = b;
+        }
+    }
+
+    [ObservableProperty]
+    private bool _isTargetUserBlocked;
+
+    [ObservableProperty]
+    private bool _isCurrentUserBlocked;
+
+    [ObservableProperty]
+    private bool _isForwardModalVisible;
+
+    [ObservableProperty]
+    private ChatMessageItem? _messageToForward;
+
+    [ObservableProperty]
+    private string _forwardSearchText = string.Empty;
+
+    public ObservableCollection<ForwardUserItem> AllForwardUsers { get; } = new();
+    public ObservableCollection<ForwardUserItem> FilteredForwardUsers { get; } = new();
 
     [ObservableProperty]
     private string _inputMessage = string.Empty;
@@ -774,6 +846,7 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnMessageAck += HandleMessageAck;
             _signalRService.OnMessageDelivered += HandleMessageDelivered;
             _signalRService.OnMessagesRead += HandleMessagesRead;
+            _signalRService.OnMessageDeleted += HandleMessageDeleted;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
@@ -781,6 +854,7 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnUserPresenceState += HandleUserPresenceState;
             _signalRService.OnDepartmentPresenceState += HandleDepartmentPresenceState;
             _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
+            _signalRService.OnErrorMessage += HandleErrorMessage;
         }
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
@@ -797,6 +871,7 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnMessageAck -= HandleMessageAck;
             _signalRService.OnMessageDelivered -= HandleMessageDelivered;
             _signalRService.OnMessagesRead -= HandleMessagesRead;
+            _signalRService.OnMessageDeleted -= HandleMessageDeleted;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
@@ -804,10 +879,27 @@ public partial class ChatRoomViewModel : ObservableObject
             _signalRService.OnUserPresenceState -= HandleUserPresenceState;
             _signalRService.OnDepartmentPresenceState -= HandleDepartmentPresenceState;
             _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
+            _signalRService.OnErrorMessage -= HandleErrorMessage;
         }
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
         _isSubscribed = false;
+    }
+
+    
+    private void HandleErrorMessage(string error)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            if (error.Contains("blocked", StringComparison.OrdinalIgnoreCase))
+            {
+                IsCurrentUserBlocked = true;
+            }
+            if (Application.Current?.MainPage != null)
+            {
+                await Application.Current.MainPage.DisplayAlertAsync("Notice", error, "OK");
+            }
+        });
     }
 
     private async Task LoadLocalMessagesAsync(Guid convId)
@@ -2089,7 +2181,9 @@ public partial class ChatRoomViewModel : ObservableObject
             ClientGeneratedId = lm.ClientGeneratedId,
             Content = lm.Content,
             TimeFormatted = lm.Timestamp.ToLocalTime().ToString("h:mm tt"),
-            SequenceNumber = lm.SequenceNumber
+            SequenceNumber = lm.SequenceNumber,
+            IsDeleted = lm.IsDeleted,
+            IsForwarded = lm.IsForwarded
         };
 
         ApplyRoleAwareAlignment(item, lm.SenderId, lm.SenderRole, lm.SenderName);
@@ -2448,5 +2542,230 @@ public partial class ChatRoomViewModel : ObservableObject
 
         _authService?.Logout();
         await Shell.Current.GoToAsync("//LoginPage");
+    }
+
+    private void HandleMessageDeleted(Guid convId, Guid messageId)
+    {
+        if (convId != _conversationId) return;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var item = Messages.FirstOrDefault(m => m.Id == messageId);
+            if (item != null)
+            {
+                item.IsDeleted = true;
+                item.Content = "🚫 This message was deleted";
+                item.IsImageMessage = false;
+                item.IsVoiceMessage = false;
+                item.IsDocumentMessage = false;
+                item.ImageUrl = null;
+                item.LocalAudioPath = null;
+                item.DocumentUrl = null;
+            }
+        });
+
+        if (_outboxService != null)
+        {
+            _ = _outboxService.MarkMessageDeletedAsync(messageId);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowMessageOptionsAsync(ChatMessageItem? item)
+    {
+        if (item == null) return;
+
+        var myUserId = _authService?.UserId ?? Guid.Empty;
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+
+        var actions = new List<string>();
+
+        // Copy text (if not deleted and has content)
+        if (!item.IsDeleted && !string.IsNullOrWhiteSpace(item.Content))
+        {
+            actions.Add("📋 Copy Text");
+        }
+
+        // Forward option: strictly Admin only
+        if (myRole == UserRole.Admin && !item.IsDeleted)
+        {
+            actions.Add("↪️ Forward Message");
+        }
+
+        // Delete option:
+        // Admin: can delete any staff or own message
+        // Manager: can delete ONLY their own messages
+        // User: CANNOT delete anything!
+        if (!item.IsDeleted)
+        {
+            if (myRole == UserRole.Admin)
+            {
+                actions.Add("🗑️ Delete for Everyone");
+            }
+            else if (myRole == UserRole.Manager && (item.SenderId == myUserId || item.IsOutgoing))
+            {
+                actions.Add("🗑️ Delete for Everyone");
+            }
+        }
+
+        if (actions.Count == 0) return;
+
+        var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
+            "Message Options",
+            "Cancel",
+            null,
+            actions.ToArray()
+        )!;
+
+        if (string.IsNullOrEmpty(choice) || choice == "Cancel") return;
+
+        if (choice == "📋 Copy Text")
+        {
+            await Clipboard.Default.SetTextAsync(item.Content);
+        }
+        else if (choice == "🗑️ Delete for Everyone")
+        {
+            var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
+                "Delete Message",
+                "Are you sure you want to delete this message for everyone?",
+                "Delete",
+                "Cancel"
+            )!;
+
+            if (confirm && _signalRService != null)
+            {
+                await _signalRService.DeleteMessageAsync(item.Id);
+            }
+        }
+        else if (choice == "↪️ Forward Message")
+        {
+            await OpenForwardModalAsync(item);
+        }
+    }
+
+    private async Task OpenForwardModalAsync(ChatMessageItem item)
+    {
+        MessageToForward = item;
+        ForwardSearchText = string.Empty;
+        AllForwardUsers.Clear();
+        FilteredForwardUsers.Clear();
+
+        if (_apiService != null)
+        {
+            var depts = await _apiService.GetDepartmentsAsync();
+            foreach (var dept in depts)
+            {
+                var convs = await _apiService.GetConversationsForDepartmentAsync(dept.Id);
+                foreach (var c in convs)
+                {
+                    var fwd = new ForwardUserItem
+                    {
+                        UserId = c.CreatedByUserId,
+                        FullName = c.CreatedByUserName,
+                        DepartmentId = dept.Id,
+                        DepartmentName = dept.Name,
+                        IsOnline = c.IsOnline
+                    };
+                    AllForwardUsers.Add(fwd);
+                    FilteredForwardUsers.Add(fwd);
+                }
+            }
+        }
+
+        IsForwardModalVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseForwardModal()
+    {
+        IsForwardModalVisible = false;
+        MessageToForward = null;
+    }
+
+    partial void OnForwardSearchTextChanged(string value)
+    {
+        FilteredForwardUsers.Clear();
+        var q = value?.Trim().ToLowerInvariant() ?? "";
+        foreach (var u in AllForwardUsers)
+        {
+            if (string.IsNullOrEmpty(q) || u.FullName.ToLowerInvariant().Contains(q) || u.DepartmentName.ToLowerInvariant().Contains(q))
+            {
+                FilteredForwardUsers.Add(u);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExecuteForwardAsync(ForwardUserItem? target)
+    {
+        if (target == null || MessageToForward == null || _signalRService == null) return;
+
+        IsForwardModalVisible = false;
+        await _signalRService.ForwardMessageAsync(MessageToForward.Id, target.DepartmentId, target.UserId);
+
+        await Application.Current?.MainPage?.DisplayAlertAsync(
+            "Forwarded",
+            $"Message forwarded to {target.FullName} in {target.DepartmentName}.",
+            "OK"
+        )!;
+
+        MessageToForward = null;
+    }
+
+    [RelayCommand]
+    private async Task ShowChatMenuOptionsAsync()
+    {
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+        var isStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
+
+        if (!isStaff) return;
+
+        var blockAction = IsTargetUserBlocked ? "✅ Unblock User" : "🚫 Block User";
+        var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
+            $"Chat Options ({CustomerName})",
+            "Cancel",
+            null,
+            blockAction
+        )!;
+
+        if (choice == "🚫 Block User")
+        {
+            var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
+                "Block User",
+                $"Are you sure you want to block {CustomerName} from sending messages?",
+                "Block",
+                "Cancel"
+            )!;
+
+            if (confirm && _apiService != null && OtherUserId != Guid.Empty)
+            {
+                var (success, msg) = await _apiService.BlockUserAsync(OtherUserId);
+                if (success)
+                {
+                    IsTargetUserBlocked = true;
+                    await Application.Current?.MainPage?.DisplayAlertAsync("Blocked", $"{CustomerName} has been blocked.", "OK")!;
+                }
+                else
+                {
+                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to block user.", "OK")!;
+                }
+            }
+        }
+        else if (choice == "✅ Unblock User")
+        {
+            if (_apiService != null && OtherUserId != Guid.Empty)
+            {
+                var (success, msg) = await _apiService.UnblockUserAsync(OtherUserId);
+                if (success)
+                {
+                    IsTargetUserBlocked = false;
+                    await Application.Current?.MainPage?.DisplayAlertAsync("Unblocked", $"{CustomerName} has been unblocked.", "OK")!;
+                }
+                else
+                {
+                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to unblock user.", "OK")!;
+                }
+            }
+        }
     }
 }
