@@ -151,13 +151,39 @@ public class ChatHub : Hub
         var role = GetUserRole();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         await _presenceService.SetPresenceAsync(userId, $"room:{conversationId}");
-        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, true);
-        await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, true, true, (DateTime?)null);
 
-        // Mark all unread messages sent by others in this conversation as Read
-        var unreadMessages = await _dbContext.Messages
-            .Where(m => m.ConversationId == conversationId && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
-            .ToListAsync();
+        if (role == UserRole.User)
+        {
+            // Customer entered: notify staff in the room that customer is present
+            await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, true);
+            await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, true, true, (DateTime?)null);
+        }
+        else
+        {
+            // Staff entered: notify customer in the room of department presence without hijacking customer presence
+            var deptConv = await _dbContext.Conversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == conversationId);
+            if (deptConv != null)
+            {
+                await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("DepartmentPresenceState", conversationId, deptConv.DepartmentId, true);
+            }
+        }
+
+        // Read receipt:
+        // Staff ONLY marks Customer messages as Read.
+        // Customer ONLY marks Staff messages as Read.
+        IQueryable<Message> unreadQuery = _dbContext.Messages
+            .Where(m => m.ConversationId == conversationId && m.Status < MessageDeliveryStatus.Read);
+
+        if (role == UserRole.User)
+        {
+            unreadQuery = unreadQuery.Where(m => m.SenderRole != UserRole.User);
+        }
+        else
+        {
+            unreadQuery = unreadQuery.Where(m => m.SenderRole == UserRole.User);
+        }
+
+        var unreadMessages = await unreadQuery.ToListAsync();
 
         if (unreadMessages.Count > 0)
         {
@@ -274,13 +300,26 @@ public class ChatHub : Hub
     public async Task LeaveRoom(Guid conversationId)
     {
         var userId = GetUserId();
+        var role = GetUserRole();
         await _presenceService.ClearPresenceAsync(userId);
         var isOnline = await _presenceService.IsUserOnlineAsync(userId);
         var lastSeen = isOnline ? (DateTime?)null : (await _presenceService.GetLastSeenAsync(userId) ?? DateTime.UtcNow);
 
-        // Broadcast to group BEFORE removing connection from group so remaining members receive the update
-        await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, false);
-        await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, false, isOnline, lastSeen ?? DateTime.UtcNow);
+        if (role == UserRole.User)
+        {
+            // Broadcast customer leaving to staff in group
+            await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceChanged", conversationId, userId, false);
+            await Clients.Group($"Room_{conversationId}").SendAsync("UserPresenceState", conversationId, userId, false, isOnline, lastSeen ?? DateTime.UtcNow);
+        }
+        else
+        {
+            // Staff leaving: update department presence for customer
+            var deptConv = await _dbContext.Conversations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == conversationId);
+            if (deptConv != null)
+            {
+                await Clients.Group($"Room_{conversationId}").SendAsync("DepartmentPresenceState", conversationId, deptConv.DepartmentId, false);
+            }
+        }
 
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
         _logger.LogInformation("User {UserId} left room {ConversationId}", userId, conversationId);
@@ -558,9 +597,23 @@ public class ChatHub : Hub
     public async Task MarkAsRead(Guid conversationId, long maxSequenceNumber)
     {
         var userId = GetUserId();
-        var unread = await _dbContext.Messages
-            .Where(m => m.ConversationId == conversationId && m.SenderId != userId && m.SequenceNumber <= maxSequenceNumber && m.Status < MessageDeliveryStatus.Read)
-            .ToListAsync();
+        var role = GetUserRole();
+
+        IQueryable<Message> query = _dbContext.Messages
+            .Where(m => m.ConversationId == conversationId && m.SequenceNumber <= maxSequenceNumber && m.Status < MessageDeliveryStatus.Read);
+
+        if (role == UserRole.User)
+        {
+            // Customer marks staff messages as read
+            query = query.Where(m => m.SenderRole != UserRole.User);
+        }
+        else
+        {
+            // Staff marks customer messages as read (never colleague staff messages!)
+            query = query.Where(m => m.SenderRole == UserRole.User);
+        }
+
+        var unread = await query.ToListAsync();
 
         if (unread.Count > 0)
         {

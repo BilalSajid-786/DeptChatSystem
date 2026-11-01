@@ -286,7 +286,12 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
 
                     var myUserId = _authService?.UserId ?? Guid.Empty;
-                    var unreadIncoming = sync.Messages.Where(m => m.SenderId != myUserId).ToList();
+                    var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+                    var isStaffViewer = myRole == UserRole.Admin || myRole == UserRole.Manager;
+                    var unreadIncoming = isStaffViewer
+                        ? sync.Messages.Where(m => m.SenderRole == UserRole.User && m.SenderId != myUserId).ToList()
+                        : sync.Messages.Where(m => m.SenderRole != UserRole.User && m.SenderId != myUserId).ToList();
+
                     if (unreadIncoming.Count > 0 && _signalRService != null && _signalRService.IsConnected)
                     {
                         var maxIncomingSeq = unreadIncoming.Max(m => m.SequenceNumber);
@@ -378,7 +383,12 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
 
                     var myUserId = _authService?.UserId ?? Guid.Empty;
-                    var unreadIncoming = paged.Messages.Where(m => m.SenderId != myUserId).ToList();
+                    var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+                    var isStaffViewer = myRole == UserRole.Admin || myRole == UserRole.Manager;
+                    var unreadIncoming = isStaffViewer
+                        ? paged.Messages.Where(m => m.SenderRole == UserRole.User && m.SenderId != myUserId).ToList()
+                        : paged.Messages.Where(m => m.SenderRole != UserRole.User && m.SenderId != myUserId).ToList();
+
                     if (unreadIncoming.Count > 0 && _signalRService != null && _signalRService.IsConnected)
                     {
                         var maxIncomingSeq = unreadIncoming.Max(m => m.SequenceNumber);
@@ -1497,7 +1507,13 @@ public partial class ChatRoomViewModel : ObservableObject
         var myUserId = _authService?.UserId ?? Guid.Empty;
         if (userId == myUserId) return;
 
-        OtherUserId = userId;
+        // If staff viewer, strictly ignore presence for anyone other than Customer
+        if (!IsCustomer && OtherUserId != Guid.Empty && userId != OtherUserId) return;
+
+        if (OtherUserId == Guid.Empty)
+        {
+            OtherUserId = userId;
+        }
         if (isInRoom)
         {
             IsOtherUserOnline = true;
@@ -1528,7 +1544,13 @@ public partial class ChatRoomViewModel : ObservableObject
         var myUserId = _authService?.UserId ?? Guid.Empty;
         if (userId == myUserId) return;
 
-        OtherUserId = userId;
+        // If staff viewer, strictly ignore typing from colleague staff members
+        if (!IsCustomer && OtherUserId != Guid.Empty && userId != OtherUserId) return;
+
+        if (OtherUserId == Guid.Empty)
+        {
+            OtherUserId = userId;
+        }
         IsOtherUserTyping = isTyping;
 
         MainThread.BeginInvokeOnMainThread(() =>
@@ -1564,7 +1586,13 @@ public partial class ChatRoomViewModel : ObservableObject
         var myUserId = _authService?.UserId ?? Guid.Empty;
         if (userId == myUserId) return;
 
-        OtherUserId = userId;
+        // If staff viewer, strictly ignore presence updates for anyone other than the Customer (OtherUserId)!
+        if (!IsCustomer && OtherUserId != Guid.Empty && userId != OtherUserId) return;
+
+        if (OtherUserId == Guid.Empty)
+        {
+            OtherUserId = userId;
+        }
         ApplyPresence(new UserPresenceDto(userId, isOnline, isInRoom, lastSeen));
     }
 
@@ -1893,7 +1921,15 @@ public partial class ChatRoomViewModel : ObservableObject
 
         if (msg.SenderId != (_authService?.UserId ?? Guid.Empty))
         {
-            OtherUserId = msg.SenderId;
+            // For staff viewers, only set OtherUserId if it was empty AND message is from customer
+            if (OtherUserId == Guid.Empty && msg.SenderRole == UserRole.User)
+            {
+                OtherUserId = msg.SenderId;
+            }
+            else if (IsCustomer && OtherUserId == Guid.Empty)
+            {
+                OtherUserId = msg.SenderId;
+            }
         }
 
         MainThread.BeginInvokeOnMainThread(() =>
@@ -1915,12 +1951,20 @@ public partial class ChatRoomViewModel : ObservableObject
 
         if (_signalRService != null && msg.SenderId != (_authService?.UserId ?? Guid.Empty))
         {
+            var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+            var isStaffViewer = myRole == UserRole.Admin || myRole == UserRole.Manager;
+
             // 1. Acknowledge delivery
             _ = _signalRService.AcknowledgeDeliveryAsync(msg.Id);
 
-            // 2. Since the recipient is currently looking at this open chat screen, mark as Read in real-time!
-            // This immediately turns the sender's grey ticks to BLUE ✓✓!
-            if (ActiveConversationId == _conversationId)
+            // 2. Mark as Read in real-time:
+            // Staff ONLY marks as read if message is from Customer (never colleague staff messages!)
+            // Customer ONLY marks as read if message is from Staff!
+            bool shouldMarkAsRead = isStaffViewer 
+                ? (msg.SenderRole == UserRole.User)
+                : (msg.SenderRole != UserRole.User);
+
+            if (shouldMarkAsRead && ActiveConversationId == _conversationId)
             {
                 _ = _signalRService.MarkAsReadAsync(_conversationId, msg.SequenceNumber);
             }
@@ -1954,9 +1998,15 @@ public partial class ChatRoomViewModel : ObservableObject
         item.SenderRole = senderRole;
         item.SenderName = senderName;
 
+        // Staff message: either explicit role Admin/Manager, or known System Admin ID, or sent by me while I am staff
+        var isStaffMessage = (senderRole == UserRole.Admin || senderRole == UserRole.Manager) ||
+                             (senderId == Guid.Parse("11111111-1111-1111-1111-111111111111")) ||
+                             (senderId == myUserId && isStaffViewer);
+
         if (isStaffViewer)
         {
-            if (senderRole == UserRole.Admin || senderRole == UserRole.Manager)
+            // Staff view: ALL staff messages appear on SENDER side (Right / Green)
+            if (isStaffMessage || senderId == myUserId)
             {
                 item.IsOutgoing = true;
                 // Colleague staff message on sender side shows who texted what!
@@ -1964,13 +2014,14 @@ public partial class ChatRoomViewModel : ObservableObject
             }
             else
             {
+                // Customer message appears on RECEIVER side (Left / White)
                 item.IsOutgoing = false;
-                // 1-on-1 customer message on receiver side (header already says customer name)
                 item.ShowSenderName = false;
             }
         }
         else
         {
+            // Customer view: Customer messages on Right, Staff messages on Left with staff name
             if (senderRole == UserRole.User || senderId == myUserId)
             {
                 item.IsOutgoing = true;
@@ -1979,7 +2030,6 @@ public partial class ChatRoomViewModel : ObservableObject
             else
             {
                 item.IsOutgoing = false;
-                // Customer sees who from staff texted them!
                 item.ShowSenderName = !string.IsNullOrWhiteSpace(senderName);
             }
         }
