@@ -35,14 +35,42 @@ public class ChatMessageItem : ObservableObject
     }
     public long SequenceNumber { get; set; }
 
-    public bool IsVoiceMessage { get; set; }
+    private bool _isVoiceMessage;
+    public bool IsVoiceMessage
+    {
+        get => _isVoiceMessage;
+        set
+        {
+            if (SetProperty(ref _isVoiceMessage, value))
+            {
+                OnPropertyChanged(nameof(IsTextMessage));
+                OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(IsVoiceVisible));
+                OnPropertyChanged(nameof(IsMediaMessage));
+            }
+        }
+    }
     public int VoiceDurationSeconds { get; set; } = 5;
     public string VoiceDurationText { get; set; } = "0:05";
     public string? LocalAudioPath { get; set; }
     public bool IsDragging { get; set; }
 
     // Media & File Attachments
-    public bool IsImageMessage { get; set; }
+    private bool _isImageMessage;
+    public bool IsImageMessage
+    {
+        get => _isImageMessage;
+        set
+        {
+            if (SetProperty(ref _isImageMessage, value))
+            {
+                OnPropertyChanged(nameof(IsTextMessage));
+                OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(IsImageVisible));
+                OnPropertyChanged(nameof(IsMediaMessage));
+            }
+        }
+    }
     private string? _imageUrl;
     public string? ImageUrl
     {
@@ -52,7 +80,21 @@ public class ChatMessageItem : ObservableObject
     public string? ImageCaption { get; set; }
     public bool HasCaption => !string.IsNullOrWhiteSpace(ImageCaption);
 
-    public bool IsDocumentMessage { get; set; }
+    private bool _isDocumentMessage;
+    public bool IsDocumentMessage
+    {
+        get => _isDocumentMessage;
+        set
+        {
+            if (SetProperty(ref _isDocumentMessage, value))
+            {
+                OnPropertyChanged(nameof(IsTextMessage));
+                OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(IsDocumentVisible));
+                OnPropertyChanged(nameof(IsMediaMessage));
+            }
+        }
+    }
     public string? DocumentUrl { get; set; }
     public string? DocumentFileName { get; set; }
     public string? DocumentFileSizeText { get; set; }
@@ -69,6 +111,11 @@ public class ChatMessageItem : ObservableObject
                 OnPropertyChanged(nameof(IsMediaMessage));
                 OnPropertyChanged(nameof(IsStatusVisible));
                 OnPropertyChanged(nameof(DisplayText));
+                OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(IsImageVisible));
+                OnPropertyChanged(nameof(IsDocumentVisible));
+                OnPropertyChanged(nameof(IsVoiceVisible));
+                OnPropertyChanged(nameof(IsForwardedVisible));
             }
         }
     }
@@ -77,13 +124,25 @@ public class ChatMessageItem : ObservableObject
     public bool IsForwarded
     {
         get => _isForwarded;
-        set => SetProperty(ref _isForwarded, value);
+        set
+        {
+            if (SetProperty(ref _isForwarded, value))
+            {
+                OnPropertyChanged(nameof(IsForwardedVisible));
+            }
+        }
     }
 
     public string DisplayText => IsDeleted ? "🚫 This message was deleted" : Content;
     public bool IsMediaMessage => !IsDeleted && (IsImageMessage || IsVoiceMessage || IsDocumentMessage);
     public bool IsStatusVisible => !IsDeleted && IsOutgoing;
-    public bool IsTextMessage => IsDeleted || (!IsVoiceMessage && !IsImageMessage && !IsDocumentMessage);
+    public bool IsTextMessage => !IsVoiceMessage && !IsImageMessage && !IsDocumentMessage;
+
+    public bool IsTextVisible => !IsDeleted && IsTextMessage;
+    public bool IsImageVisible => !IsDeleted && IsImageMessage;
+    public bool IsDocumentVisible => !IsDeleted && IsDocumentMessage;
+    public bool IsVoiceVisible => !IsDeleted && IsVoiceMessage;
+    public bool IsForwardedVisible => !IsDeleted && IsForwarded;
 
     private double _playbackProgress;
     public double PlaybackProgress
@@ -488,10 +547,40 @@ public partial class ChatRoomViewModel : ObservableObject
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
                         var previousTopItem = Messages.FirstOrDefault();
+                        var sortedOlder = paged.Messages.OrderBy(m => m.SequenceNumber).ToList();
+                        int insertIndex = 0;
 
-                        foreach (var m in paged.Messages)
+                        foreach (var m in sortedOlder)
                         {
-                            AddOrUpdateServerMessage(m, reorder: false, scroll: false);
+                            var existing = Messages.FirstOrDefault(x => x.ClientGeneratedId == m.ClientGeneratedId || x.Id == m.Id);
+                            if (existing != null)
+                            {
+                                existing.Id = m.Id;
+                                existing.SequenceNumber = m.SequenceNumber;
+                                existing.IsDeleted = m.IsDeleted;
+                                existing.IsForwarded = m.IsForwarded;
+                                ApplyRoleAwareAlignment(existing, m.SenderId, m.SenderRole, m.SenderName);
+                                UpdateStatusVisuals(existing, m.Status);
+                            }
+                            else
+                            {
+                                var newItem = new ChatMessageItem
+                                {
+                                    Id = m.Id,
+                                    ClientGeneratedId = m.ClientGeneratedId,
+                                    Content = m.Content,
+                                    TimeFormatted = m.SentAt.ToLocalTime().ToString("h:mm tt"),
+                                    SequenceNumber = m.SequenceNumber,
+                                    IsDeleted = m.IsDeleted,
+                                    IsForwarded = m.IsForwarded
+                                };
+                                ApplyRoleAwareAlignment(newItem, m.SenderId, m.SenderRole, m.SenderName);
+                                ParseMessagePayload(newItem, m.Content);
+                                UpdateStatusVisuals(newItem, m.Status);
+
+                                Messages.Insert(insertIndex++, newItem);
+                            }
+
                             if (_outboxService != null)
                             {
                                 _ = _outboxService.SaveServerMessageAsync(
@@ -505,12 +594,12 @@ public partial class ChatRoomViewModel : ObservableObject
                                     m.SenderId == (_authService?.UserId ?? Guid.Empty),
                                     m.SequenceNumber,
                                     m.Status,
-                                    m.SentAt
+                                    m.SentAt,
+                                    m.IsDeleted,
+                                    m.IsForwarded
                                 );
                             }
                         }
-
-                        SortMessages();
 
                         if (previousTopItem != null)
                         {

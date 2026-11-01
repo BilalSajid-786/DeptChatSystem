@@ -53,9 +53,22 @@ public partial class ChatRoomPage : ContentPage
         }
     }
 
+    protected override void OnHandlerChanged()
+    {
+        base.OnHandlerChanged();
+#if ANDROID
+        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+        {
+            rv.SetItemViewCacheSize(20);
+            rv.SetItemAnimator(null);
+            rv.HasFixedSize = false;
+        }
+#endif
+    }
+
     private void OnMessagesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        if (_vm?.IsLoadingOlderMessages == true) return;
+        if (_vm?.IsLoadingOlderMessages == true || _vm?.IsLoadingMessages == true) return;
 
         if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
         {
@@ -80,11 +93,13 @@ public partial class ChatRoomPage : ContentPage
 
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
+        _longPressCts?.Cancel();
+
         if (_vm == null) return;
 
-        if (e.FirstVisibleItemIndex <= 1 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages)
+        if (e.FirstVisibleItemIndex == 0 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages && !_vm.IsLoadingMessages)
         {
-            if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 1200)
+            if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 2000)
             {
                 _lastOlderMessagesFetchTime = DateTime.UtcNow;
                 _vm.LoadOlderMessagesCommand.Execute(null);
@@ -97,23 +112,27 @@ public partial class ChatRoomPage : ContentPage
         ScrollToBottom(animate: false);
     }
 
+    private CancellationTokenSource? _scrollToBottomCts;
+
     public void ScrollToBottom(bool animate = false)
     {
+        _scrollToBottomCts?.Cancel();
+        _scrollToBottomCts?.Dispose();
+        _scrollToBottomCts = new CancellationTokenSource();
+        var token = _scrollToBottomCts.Token;
+
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            PerformScroll(animate);
-
-            // Phase 2: Post-measurement pass after items/audio cards are laid out
-            await Task.Delay(80);
-            PerformScroll(false);
-
-            // Phase 3: Secondary pass for network batch arrivals
-            await Task.Delay(200);
-            PerformScroll(false);
-
-            // Phase 4: Final safety check
-            await Task.Delay(400);
-            PerformScroll(false);
+            try
+            {
+                PerformScroll(animate);
+                await Task.Delay(100, token);
+                if (!token.IsCancellationRequested)
+                {
+                    PerformScroll(false);
+                }
+            }
+            catch (TaskCanceledException) { }
         });
     }
 
@@ -147,12 +166,18 @@ public partial class ChatRoomPage : ContentPage
     }
 
     private CancellationTokenSource? _longPressCts;
+    private Point _pointerPressStartPoint;
+    private const double TouchSlop = 12.0;
 
     private void OnMessagePointerPressed(object? sender, PointerEventArgs e)
     {
         _longPressCts?.Cancel();
+        _longPressCts?.Dispose();
         _longPressCts = new CancellationTokenSource();
         var token = _longPressCts.Token;
+
+        var pos = e.GetPosition(sender as View);
+        _pointerPressStartPoint = pos.HasValue ? pos.Value : Point.Zero;
 
         if (sender is Border border && border.BindingContext is ViewModels.ChatMessageItem item)
         {
@@ -165,12 +190,34 @@ public partial class ChatRoomPage : ContentPage
                     {
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
+                            try
+                            {
+                                HapticFeedback.Default.Perform(HapticFeedbackType.LongPress);
+                            }
+                            catch { }
                             _vm.ShowMessageMenuCommand.Execute(item);
                         });
                     }
                 }
                 catch (TaskCanceledException) { }
-            });
+            }, token);
+        }
+    }
+
+    private void OnMessagePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_longPressCts != null && !_longPressCts.IsCancellationRequested)
+        {
+            var pos = e.GetPosition(sender as View);
+            if (pos.HasValue)
+            {
+                var dx = Math.Abs(pos.Value.X - _pointerPressStartPoint.X);
+                var dy = Math.Abs(pos.Value.Y - _pointerPressStartPoint.Y);
+                if (dx > TouchSlop || dy > TouchSlop)
+                {
+                    _longPressCts.Cancel();
+                }
+            }
         }
     }
 

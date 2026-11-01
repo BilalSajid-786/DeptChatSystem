@@ -121,6 +121,7 @@
                                 ItemsSource="{Binding Messages}"
                                 BackgroundColor="Transparent"
                                 Margin="8,4"
+                                ItemsUpdatingScrollMode="KeepItemsInView"
                                 Scrolled="OnMessagesScrolled">
                     <CollectionView.Header>
                         <VerticalStackLayout IsVisible="{Binding IsLoadingOlderMessages}" Padding="8" HorizontalOptions="Center">
@@ -134,11 +135,12 @@
                                         BackgroundColor="{Binding BubbleColor}"
                                         Stroke="#CBD5E1"
                                         StrokeThickness="0.4"
-                                        StrokeShape="{Binding BubbleShape}"
+                                        StrokeShape="RoundRectangle 14"
                                         Padding="10,6,10,6"
                                         MaximumWidthRequest="300">
                                     <Border.GestureRecognizers>
                                         <PointerGestureRecognizer PointerPressed="OnMessagePointerPressed"
+                                                                  PointerMoved="OnMessagePointerMoved"
                                                                   PointerReleased="OnMessagePointerReleased"
                                                                   PointerExited="OnMessagePointerExited" />
                                         <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageMenuCommand}"
@@ -147,18 +149,11 @@
 
                                     <VerticalStackLayout Spacing="3">
                                         <!-- Forwarded Indicator -->
-                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2">
-                                            <HorizontalStackLayout.Triggers>
-                                                <DataTrigger TargetType="HorizontalStackLayout" Binding="{Binding IsForwarded}" Value="False">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                                <DataTrigger TargetType="HorizontalStackLayout" Binding="{Binding IsDeleted}" Value="True">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                            </HorizontalStackLayout.Triggers>
+                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}">
                                             <Label Text="↪️" FontSize="11" TextColor="#64748B" VerticalOptions="Center" />
                                             <Label Text="Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" VerticalOptions="Center" />
                                         </HorizontalStackLayout>
+
                                         <!-- Sender Name (Only shown on incoming departmental messages) -->
                                         <Label Text="{Binding SenderName}"
                                                FontSize="12"
@@ -180,28 +175,11 @@
                                         <Label Text="{Binding Content}"
                                                FontSize="15"
                                                TextColor="#111B21"
-                                               LineBreakMode="WordWrap">
-                                            <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding IsTextMessage}" Value="False">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                                <DataTrigger TargetType="Label" Binding="{Binding IsDeleted}" Value="True">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                            </Label.Triggers>
-                                        </Label>
+                                               LineBreakMode="WordWrap"
+                                               IsVisible="{Binding IsTextVisible}" />
 
                                         <!-- WhatsApp Style Image Message -->
-                                        <VerticalStackLayout Spacing="4">
-                                            <VerticalStackLayout.Triggers>
-                                                <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsImageMessage}" Value="False">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                                <DataTrigger TargetType="VerticalStackLayout" Binding="{Binding IsDeleted}" Value="True">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                            </VerticalStackLayout.Triggers>
-
+                                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsImageVisible}">
                                             <Border Stroke="Transparent"
                                                     StrokeShape="RoundRectangle 12"
                                                     HeightRequest="200"
@@ -227,15 +205,7 @@
                                         </VerticalStackLayout>
 
                                         <!-- WhatsApp Style Document Message -->
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4">
-                                            <Grid.Triggers>
-                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDocumentMessage}" Value="False">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDeleted}" Value="True">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                            </Grid.Triggers>
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4" IsVisible="{Binding IsDocumentVisible}">
                                             <Grid.GestureRecognizers>
                                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenDocumentCommand}"
                                                                       CommandParameter="{Binding .}" />
@@ -270,16 +240,7 @@
                                         </Grid>
 
                                         <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2">
-                                            <Grid.Triggers>
-                                                <DataTrigger TargetType="Grid" Binding="{Binding IsVoiceMessage}" Value="False">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                                <DataTrigger TargetType="Grid" Binding="{Binding IsDeleted}" Value="True">
-                                                    <Setter Property="IsVisible" Value="False" />
-                                                </DataTrigger>
-                                            </Grid.Triggers>
-
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
                                             <!-- Circular Play/Pause Button -->
                                             <Button Grid.Column="0"
                                                     Text="{Binding PlayButtonIcon}"
@@ -333,13 +294,8 @@
                                                    TextColor="{Binding StatusColor}" 
                                                    FontSize="11" 
                                                    FontAttributes="Bold"
-                                                   VerticalOptions="Center">
-                                                <Label.Triggers>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding IsStatusVisible}" Value="False">
-                                                        <Setter Property="IsVisible" Value="False" />
-                                                    </DataTrigger>
-                                                </Label.Triggers>
-                                            </Label>
+                                                   VerticalOptions="Center"
+                                                   IsVisible="{Binding IsStatusVisible}" />
                                         </HorizontalStackLayout>
                                     </VerticalStackLayout>
                                 </Border>
