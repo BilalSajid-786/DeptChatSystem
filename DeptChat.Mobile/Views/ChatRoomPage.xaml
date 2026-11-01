@@ -98,7 +98,8 @@
             <Image Source="whatsapp_bg.png"
                    Aspect="AspectFill"
                    HorizontalOptions="FillAndExpand"
-                   VerticalOptions="FillAndExpand" />
+                   VerticalOptions="FillAndExpand"
+                   InputTransparent="True" />
 
             <Grid RowDefinitions="Auto, *, Auto" x:Name="ChatContentGrid">
 
@@ -137,12 +138,9 @@
                                         StrokeThickness="0.4"
                                         StrokeShape="RoundRectangle 14"
                                         Padding="10,6,10,6"
-                                        MaximumWidthRequest="300">
+                                        MaximumWidthRequest="300"
+                                        Loaded="OnMessageBorderLoaded">
                                     <Border.GestureRecognizers>
-                                        <PointerGestureRecognizer PointerPressed="OnMessagePointerPressed"
-                                                                  PointerMoved="OnMessagePointerMoved"
-                                                                  PointerReleased="OnMessagePointerReleased"
-                                                                  PointerExited="OnMessagePointerExited" />
                                         <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ShowMessageMenuCommand}"
                                                               CommandParameter="{Binding .}" />
                                     </Border.GestureRecognizers>

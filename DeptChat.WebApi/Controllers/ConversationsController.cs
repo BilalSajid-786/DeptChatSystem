@@ -124,7 +124,7 @@ public class ConversationsController : ControllerBase
                 .Include(c => c.CreatedByUser)
                 .Include(c => c.Department)
                 .Where(c => c.DepartmentId == departmentId && c.ClientId == clientId && _dbContext.Messages.Any(m => m.ConversationId == c.Id))
-                .OrderByDescending(c => c.UpdatedAt)
+                .OrderByDescending(c => c.LastMessageAt ?? c.UpdatedAt)
                 .ToListAsync();
 
             var convIds = conversations.Select(c => c.Id).ToList();

@@ -397,7 +397,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                 });
             }
 
-            _allConversations = items;
+            _allConversations = items.OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue).ToList();
             ApplyFilter();
         }
         catch

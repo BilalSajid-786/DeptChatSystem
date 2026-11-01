@@ -62,6 +62,7 @@ public partial class ChatRoomPage : ContentPage
             rv.SetItemViewCacheSize(20);
             rv.SetItemAnimator(null);
             rv.HasFixedSize = false;
+            rv.NestedScrollingEnabled = false;
         }
 #endif
     }
@@ -93,8 +94,6 @@ public partial class ChatRoomPage : ContentPage
 
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
-        _longPressCts?.Cancel();
-
         if (_vm == null) return;
 
         if (e.FirstVisibleItemIndex == 0 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages && !_vm.IsLoadingMessages)
@@ -165,70 +164,51 @@ public partial class ChatRoomPage : ContentPage
         catch { }
     }
 
-    private CancellationTokenSource? _longPressCts;
-    private Point _pointerPressStartPoint;
-    private const double TouchSlop = 12.0;
-
-    private void OnMessagePointerPressed(object? sender, PointerEventArgs e)
+    private void OnMessageBorderLoaded(object? sender, EventArgs e)
     {
-        _longPressCts?.Cancel();
-        _longPressCts?.Dispose();
-        _longPressCts = new CancellationTokenSource();
-        var token = _longPressCts.Token;
-
-        var pos = e.GetPosition(sender as View);
-        _pointerPressStartPoint = pos.HasValue ? pos.Value : Point.Zero;
-
-        if (sender is Border border && border.BindingContext is ViewModels.ChatMessageItem item)
+#if ANDROID
+        if (sender is Border border && border.Handler?.PlatformView is Android.Views.View nativeView)
         {
-            _ = Task.Run(async () =>
+            nativeView.Tag = new MauiViewTagHolder(border);
+            nativeView.LongClickable = true;
+            nativeView.LongClick -= OnNativeMessageLongClick;
+            nativeView.LongClick += OnNativeMessageLongClick;
+        }
+#endif
+    }
+
+#if ANDROID
+    private void OnNativeMessageLongClick(object? sender, Android.Views.View.LongClickEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is Android.Views.View nativeView &&
+            nativeView.Tag is MauiViewTagHolder holder &&
+            holder.BorderRef.TryGetTarget(out var border) &&
+            border.BindingContext is ViewModels.ChatMessageItem item)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                try
-                {
-                    await Task.Delay(400, token);
-                    if (!token.IsCancellationRequested && _vm != null)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() =>
-                        {
-                            try
-                            {
-                                HapticFeedback.Default.Perform(HapticFeedbackType.LongPress);
-                            }
-                            catch { }
-                            _vm.ShowMessageMenuCommand.Execute(item);
-                        });
-                    }
-                }
-                catch (TaskCanceledException) { }
-            }, token);
+                TriggerMessageActionMenu(item);
+            });
         }
     }
+#endif
 
-    private void OnMessagePointerMoved(object? sender, PointerEventArgs e)
+    private void TriggerMessageActionMenu(ViewModels.ChatMessageItem item)
     {
-        if (_longPressCts != null && !_longPressCts.IsCancellationRequested)
+        try
         {
-            var pos = e.GetPosition(sender as View);
-            if (pos.HasValue)
-            {
-                var dx = Math.Abs(pos.Value.X - _pointerPressStartPoint.X);
-                var dy = Math.Abs(pos.Value.Y - _pointerPressStartPoint.Y);
-                if (dx > TouchSlop || dy > TouchSlop)
-                {
-                    _longPressCts.Cancel();
-                }
-            }
+            HapticFeedback.Default.Perform(HapticFeedbackType.LongPress);
         }
-    }
+        catch { }
 
-    private void OnMessagePointerReleased(object? sender, PointerEventArgs e)
-    {
-        _longPressCts?.Cancel();
-    }
+        try
+        {
+            Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(50));
+        }
+        catch { }
 
-    private void OnMessagePointerExited(object? sender, PointerEventArgs e)
-    {
-        _longPressCts?.Cancel();
+        _vm?.ShowMessageMenuCommand.Execute(item);
     }
 
     private void OnPreviewSliderDragStarted(object? sender, EventArgs e)
@@ -334,3 +314,14 @@ public partial class ChatRoomPage : ContentPage
         }
     }
 }
+
+#if ANDROID
+public class MauiViewTagHolder : Java.Lang.Object
+{
+    public WeakReference<Border> BorderRef { get; }
+    public MauiViewTagHolder(Border border)
+    {
+        BorderRef = new WeakReference<Border>(border);
+    }
+}
+#endif
