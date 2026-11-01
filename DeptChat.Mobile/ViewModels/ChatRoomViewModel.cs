@@ -1954,17 +1954,21 @@ public partial class ChatRoomViewModel : ObservableObject
             var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
             var isStaffViewer = myRole == UserRole.Admin || myRole == UserRole.Manager;
 
-            // 1. Acknowledge delivery
-            _ = _signalRService.AcknowledgeDeliveryAsync(msg.Id);
-
-            // 2. Mark as Read in real-time:
-            // Staff ONLY marks as read if message is from Customer (never colleague staff messages!)
-            // Customer ONLY marks as read if message is from Staff!
-            bool shouldMarkAsRead = isStaffViewer 
+            // Delivery and Read receipts must strictly isolate roles:
+            // Staff ONLY acknowledges delivery and marks as read if message is from Customer (never colleague staff messages!)
+            // Customer ONLY acknowledges delivery and marks as read if message is from Staff!
+            bool shouldAcknowledge = isStaffViewer 
                 ? (msg.SenderRole == UserRole.User)
                 : (msg.SenderRole != UserRole.User);
 
-            if (shouldMarkAsRead && ActiveConversationId == _conversationId)
+            // 1. Acknowledge delivery (only if recipient role matches intended recipient)
+            if (shouldAcknowledge)
+            {
+                _ = _signalRService.AcknowledgeDeliveryAsync(msg.Id);
+            }
+
+            // 2. Mark as Read in real-time:
+            if (shouldAcknowledge && ActiveConversationId == _conversationId)
             {
                 _ = _signalRService.MarkAsReadAsync(_conversationId, msg.SequenceNumber);
             }

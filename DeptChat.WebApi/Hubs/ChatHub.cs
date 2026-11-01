@@ -580,14 +580,19 @@ public class ChatHub : Hub
     /// </summary>
     public async Task AcknowledgeDelivery(Guid messageId)
     {
+        var role = GetUserRole();
         var msg = await _dbContext.Messages.FindAsync(messageId);
-        if (msg != null && msg.Status < MessageDeliveryStatus.Delivered)
-        {
-            msg.Status = MessageDeliveryStatus.Delivered;
-            await _dbContext.SaveChangesAsync();
+        if (msg == null || msg.Status >= MessageDeliveryStatus.Delivered) return;
 
-            await Clients.Group($"Room_{msg.ConversationId}").SendAsync("MessageDelivered", messageId);
-        }
+        // Staff can only acknowledge delivery for Customer messages.
+        // Customer can only acknowledge delivery for Staff messages.
+        if (role == UserRole.User && msg.SenderRole == UserRole.User) return;
+        if (role != UserRole.User && msg.SenderRole != UserRole.User) return;
+
+        msg.Status = MessageDeliveryStatus.Delivered;
+        await _dbContext.SaveChangesAsync();
+
+        await Clients.Group($"Room_{msg.ConversationId}").SendAsync("MessageDelivered", messageId);
     }
 
     /// <summary>
