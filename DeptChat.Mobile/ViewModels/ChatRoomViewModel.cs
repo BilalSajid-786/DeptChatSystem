@@ -2211,7 +2211,9 @@ public partial class ChatRoomViewModel : ObservableObject
                 ClientGeneratedId = msg.ClientGeneratedId,
                 Content = msg.Content,
                 TimeFormatted = msg.SentAt.ToLocalTime().ToString("h:mm tt"),
-                SequenceNumber = msg.SequenceNumber
+                SequenceNumber = msg.SequenceNumber,
+                IsDeleted = msg.IsDeleted,
+                IsForwarded = msg.IsForwarded
             };
 
             ApplyRoleAwareAlignment(newItem, msg.SenderId, msg.SenderRole, msg.SenderName);

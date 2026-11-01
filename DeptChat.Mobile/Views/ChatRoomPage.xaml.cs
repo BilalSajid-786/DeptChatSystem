@@ -146,6 +146,44 @@ public partial class ChatRoomPage : ContentPage
         catch { }
     }
 
+    private CancellationTokenSource? _longPressCts;
+
+    private void OnMessagePointerPressed(object? sender, PointerEventArgs e)
+    {
+        _longPressCts?.Cancel();
+        _longPressCts = new CancellationTokenSource();
+        var token = _longPressCts.Token;
+
+        if (sender is Border border && border.BindingContext is ViewModels.ChatMessageItem item)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(400, token);
+                    if (!token.IsCancellationRequested && _vm != null)
+                    {
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            _vm.ShowMessageMenuCommand.Execute(item);
+                        });
+                    }
+                }
+                catch (TaskCanceledException) { }
+            });
+        }
+    }
+
+    private void OnMessagePointerReleased(object? sender, PointerEventArgs e)
+    {
+        _longPressCts?.Cancel();
+    }
+
+    private void OnMessagePointerExited(object? sender, PointerEventArgs e)
+    {
+        _longPressCts?.Cancel();
+    }
+
     private void OnPreviewSliderDragStarted(object? sender, EventArgs e)
     {
         if (BindingContext is ViewModels.ChatRoomViewModel vm)
