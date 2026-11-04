@@ -16,6 +16,21 @@ public class ChatMessageItem : ObservableObject
     public string SenderName { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public string TimeFormatted { get; set; } = DateTime.Now.ToString("h:mm tt");
+    public DateTime MessageDate { get; set; } = DateTime.Now;
+
+    private bool _showDateHeader;
+    public bool ShowDateHeader
+    {
+        get => _showDateHeader;
+        set => SetProperty(ref _showDateHeader, value);
+    }
+
+    private string _dateHeaderText = string.Empty;
+    public string DateHeaderText
+    {
+        get => _dateHeaderText;
+        set => SetProperty(ref _dateHeaderText, value);
+    }
     private bool _isOutgoing;
     public bool IsOutgoing
     {
@@ -278,6 +293,39 @@ public partial class ChatRoomViewModel : ObservableObject
         return lastContiguous;
     }
 
+    public void UpdateDateHeaders()
+    {
+        DateTime? previousDate = null;
+        for (int i = 0; i < Messages.Count; i++)
+        {
+            var msg = Messages[i];
+            var msgDate = msg.MessageDate.Date;
+            if (!previousDate.HasValue || previousDate.Value != msgDate)
+            {
+                msg.ShowDateHeader = true;
+                msg.DateHeaderText = FormatDateHeader(msgDate);
+                previousDate = msgDate;
+            }
+            else
+            {
+                msg.ShowDateHeader = false;
+                msg.DateHeaderText = string.Empty;
+            }
+        }
+    }
+
+    public static string FormatDateHeader(DateTime date)
+    {
+        var today = DateTime.Today;
+        if (date == today)
+            return "TODAY";
+        if (date == today.AddDays(-1))
+            return "YESTERDAY";
+        if (date > today.AddDays(-7))
+            return date.ToString("dddd").ToUpperInvariant();
+        return date.ToString("MMMM d, yyyy");
+    }
+
     private void SortMessages()
     {
         var isSorted = true;
@@ -304,6 +352,7 @@ public partial class ChatRoomViewModel : ObservableObject
                 Messages.Move(currentIndex, i);
             }
         }
+        UpdateDateHeaders();
     }
 
     private void ReorderMessageIfNeeded(ChatMessageItem item)
@@ -570,6 +619,7 @@ public partial class ChatRoomViewModel : ObservableObject
                                     ClientGeneratedId = m.ClientGeneratedId,
                                     Content = m.Content,
                                     TimeFormatted = m.SentAt.ToLocalTime().ToString("h:mm tt"),
+                                    MessageDate = m.SentAt.ToLocalTime(),
                                     SequenceNumber = m.SequenceNumber,
                                     IsDeleted = m.IsDeleted,
                                     IsForwarded = m.IsForwarded
@@ -600,6 +650,7 @@ public partial class ChatRoomViewModel : ObservableObject
                                 );
                             }
                         }
+                        UpdateDateHeaders();
 
                         if (previousTopItem != null)
                         {
@@ -1074,6 +1125,7 @@ public partial class ChatRoomViewModel : ObservableObject
                         _lastSequenceNumber = lm.SequenceNumber;
                     }
                 }
+                UpdateDateHeaders();
                 RequestScrollToBottom?.Invoke();
             });
         }
@@ -1663,6 +1715,7 @@ public partial class ChatRoomViewModel : ObservableObject
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, myName);
 
         Messages.Add(pendingItem);
+        UpdateDateHeaders();
         RequestScrollToBottom?.Invoke();
 
         // Store to local SQLite outbox & stream via SignalR in background so UI thread remains silky smooth
@@ -2004,6 +2057,7 @@ public partial class ChatRoomViewModel : ObservableObject
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
+        UpdateDateHeaders();
         RequestScrollToBottom?.Invoke();
 
         // 3. Upload to server in background, then broadcast via SignalR
@@ -2080,6 +2134,7 @@ public partial class ChatRoomViewModel : ObservableObject
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
+        UpdateDateHeaders();
         RequestScrollToBottom?.Invoke();
 
         _ = Task.Run(async () =>
@@ -2300,6 +2355,7 @@ public partial class ChatRoomViewModel : ObservableObject
                 ClientGeneratedId = msg.ClientGeneratedId,
                 Content = msg.Content,
                 TimeFormatted = msg.SentAt.ToLocalTime().ToString("h:mm tt"),
+                MessageDate = msg.SentAt.ToLocalTime(),
                 SequenceNumber = msg.SequenceNumber,
                 IsDeleted = msg.IsDeleted,
                 IsForwarded = msg.IsForwarded
@@ -2333,6 +2389,7 @@ public partial class ChatRoomViewModel : ObservableObject
             ClientGeneratedId = lm.ClientGeneratedId,
             Content = lm.Content,
             TimeFormatted = lm.Timestamp.ToLocalTime().ToString("h:mm tt"),
+            MessageDate = lm.Timestamp.ToLocalTime(),
             SequenceNumber = lm.SequenceNumber,
             IsDeleted = lm.IsDeleted,
             IsForwarded = lm.IsForwarded
