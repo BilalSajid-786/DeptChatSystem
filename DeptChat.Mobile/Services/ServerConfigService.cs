@@ -3,8 +3,9 @@ namespace DeptChat.Mobile.Services;
 public class ServerConfigService
 {
     public const string LocalWifiUrl = "http://192.168.0.109:5051";
-    public const string CloudflareUrl = "https://loc-flash-suburban-attending.trycloudflare.com";
-    public const string DefaultUrl = CloudflareUrl;
+    public const string ProductionUrl = "https://179.197.255.148.sslip.io";
+    public const string DirectIpUrl = "http://179.197.255.148:5051";
+    public const string DefaultUrl = ProductionUrl;
     private const string PrefKey = "DeptChat_ServerUrl";
 
     public string CurrentUrl
@@ -13,7 +14,7 @@ public class ServerConfigService
         {
             var saved = Preferences.Default.Get(PrefKey, DefaultUrl);
             if (string.IsNullOrWhiteSpace(saved) || 
-                (saved.Contains("trycloudflare.com") && !saved.Contains("loc-flash-suburban-attending")) ||
+                saved.Contains("trycloudflare.com") ||
                 saved.Contains("happened-minute-agricultural-heath") ||
                 saved.Contains("cosmetics-environmental-respected-periods") ||
                 saved.Contains("drinks-mass-noon-preview") ||
@@ -24,8 +25,8 @@ public class ServerConfigService
                 saved.Contains("turning-norfolk-operates-tradition") ||
                 saved.Contains("unto-intensive-lips-compare"))
             {
-                Preferences.Default.Set(PrefKey, CloudflareUrl);
-                return CloudflareUrl;
+                Preferences.Default.Set(PrefKey, DefaultUrl);
+                return DefaultUrl;
             }
             return NormalizeUrl(saved);
         }
@@ -44,7 +45,7 @@ public class ServerConfigService
         if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && 
             !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
         {
-            trimmed = "http://" + trimmed;
+            trimmed = "https://" + trimmed;
         }
         return trimmed;
     }

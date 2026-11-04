@@ -1,4 +1,4 @@
-﻿version: '3.8'
+version: '3.8'
 
 services:
   sqlserver:
@@ -6,17 +6,56 @@ services:
     container_name: deptchat_sql
     environment:
       - ACCEPT_EULA=Y
-      - MSSQL_SA_PASSWORD=YourStrong@Password123
+      - MSSQL_SA_PASSWORD=DeptChat@2026!SecureSqlDb
+      - MSSQL_PID=Express
     ports:
       - "1433:1433"
     volumes:
       - sql_data:/var/opt/mssql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     container_name: deptchat_redis
     ports:
       - "6379:6379"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deptchat_api
+    depends_on:
+      - sqlserver
+      - redis
+    ports:
+      - "5051:5051"
+    environment:
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=DeptChatDb;User Id=sa;Password=DeptChat@2026!SecureSqlDb;TrustServerCertificate=True;MultipleActiveResultSets=true;Max Pool Size=200;Min Pool Size=20;Connection Timeout=30;
+      - ConnectionStrings__Redis=redis:6379
+      - ASPNETCORE_URLS=http://+:5051
+      - ASPNETCORE_ENVIRONMENT=Production
+    volumes:
+      - uploads_data:/app/wwwroot/uploads
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: deptchat_caddy
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
 
 volumes:
   sql_data:
+  uploads_data:
+  caddy_data:
+  caddy_config:

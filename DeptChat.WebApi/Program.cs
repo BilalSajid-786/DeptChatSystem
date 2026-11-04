@@ -53,8 +53,8 @@ if (!string.IsNullOrEmpty(redisConnectionString))
 // =============================================================================
 var signalRBuilder = builder.Services.AddSignalR(options =>
 {
-    options.KeepAliveInterval = TimeSpan.FromSeconds(3);
-    options.ClientTimeoutInterval = TimeSpan.FromSeconds(6);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(45);
     options.MaximumReceiveMessageSize = 10 * 1024 * 1024; // 10 MB for voice notes & attachments
     options.EnableDetailedErrors = true;
 });
@@ -140,8 +140,25 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    // Creates the database and applies all seed data automatically on startup!
-    dbContext.Database.EnsureCreated();
+    // Wait for SQL Server to accept connections with exponential retry
+    int retries = 15;
+    while (retries > 0)
+    {
+        try
+        {
+            Console.WriteLine("[Database] Checking SQL Server connection and applying seed...");
+            dbContext.Database.EnsureCreated();
+            Console.WriteLine("[Database] SQL Server is ready and database initialized successfully!");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries--;
+            Console.WriteLine($"[Database] SQL Server not ready yet ({ex.Message}). Retries remaining: {retries}. Waiting 3s...");
+            Thread.Sleep(3000);
+            if (retries == 0) throw;
+        }
+    }
 }
 
 app.UseSwagger();

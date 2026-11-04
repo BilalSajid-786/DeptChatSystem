@@ -85,8 +85,8 @@ public class SignalRService
             .WithAutomaticReconnect(new EndlessRetryPolicy())
             .Build();
 
-        _hubConnection.ServerTimeout = TimeSpan.FromSeconds(8);
-        _hubConnection.KeepAliveInterval = TimeSpan.FromSeconds(3);
+        _hubConnection.ServerTimeout = TimeSpan.FromSeconds(45);
+        _hubConnection.KeepAliveInterval = TimeSpan.FromSeconds(15);
 
         _hubConnection.Reconnected += (connectionId) =>
         {

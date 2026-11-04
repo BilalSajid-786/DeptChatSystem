@@ -1,0 +1,11 @@
+{
+    email admin@179.197.255.148.sslip.io
+}
+
+179.197.255.148.sslip.io {
+    reverse_proxy api:5051
+}
+
+:80 {
+    reverse_proxy api:5051
+}
