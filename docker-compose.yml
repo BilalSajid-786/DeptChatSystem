@@ -38,6 +38,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
     volumes:
       - uploads_data:/app/wwwroot/uploads
+      - ./DeptChat.WebApi/firebase-admin-key.json:/app/firebase-admin-key.json:ro
     restart: unless-stopped
 
   caddy:

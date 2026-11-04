@@ -24,6 +24,9 @@ public class MainActivity : MauiAppCompatActivity
             Window.SetSoftInputMode(SoftInput.AdjustResize);
         }
 
+        // Initialize Android notification channel on startup
+        CreateNotificationChannel();
+
         // Android 13+ (API 33+) Runtime Notification Permission Request
         if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
         {
@@ -49,6 +52,28 @@ public class MainActivity : MauiAppCompatActivity
         catch
         {
             // Ignore if Google Play Services is pending initialization
+        }
+    }
+
+    private void CreateNotificationChannel()
+    {
+        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+        {
+            var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
+            if (notificationManager != null)
+            {
+                var channel = new NotificationChannel(
+                    Platforms.Android.MyFirebaseMessagingService.ChannelId,
+                    "Department Chat Notifications",
+                    NotificationImportance.High)
+                {
+                    Description = "Incoming messages and alerts from department chat",
+                    LockscreenVisibility = NotificationVisibility.Public
+                };
+                channel.EnableVibration(true);
+                channel.SetShowBadge(true);
+                notificationManager.CreateNotificationChannel(channel);
+            }
         }
     }
 

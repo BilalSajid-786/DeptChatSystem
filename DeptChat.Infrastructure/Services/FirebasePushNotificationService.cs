@@ -21,6 +21,18 @@ public class FirebasePushNotificationService : IPushNotificationService
             if (FirebaseApp.DefaultInstance == null)
             {
                 var credentialPath = configuration["Firebase:CredentialPath"] ?? "firebase-admin-key.json";
+                if (!Path.IsPathRooted(credentialPath))
+                {
+                    if (!File.Exists(credentialPath))
+                    {
+                        var baseDirCheck = Path.Combine(AppContext.BaseDirectory, credentialPath);
+                        if (File.Exists(baseDirCheck))
+                        {
+                            credentialPath = baseDirCheck;
+                        }
+                    }
+                }
+
                 if (File.Exists(credentialPath))
                 {
                     FirebaseApp.Create(new AppOptions
@@ -32,12 +44,14 @@ public class FirebasePushNotificationService : IPushNotificationService
                 }
                 else
                 {
-                    _logger.LogInformation("ℹ️ [FIREBASE ADMIN SDK] Credential file '{Path}' not found. FCM push notifications will run in simulation mode.", credentialPath);
+                    _logger.LogWarning("⚠️ [FIREBASE ADMIN SDK] Credential file '{Path}' not found (Checked current directory '{CurrDir}' and base directory '{BaseDir}'). FCM push notifications will run in simulation mode.",
+                        credentialPath, Directory.GetCurrentDirectory(), AppContext.BaseDirectory);
                 }
             }
             else
             {
                 _isConfigured = true;
+                _logger.LogInformation("✅ [FIREBASE ADMIN SDK] Already initialized.");
             }
         }
         catch (Exception ex)
@@ -61,6 +75,10 @@ public class FirebasePushNotificationService : IPushNotificationService
         {
             try
             {
+                var messageData = data != null ? new Dictionary<string, string>(data) : new Dictionary<string, string>();
+                if (!messageData.ContainsKey("title")) messageData["title"] = title;
+                if (!messageData.ContainsKey("body")) messageData["body"] = body;
+
                 var message = new MulticastMessage
                 {
                     Tokens = tokenList,
@@ -69,7 +87,7 @@ public class FirebasePushNotificationService : IPushNotificationService
                         Title = title,
                         Body = body
                     },
-                    Data = data ?? new Dictionary<string, string>(),
+                    Data = messageData,
                     Android = new AndroidConfig
                     {
                         Priority = Priority.High,
@@ -84,11 +102,30 @@ public class FirebasePushNotificationService : IPushNotificationService
                 var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);
                 _logger.LogInformation("✅ [FCM PUSH DISPATCH SUCCESS] Delivered: {SuccessCount}, Failed: {FailureCount}",
                     response.SuccessCount, response.FailureCount);
+
+                if (response.FailureCount > 0)
+                {
+                    for (int i = 0; i < response.Responses.Count; i++)
+                    {
+                        var res = response.Responses[i];
+                        if (!res.IsSuccess)
+                        {
+                            var tokenPreview = tokenList[i].Length > 15 ? tokenList[i].Substring(0, 15) : tokenList[i];
+                            _logger.LogWarning("❌ [FCM TOKEN FAILED] Token: {Prefix}... Error: {Error}",
+                                tokenPreview,
+                                res.Exception?.Message ?? "Unknown error");
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "❌ [FCM PUSH DISPATCH FAILED] Error sending notification through Firebase Admin SDK.");
             }
+        }
+        else
+        {
+            _logger.LogWarning("⚠️ [FCM PUSH SKIPPED] Firebase Admin SDK is not configured (_isConfigured={IsConfigured}).", _isConfigured);
         }
 
         await Task.CompletedTask;
