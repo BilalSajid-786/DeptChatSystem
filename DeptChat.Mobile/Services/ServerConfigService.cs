@@ -5,6 +5,7 @@ public class ServerConfigService
     public const string LocalWifiUrl = "http://192.168.0.109:5051";
     public const string ProductionUrl = "https://179.197.255.148.sslip.io";
     public const string DirectIpUrl = "http://179.197.255.148:5051";
+    public const string CloudflareUrl = ProductionUrl;
     public const string DefaultUrl = ProductionUrl;
     private const string PrefKey = "DeptChat_ServerUrl";
 

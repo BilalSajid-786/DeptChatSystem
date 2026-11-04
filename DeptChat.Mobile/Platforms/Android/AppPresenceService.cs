@@ -43,7 +43,7 @@ public class AppPresenceService : Service
             var user = JsonSerializer.Deserialize<AuthResponseDto>(authJson);
             if (user == null || string.IsNullOrWhiteSpace(user.Token)) return;
 
-            var serverUrl = Preferences.Default.Get("DeptChat_ServerUrl", ServerConfigService.CloudflareUrl);
+            var serverUrl = Preferences.Default.Get("DeptChat_ServerUrl", ServerConfigService.ProductionUrl);
             var url = $"{serverUrl.TrimEnd('/')}/api/presence/offline";
 
             using var handler = FastHttpHandler.CreateHandler();

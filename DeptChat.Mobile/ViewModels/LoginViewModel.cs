@@ -302,8 +302,9 @@ public partial class LoginViewModel : ObservableObject
             _serverConfig.CurrentUrl = ServerUrl;
             if (Shell.Current != null)
             {
-                await Shell.Current.DisplayAlert("Cloudflare Tunnel Mode", $"Switched to Cloudflare Tunnel:\n{ServerConfigService.CloudflareUrl}", "OK");
+                await Shell.Current.DisplayAlert("Cloud Server Mode", $"Switched to Cloud Server:\n{ServerConfigService.CloudflareUrl}", "OK");
             }
         }
     }
 }
+
