@@ -6,6 +6,7 @@ namespace DeptChat.Infrastructure.Services;
 public class InMemoryPresenceService : IPresenceService
 {
     private readonly ConcurrentDictionary<Guid, string> _presence = new();
+    private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<string, byte>> _userConnections = new();
     private readonly ConcurrentDictionary<Guid, bool> _onlineStatus = new();
     private readonly ConcurrentDictionary<Guid, DateTime> _lastSeen = new();
 
@@ -28,11 +29,47 @@ public class InMemoryPresenceService : IPresenceService
         return Task.FromResult<string?>(val);
     }
 
+    public Task<bool> TrackConnectionAsync(Guid userId, string connectionId)
+    {
+        if (userId == Guid.Empty || string.IsNullOrWhiteSpace(connectionId))
+            return Task.FromResult(false);
+
+        var conns = _userConnections.GetOrAdd(userId, _ => new ConcurrentDictionary<string, byte>());
+        conns[connectionId] = 0;
+        _onlineStatus[userId] = true;
+
+        return Task.FromResult(conns.Count == 1);
+    }
+
+    public Task<bool> RemoveConnectionAsync(Guid userId, string connectionId)
+    {
+        if (userId == Guid.Empty || string.IsNullOrWhiteSpace(connectionId))
+            return Task.FromResult(false);
+
+        if (_userConnections.TryGetValue(userId, out var conns))
+        {
+            conns.TryRemove(connectionId, out _);
+            if (conns.IsEmpty)
+            {
+                _userConnections.TryRemove(userId, out _);
+                _onlineStatus[userId] = false;
+                _lastSeen[userId] = DateTime.UtcNow;
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
+        _onlineStatus[userId] = false;
+        _lastSeen[userId] = DateTime.UtcNow;
+        return Task.FromResult(true);
+    }
+
     public Task SetUserOnlineAsync(Guid userId, bool isOnline)
     {
         _onlineStatus[userId] = isOnline;
         if (!isOnline)
         {
+            _userConnections.TryRemove(userId, out _);
             _lastSeen[userId] = DateTime.UtcNow;
         }
         return Task.CompletedTask;
@@ -40,6 +77,9 @@ public class InMemoryPresenceService : IPresenceService
 
     public Task<bool> IsUserOnlineAsync(Guid userId)
     {
+        if (_userConnections.TryGetValue(userId, out var conns) && !conns.IsEmpty)
+            return Task.FromResult(true);
+
         _onlineStatus.TryGetValue(userId, out var online);
         return Task.FromResult(online);
     }

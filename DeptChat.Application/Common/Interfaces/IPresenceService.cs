@@ -8,6 +8,8 @@ public interface IPresenceService
     Task<bool> IsAnyStaffActiveInRoomAsync(Guid conversationId, IEnumerable<Guid> staffUserIds);
 
     Task SetUserOnlineAsync(Guid userId, bool isOnline);
+    Task<bool> TrackConnectionAsync(Guid userId, string connectionId);
+    Task<bool> RemoveConnectionAsync(Guid userId, string connectionId);
     Task<bool> IsUserOnlineAsync(Guid userId);
     Task<DateTime?> GetLastSeenAsync(Guid userId);
 }
