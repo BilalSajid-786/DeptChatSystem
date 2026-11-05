@@ -55,6 +55,7 @@ public class AvailableUserItem : ObservableObject
 
 [QueryProperty(nameof(DepartmentId), "deptId")]
 [QueryProperty(nameof(DepartmentName), "deptName")]
+[QueryProperty(nameof(SharedFilePath), "sharedFilePath")]
 public partial class DepartmentConversationsViewModel : ObservableObject
 {
     private readonly ChatApiService? _apiService;
@@ -428,12 +429,38 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         });
     }
 
+    [ObservableProperty]
+    private string _sharedFilePath = string.Empty;
+
+    [ObservableProperty]
+    private bool _isShareModeBanner;
+
+    partial void OnSharedFilePathChanged(string value)
+    {
+        IsShareModeBanner = !string.IsNullOrEmpty(value) || IncomingShareService.Instance.HasPendingShare;
+    }
+
+    [RelayCommand]
+    private void CancelShareMode()
+    {
+        IsShareModeBanner = false;
+        SharedFilePath = string.Empty;
+        IncomingShareService.Instance.ClearPendingShare();
+    }
+
     [RelayCommand]
     private async Task SelectConversationAsync(ConversationListItem item)
     {
         if (item == null) return;
 
-        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}&userId={item.CreatedByUserId}&isOnline={item.IsOnline}&isBlocked={item.IsUserBlocked}");
+        var shareParam = string.Empty;
+        var filePath = !string.IsNullOrEmpty(SharedFilePath) ? SharedFilePath : IncomingShareService.Instance.PendingSharedFilePath;
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            shareParam = $"&sharedFilePath={Uri.EscapeDataString(filePath)}";
+        }
+
+        await Shell.Current.GoToAsync($"ChatRoomPage?deptId={item.DepartmentId}&deptName={Uri.EscapeDataString(DepartmentName)}&convId={item.Id}&userName={Uri.EscapeDataString(item.CreatedByUserName)}&userId={item.CreatedByUserId}&isOnline={item.IsOnline}&isBlocked={item.IsUserBlocked}{shareParam}");
     }
 
     [RelayCommand]

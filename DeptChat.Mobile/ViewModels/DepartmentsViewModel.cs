@@ -579,24 +579,45 @@ public partial class DepartmentsViewModel : ObservableObject
         };
     }
 
-    [RelayCommand]
-    private async Task SelectDepartmentAsync(DepartmentItem department)
-    {
-        if (department == null) return;
-
-        if (_authService?.Role == DeptChat.Shared.Enums.UserRole.Admin || _authService?.Role == DeptChat.Shared.Enums.UserRole.Manager)
-        {
-            // Staff view: Navigate to list of customer conversations in this department
-            await Shell.Current.GoToAsync($"DepartmentConversationsPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}");
-        }
-        else
-        {
-            // Customer view: Navigates directly to their direct chat room for this department
-            await Shell.Current.GoToAsync($"ChatRoomPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}");
-        }
-    }
-
-    [RelayCommand]
+    [ObservableProperty]
+    private bool _isShareModeBanner;
+
+    public void CheckPendingShare()
+    {
+        IsShareModeBanner = IncomingShareService.Instance.HasPendingShare;
+    }
+
+    [RelayCommand]
+    private void CancelShareMode()
+    {
+        IsShareModeBanner = false;
+        IncomingShareService.Instance.ClearPendingShare();
+    }
+
+    [RelayCommand]
+    private async Task SelectDepartmentAsync(DepartmentItem department)
+    {
+        if (department == null) return;
+
+        var shareParam = string.Empty;
+        if (IncomingShareService.Instance.HasPendingShare)
+        {
+            shareParam = $"&sharedFilePath={Uri.EscapeDataString(IncomingShareService.Instance.PendingSharedFilePath!)}";
+        }
+
+        if (_authService?.Role == DeptChat.Shared.Enums.UserRole.Admin || _authService?.Role == DeptChat.Shared.Enums.UserRole.Manager)
+        {
+            // Staff view: Navigate to list of customer conversations in this department
+            await Shell.Current.GoToAsync($"DepartmentConversationsPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}{shareParam}");
+        }
+        else
+        {
+            // Customer view: Navigates directly to their direct chat room for this department
+            await Shell.Current.GoToAsync($"ChatRoomPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}{shareParam}");
+        }
+    }
+
+    [RelayCommand]
     public async Task LogoutAsync()
     {
         if (_apiService != null)

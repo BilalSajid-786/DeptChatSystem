@@ -251,8 +251,79 @@ public class ForwardUserItem
 [QueryProperty(nameof(OtherUserIdString), "userId")]
 [QueryProperty(nameof(InitialIsOnlineString), "isOnline")]
 [QueryProperty(nameof(InitialIsBlockedString), "isBlocked")]
+[QueryProperty(nameof(SharedFilePath), "sharedFilePath")]
 public partial class ChatRoomViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private string _sharedFilePath = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasPendingAttachment;
+
+    [ObservableProperty]
+    private string _pendingAttachmentPath = string.Empty;
+
+    [ObservableProperty]
+    private string _pendingAttachmentTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _pendingAttachmentSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private ImageSource? _pendingAttachmentPreview;
+
+    partial void OnSharedFilePathChanged(string value)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            var unescaped = Uri.UnescapeDataString(value);
+            SetPendingAttachment(unescaped);
+        }
+    }
+
+    [RelayCommand]
+    public void CancelPendingAttachment()
+    {
+        ClearPendingAttachment();
+    }
+
+    public void ClearPendingAttachment()
+    {
+        HasPendingAttachment = false;
+        PendingAttachmentPath = string.Empty;
+        PendingAttachmentTitle = string.Empty;
+        PendingAttachmentSubtitle = string.Empty;
+        PendingAttachmentPreview = null;
+        IncomingShareService.Instance.ClearPendingShare();
+    }
+
+    public void SetPendingAttachment(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return;
+
+        PendingAttachmentPath = filePath;
+        var fileName = Path.GetFileName(filePath);
+        PendingAttachmentTitle = fileName.StartsWith("shared_receipt_") ? "Transaction Receipt" : fileName;
+
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        if (ext == ".pdf")
+        {
+            PendingAttachmentSubtitle = "PDF Document • Ready to send";
+            PendingAttachmentPreview = null;
+        }
+        else
+        {
+            PendingAttachmentSubtitle = "Image Receipt • Ready to send";
+            try
+            {
+                PendingAttachmentPreview = ImageSource.FromFile(filePath);
+            }
+            catch { }
+        }
+
+        HasPendingAttachment = true;
+    }
+
     private readonly SignalRService? _signalRService;
     private readonly ChatApiService? _apiService;
     private readonly AuthService? _authService;
@@ -435,7 +506,6 @@ public partial class ChatRoomViewModel : ObservableObject
                             }
                         }
                         SortMessages();
-                        RequestScrollToBottom?.Invoke();
                     });
 
                     if (sync.LastSequenceNumber > _lastSequenceNumber)
@@ -534,7 +604,6 @@ public partial class ChatRoomViewModel : ObservableObject
                             }
                         }
                         SortMessages();
-                        RequestScrollToBottom?.Invoke();
                     });
 
                     if (paged.LatestSequenceNumber.HasValue && paged.LatestSequenceNumber.Value > _lastSequenceNumber)
@@ -1009,7 +1078,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private bool _isLoadingOlderMessages;
 
     [ObservableProperty]
-    private bool _hasMoreOlderMessages = true;
+    private bool _hasMoreOlderMessages = false;
 
     private long _earliestLoadedSequenceNumber = long.MaxValue;
 
@@ -1030,6 +1099,16 @@ public partial class ChatRoomViewModel : ObservableObject
         _audioService = audioService;
 
         SubscribeToEvents();
+
+        // Check if an external receipt/image was shared into DeptChat
+        if (!string.IsNullOrEmpty(SharedFilePath))
+        {
+            SetPendingAttachment(Uri.UnescapeDataString(SharedFilePath));
+        }
+        else if (IncomingShareService.Instance.HasPendingShare)
+        {
+            SetPendingAttachment(IncomingShareService.Instance.PendingSharedFilePath!);
+        }
     }
 
     public ChatRoomViewModel()
@@ -1126,7 +1205,6 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
                 }
                 UpdateDateHeaders();
-                RequestScrollToBottom?.Invoke();
             });
         }
     }
@@ -1301,6 +1379,24 @@ public partial class ChatRoomViewModel : ObservableObject
     [RelayCommand]
     private async Task SendMessageAsync()
     {
+        if (HasPendingAttachment && !string.IsNullOrEmpty(PendingAttachmentPath))
+        {
+            var path = PendingAttachmentPath;
+            var caption = InputMessage?.Trim();
+            InputMessage = string.Empty;
+            ClearPendingAttachment();
+
+            if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProcessAndSendDocumentAsync(path, PendingAttachmentTitle);
+            }
+            else
+            {
+                await ProcessAndSendImageAsync(path, caption);
+            }
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(InputMessage))
             return;
 
@@ -2027,7 +2123,7 @@ public partial class ChatRoomViewModel : ObservableObject
         }
     }
 
-    private async Task ProcessAndSendImageAsync(string localPath)
+    private async Task ProcessAndSendImageAsync(string localPath, string? caption = null)
     {
         if (string.IsNullOrEmpty(localPath) || !File.Exists(localPath)) return;
 
@@ -2050,7 +2146,8 @@ public partial class ChatRoomViewModel : ObservableObject
             StatusIcon = "🕒",
             StatusColor = Color.FromArgb("#94A3B8"),
             IsImageMessage = true,
-            ImageUrl = compressedPath
+            ImageUrl = compressedPath,
+            ImageCaption = caption ?? string.Empty
         };
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
@@ -2078,7 +2175,9 @@ public partial class ChatRoomViewModel : ObservableObject
                     return;
                 }
 
-                var imagePayload = $"[image:{uploadResult.Url}]";
+                var imagePayload = string.IsNullOrWhiteSpace(caption)
+                    ? $"[image:{uploadResult.Url}]"
+                    : $"[image:{uploadResult.Url}:{caption}]";
                 pendingItem.Content = imagePayload;
                 pendingItem.ImageUrl = _apiService.ResolveFullMediaUrl(uploadResult.Url);
 

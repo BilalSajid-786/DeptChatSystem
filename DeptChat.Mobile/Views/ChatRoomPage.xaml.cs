@@ -76,13 +76,29 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.SetItemViewCacheSize(30);
+            rv.SetItemViewCacheSize(40);
             rv.SetItemAnimator(null);
-            rv.NestedScrollingEnabled = true;
+            rv.NestedScrollingEnabled = false;
 
-            // Expand Android RecycledViewPool so up to 35 bubble views remain warm in memory.
-            // This eliminates view destruction and re-inflation lag during scrolling!
-            rv.GetRecycledViewPool()?.SetMaxRecycledViews(0, 35);
+            // Expand Android RecycledViewPool across all common view types so cells are recycled instead of re-inflated
+            var pool = rv.GetRecycledViewPool();
+            if (pool != null)
+            {
+                for (int vt = 0; vt <= 50; vt++)
+                {
+                    pool.SetMaxRecycledViews(vt, 40);
+                }
+                for (int vt = 3580; vt <= 3595; vt++)
+                {
+                    pool.SetMaxRecycledViews(vt, 40);
+                }
+            }
+
+            if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+            {
+                lm.ItemPrefetchEnabled = true;
+                lm.InitialPrefetchItemCount = 10;
+            }
 
             if (_rvTouchListener != null)
             {
@@ -153,11 +169,13 @@ public partial class ChatRoomPage : ContentPage
 
         // Only trigger older messages if:
         // 1. Initial scroll to bottom has completed
-        // 2. User is at the top (FirstVisibleItemIndex == 0)
-        // 3. User is actively dragging/scrolling upwards (VerticalDelta < 0)
+        // 2. We have at least 20 messages loaded (avoid false pagination when all messages fit on screen)
+        // 3. User is actively pulling down at the top (FirstVisibleItemIndex == 0, VerticalDelta < -5)
+        // 4. Server confirmed there are more older messages
         if (_hasInitiallyScrolledToBottom &&
+            _vm.Messages.Count >= 20 &&
             e.FirstVisibleItemIndex == 0 &&
-            e.VerticalDelta < 0 &&
+            e.VerticalDelta < -5 &&
             _vm.HasMoreOlderMessages &&
             !_vm.IsLoadingOlderMessages &&
             !_vm.IsLoadingMessages)
@@ -180,6 +198,10 @@ public partial class ChatRoomPage : ContentPage
     public void ScrollToBottom(bool animate = false)
     {
 #if ANDROID
+        if (_rvTouchListener?.IsTouching == true)
+        {
+            return;
+        }
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvTouchCheck)
         {
             // If the user is actively touching, dragging, or flinging the list, never interrupt!
@@ -204,6 +226,10 @@ public partial class ChatRoomPage : ContentPage
                 if (!token.IsCancellationRequested)
                 {
 #if ANDROID
+                    if (_rvTouchListener?.IsTouching == true)
+                    {
+                        return;
+                    }
                     if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvDelayedCheck)
                     {
                         if (rvDelayedCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
@@ -224,6 +250,10 @@ public partial class ChatRoomPage : ContentPage
         try
         {
 #if ANDROID
+            if (_rvTouchListener?.IsTouching == true)
+            {
+                return;
+            }
             if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck)
             {
                 if (rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
@@ -407,8 +437,19 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         _gestureDetector.IsLongpressEnabled = true;
     }
 
+    public bool IsTouching { get; private set; }
+
     public bool OnInterceptTouchEvent(AndroidX.RecyclerView.Widget.RecyclerView rv, Android.Views.MotionEvent e)
     {
+        if (e.ActionMasked == Android.Views.MotionEventActions.Down)
+        {
+            IsTouching = true;
+        }
+        else if (e.ActionMasked == Android.Views.MotionEventActions.Up || e.ActionMasked == Android.Views.MotionEventActions.Cancel)
+        {
+            IsTouching = false;
+        }
+
         // Deliver event to GestureDetector to track long press holding
         _gestureDetector.OnTouchEvent(e);
 
@@ -419,6 +460,10 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
 
     public void OnTouchEvent(AndroidX.RecyclerView.Widget.RecyclerView rv, Android.Views.MotionEvent e)
     {
+        if (e.ActionMasked == Android.Views.MotionEventActions.Up || e.ActionMasked == Android.Views.MotionEventActions.Cancel)
+        {
+            IsTouching = false;
+        }
         _gestureDetector.OnTouchEvent(e);
     }
 

@@ -20,6 +20,7 @@ public partial class DepartmentConversationsPage : ContentPage
         if (BindingContext is ViewModels.DepartmentConversationsViewModel vm)
         {
             vm.ShowInAppToast = false;
+            vm.IsShareModeBanner = !string.IsNullOrEmpty(vm.SharedFilePath) || Services.IncomingShareService.Instance.HasPendingShare;
             await vm.LoadConversationsAsync();
         }
     }

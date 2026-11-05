@@ -1,1028 +1,2095 @@
-<?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
-             x:Class="DeptChat.Mobile.Views.ChatRoomPage"
-             Shell.NavBarIsVisible="False"
-             SafeAreaEdges="None"
-             BackgroundColor="#EFEAE2">
-
-    <Grid RowDefinitions="Auto, *">
-
-        <!-- 1. WhatsApp Top App Bar (Header with Avatar, Presence & Staff Menu) -->
-        <Grid Grid.Row="0"
-              BackgroundColor="#075E54"
-              HeightRequest="60"
-              Padding="6,4,12,4"
-              ColumnDefinitions="Auto, *, Auto">
-
-            <!-- Back Arrow + Contact Avatar + Title -->
-            <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
-                <!-- Back Button -->
-                <Button Text="←"
-                        Command="{Binding BackCommand}"
-                        BackgroundColor="Transparent"
-                        TextColor="White"
-                        FontSize="24"
-                        FontAttributes="Bold"
-                        Padding="0"
-                        WidthRequest="32"
-                        HeightRequest="44"
-                        VerticalOptions="Center" />
-
-                <!-- WhatsApp Circular Avatar -->
-                <Border BackgroundColor="#00A884"
-                        Stroke="White"
-                        StrokeThickness="1.5"
-                        StrokeShape="RoundRectangle 19"
-                        WidthRequest="38"
-                        HeightRequest="38"
-                        VerticalOptions="Center">
-                    <Label Text="{Binding AvatarInitial}"
-                           TextColor="White"
-                           FontAttributes="Bold"
-                           FontSize="16"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center" />
-                </Border>
-
-                <!-- Department / Contact Title & Real-Time Presence Subtitle (WhatsApp Style) -->
-                <VerticalStackLayout VerticalOptions="Center" Spacing="1" Margin="4,0,0,0">
-                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-                        <Label Text="{Binding ContactTitle}"
-                               TextColor="White"
-                               FontAttributes="Bold"
-                               FontSize="16"
-                               LineBreakMode="TailTruncation" />
-
-                        <!-- Target Customer Blocked Badge -->
-                        <Border BackgroundColor="#DC2626"
-                                Stroke="Transparent"
-                                StrokeShape="RoundRectangle 4"
-                                Padding="6,1"
-                                IsVisible="{Binding IsTargetUserBlocked}"
-                                VerticalOptions="Center">
-                            <Label Text="BLOCKED"
-                                   TextColor="White"
-                                   FontSize="10"
-                                   FontAttributes="Bold" />
-                        </Border>
-                    </HorizontalStackLayout>
-
-                    <Label Text="{Binding PresenceStatusText}"
-                           TextColor="{Binding PresenceTextColor}"
-                           IsVisible="{Binding HasPresenceStatus}"
-                           FontSize="12"
-                           LineBreakMode="TailTruncation" />
-                </VerticalStackLayout>
-            </HorizontalStackLayout>
-
-            <!-- Staff More Menu (⋮) for Block / Unblock Customer -->
-            <Button Grid.Column="2"
-                    Text="⋮"
-                    Command="{Binding ShowChatMenuOptionsCommand}"
-                    IsVisible="{Binding IsStaff}"
-                    BackgroundColor="Transparent"
-                    TextColor="White"
-                    FontSize="22"
-                    FontAttributes="Bold"
-                    Padding="0"
-                    WidthRequest="36"
-                    HeightRequest="44"
-                    VerticalOptions="Center" />
-        </Grid>
-
-        <!-- 2. Chat Area: WhatsApp Doodle Wallpaper + Messages + Floating Input -->
-        <Grid Grid.Row="1" x:Name="ChatAreaGrid">
-            <!-- Authentic WhatsApp Doodle Pattern Wallpaper -->
-            <Image Source="whatsapp_bg.png"
-                   Aspect="AspectFill"
-                   HorizontalOptions="FillAndExpand"
-                   VerticalOptions="FillAndExpand"
-                   InputTransparent="True" />
-
-            <Grid RowDefinitions="Auto, *, Auto" x:Name="ChatContentGrid">
-
-                <!-- In-App Cross-Department Toast Banner -->
-                <Border Grid.Row="0" 
-                        IsVisible="{Binding ShowInAppToast}" 
-                        BackgroundColor="#1E293B" 
-                        Padding="14,8" 
-                        Margin="8,4"
-                        StrokeShape="RoundRectangle 8">
-                    <Grid ColumnDefinitions="*, Auto">
-                        <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
-                        <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#94A3B8" Padding="6,0" HeightRequest="30" />
-                    </Grid>
-                </Border>
-
-                <!-- Floating Top Older Messages Loading Indicator (Overlay, non-disruptive) -->
-                <Border Grid.Row="1"
-                        IsVisible="{Binding IsLoadingOlderMessages}"
-                        HorizontalOptions="Center"
-                        VerticalOptions="Start"
-                        BackgroundColor="#075E54"
-                        StrokeShape="RoundRectangle 16"
-                        Padding="14,6"
-                        Margin="0,8"
-                        ZIndex="25"
-                        InputTransparent="True">
-                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                        <ActivityIndicator IsRunning="{Binding IsLoadingOlderMessages}" Color="White" WidthRequest="16" HeightRequest="16" VerticalOptions="Center" />
-                        <Label Text="Loading older messages..." TextColor="White" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-
-                <!-- Scrollable Messages Canvas -->
-                <CollectionView x:Name="MessagesCollectionView"
-                                Grid.Row="1"
-                                ItemsSource="{Binding Messages}"
-                                BackgroundColor="Transparent"
-                                Margin="8,4"
-                                Scrolled="OnMessagesScrolled">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:ChatMessageItem">
-                            <VerticalStackLayout Spacing="0" HorizontalOptions="FillAndExpand">
-                                <!-- WhatsApp Authentic Centered Date Badge Pill -->
-                                <Border IsVisible="{Binding ShowDateHeader}"
-                                        HorizontalOptions="Center"
-                                        BackgroundColor="#FFFFFF"
-                                        Stroke="#CBD5E1"
-                                        StrokeThickness="0.6"
-                                        StrokeShape="RoundRectangle 8"
-                                        Padding="12,4"
-                                        Margin="0,8,0,6">
-                                    <Label Text="{Binding DateHeaderText}"
-                                           TextColor="#54656F"
-                                           FontSize="11.5"
-                                           FontAttributes="Bold"
-                                           HorizontalOptions="Center"
-                                           VerticalOptions="Center" />
-                                </Border>
-
-                                <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
-                                    <Border HorizontalOptions="{Binding Alignment}"
-                                            BackgroundColor="{Binding BubbleColor}"
-                                            Stroke="#CBD5E1"
-                                            StrokeThickness="0.4"
-                                            StrokeShape="RoundRectangle 14"
-                                            Padding="10,6,10,6"
-                                            MaximumWidthRequest="300">
-
-                                    <VerticalStackLayout Spacing="3">
-                                        <!-- Forwarded Indicator -->
-                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}">
-                                            <Label Text="↪️" FontSize="11" TextColor="#64748B" VerticalOptions="Center" />
-                                            <Label Text="Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" VerticalOptions="Center" />
-                                        </HorizontalStackLayout>
-
-                                        <!-- Sender Name (Only shown on incoming departmental messages) -->
-                                        <Label Text="{Binding SenderName}"
-                                               FontSize="12"
-                                               TextColor="#075E54"
-                                               FontAttributes="Bold"
-                                               IsVisible="{Binding ShowSenderName}" />
-
-                                        <!-- Deleted Message Indicator -->
-                                        <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsDeleted}" Margin="0,2">
-                                            <Label Text="🚫" FontSize="13" TextColor="#64748B" VerticalOptions="Center" />
-                                            <Label Text="This message was deleted"
-                                                   FontSize="14"
-                                                   FontAttributes="Italic"
-                                                   TextColor="#64748B"
-                                                   VerticalOptions="Center" />
-                                        </HorizontalStackLayout>
-
-                                        <!-- Regular Text Message -->
-                                        <Label Text="{Binding Content}"
-                                               FontSize="15"
-                                               TextColor="#111B21"
-                                               LineBreakMode="WordWrap"
-                                               IsVisible="{Binding IsTextVisible}" />
-
-                                        <!-- WhatsApp Style Image Message -->
-                                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsImageVisible}">
-                                            <Border Stroke="Transparent"
-                                                    StrokeShape="RoundRectangle 12"
-                                                    HeightRequest="200"
-                                                    WidthRequest="240"
-                                                    HorizontalOptions="Center">
-                                                <Border.GestureRecognizers>
-                                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenImageCommand}"
-                                                                          CommandParameter="{Binding .}" />
-                                                </Border.GestureRecognizers>
-                                                <Image Source="{Binding ImageUrl}"
-                                                       Aspect="AspectFill"
-                                                       HorizontalOptions="Fill"
-                                                       VerticalOptions="Fill" />
-                                            </Border>
-
-                                            <!-- Optional Image Caption -->
-                                            <Label Text="{Binding ImageCaption}"
-                                                   IsVisible="{Binding HasCaption}"
-                                                   FontSize="14"
-                                                   TextColor="#111B21"
-                                                   LineBreakMode="WordWrap"
-                                                   Margin="2,2,2,0" />
-                                        </VerticalStackLayout>
-
-                                        <!-- WhatsApp Style Document Message -->
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4" IsVisible="{Binding IsDocumentVisible}">
-                                            <Grid.GestureRecognizers>
-                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenDocumentCommand}"
-                                                                      CommandParameter="{Binding .}" />
-                                            </Grid.GestureRecognizers>
-
-                                            <!-- File Icon Badge -->
-                                            <Border Grid.Column="0"
-                                                    BackgroundColor="#F1F5F9"
-                                                    Stroke="#CBD5E1"
-                                                    StrokeShape="RoundRectangle 8"
-                                                    WidthRequest="38"
-                                                    HeightRequest="42"
-                                                    VerticalOptions="Center">
-                                                <Label Text="📄"
-                                                       FontSize="20"
-                                                       HorizontalOptions="Center"
-                                                       VerticalOptions="Center" />
-                                            </Border>
-
-                                            <!-- File Details -->
-                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
-                                                <Label Text="{Binding DocumentFileName}"
-                                                       FontSize="13"
-                                                       FontAttributes="Bold"
-                                                       TextColor="#0F172A"
-                                                       LineBreakMode="TailTruncation"
-                                                       MaxLines="1" />
-                                                <Label Text="{Binding DocumentFileSizeText}"
-                                                       FontSize="11"
-                                                       TextColor="#64748B" />
-                                            </VerticalStackLayout>
-                                        </Grid>
-
-                                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
-                                            <!-- Circular Play/Pause Button -->
-                                            <Button Grid.Column="0"
-                                                    Text="{Binding PlayButtonIcon}"
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=TogglePlayVoiceCommand}"
-                                                    CommandParameter="{Binding .}"
-                                                    BackgroundColor="{Binding PlayButtonColor}"
-                                                    TextColor="White"
-                                                    WidthRequest="38"
-                                                    HeightRequest="38"
-                                                    CornerRadius="19"
-                                                    Padding="0"
-                                                    FontSize="15"
-                                                    FontAttributes="Bold"
-                                                    VerticalOptions="Center" />
-
-                                            <!-- Waveform Draggable Scrubber & Duration -->
-                                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
-                                                <!-- Draggable Slider Scrubber -->
-                                                <Slider Value="{Binding PlaybackProgress}"
-                                                        Minimum="0"
-                                                        Maximum="1"
-                                                        MinimumTrackColor="#00A884"
-                                                        MaximumTrackColor="#CBD5E1"
-                                                        ThumbColor="#00A884"
-                                                        DragStarted="OnMessageSliderDragStarted"
-                                                        DragCompleted="OnMessageSliderDragCompleted"
-                                                        HeightRequest="28"
-                                                        Margin="0,-3" />
-
-                                                <!-- Duration + Mic Badge -->
-                                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
-                                                    <Label Grid.Column="0" 
-                                                           Text="{Binding CurrentPlaybackTime}" 
-                                                           FontSize="11" 
-                                                           TextColor="#667781" 
-                                                           FontAttributes="Bold" 
-                                                           VerticalOptions="Center" />
-                                                    <Label Grid.Column="1" 
-                                                           Text="🎙️" 
-                                                           FontSize="11" 
-                                                           TextColor="#34B7F1"
-                                                           VerticalOptions="Center" />
-                                                </Grid>
-                                            </VerticalStackLayout>
-                                        </Grid>
-
-                                        <!-- Metadata Footer (Timestamp + WhatsApp Delivery Blue Ticks) -->
-                                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
-                                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
-                                            <Label Text="{Binding StatusIcon}" 
-                                                   TextColor="{Binding StatusColor}" 
-                                                   FontSize="11" 
-                                                   FontAttributes="Bold"
-                                                   VerticalOptions="Center"
-                                                   IsVisible="{Binding IsStatusVisible}" />
-                                        </HorizontalStackLayout>
-                                    </VerticalStackLayout>
-                                </Border>
-                            </Grid>
-                        </VerticalStackLayout>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-                </CollectionView>
-
-                <!-- 1. Centered Floating Loading Card (When entering room with 0 messages) -->
-                <Border Grid.Row="1"
-                        IsVisible="{Binding IsLoadingMessages}"
-                        HorizontalOptions="Center"
-                        VerticalOptions="Center"
-                        BackgroundColor="#FFFFFF"
-                        Padding="20,14"
-                        Stroke="#E2E8F0"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 16"
-                        ZIndex="20">
-                    <Border.Shadow>
-                        <Shadow Brush="#25000000" Offset="0,4" Radius="12" Opacity="0.2" />
-                    </Border.Shadow>
-                    <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
-                        <ActivityIndicator IsRunning="{Binding IsLoadingMessages}"
-                                           Color="#00A884"
-                                           WidthRequest="22"
-                                           HeightRequest="22"
-                                           VerticalOptions="Center" />
-                        <Label Text="{Binding LoadingStatusText}"
-                               TextColor="#1E293B"
-                               FontSize="14"
-                               FontAttributes="Bold"
-                               VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-
-                <!-- 2. Subtle Top Syncing Pill (When messages are cached but delta syncing in background) -->
-                <Border Grid.Row="1"
-                        IsVisible="{Binding IsSyncingMessages}"
-                        HorizontalOptions="Center"
-                        VerticalOptions="Start"
-                        Margin="0,8,0,0"
-                        BackgroundColor="#E7FFDB"
-                        Padding="12,6"
-                        Stroke="#86EFAC"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 16"
-                        ZIndex="20">
-                    <Border.Shadow>
-                        <Shadow Brush="#1A000000" Offset="0,2" Radius="6" Opacity="0.15" />
-                    </Border.Shadow>
-                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                        <ActivityIndicator IsRunning="{Binding IsSyncingMessages}"
-                                           Color="#075E54"
-                                           WidthRequest="14"
-                                           HeightRequest="14"
-                                           VerticalOptions="Center" />
-                        <Label Text="Updating chat..."
-                               TextColor="#075E54"
-                               FontSize="12"
-                               FontAttributes="Bold"
-                               VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-
-                <!-- Blocked User Warning (Replaces input bar when blocked) -->
-                <Border Grid.Row="2"
-                        IsVisible="{Binding IsCurrentUserBlocked}"
-                        BackgroundColor="#FEE2E2"
-                        Stroke="#FCA5A5"
-                        StrokeThickness="1"
-                        StrokeShape="RoundRectangle 12"
-                        Padding="14,12"
-                        Margin="10,4,10,8">
-                    <HorizontalStackLayout Spacing="8" HorizontalOptions="Center" VerticalOptions="Center">
-                        <Label Text="🚫" FontSize="16" VerticalOptions="Center" />
-                        <Label Text="You have been blocked from sending messages in this chat."
-                               TextColor="#991B1B"
-                               FontAttributes="Bold"
-                               FontSize="13"
-                               VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-
-                <!-- 3. WhatsApp Bottom Input Area (Floating Capsule + Green FAB) -->
-                <Grid Grid.Row="2"
-                      ColumnDefinitions="*, Auto"
-                      ColumnSpacing="6"
-                      Padding="6,4,6,8"
-                      BackgroundColor="Transparent"
-                      VerticalOptions="End">
-                    <Grid.Triggers>
-                        <DataTrigger TargetType="Grid" Binding="{Binding IsCurrentUserBlocked}" Value="True">
-                            <Setter Property="IsVisible" Value="False" />
-                        </DataTrigger>
-                    </Grid.Triggers>
-
-                    <!-- Capsule Pill (1. Normal Text Entry Mode) -->
-                    <Border Grid.Column="0"
-                            BackgroundColor="White"
-                            Stroke="#CBD5E1"
-                            StrokeThickness="0.5"
-                            StrokeShape="RoundRectangle 24"
-                            Padding="6,0,8,0"
-                            HeightRequest="48"
-                            VerticalOptions="Center">
-                        <Border.Triggers>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsRecordingVoice}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsVoicePreviewReady}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                        </Border.Triggers>
-
-                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="2" VerticalOptions="Center">
-                            <!-- Emoji Button -->
-                            <Button Grid.Column="0"
-                                    Text="😊"
-                                    BackgroundColor="Transparent"
-                                    TextColor="#8696A0"
-                                    FontSize="18"
-                                    WidthRequest="32"
-                                    HeightRequest="40"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-
-                            <!-- Message Entry Box -->
-                            <Entry Grid.Column="1"
-                                   Text="{Binding InputMessage}" 
-                                   Placeholder="Message" 
-                                   PlaceholderColor="#8696A0" 
-                                   TextColor="#111B21"
-                                   FontSize="15"
-                                   VerticalOptions="Center"
-                                   HeightRequest="42"
-                                   Focused="OnMessageEntryFocused" />
-
-                            <!-- Attachment Paperclip Button -->
-                            <Button Grid.Column="2"
-                                    Text="📎"
-                                    Command="{Binding AttachFileCommand}"
-                                    BackgroundColor="Transparent"
-                                    TextColor="#8696A0"
-                                    FontSize="18"
-                                    WidthRequest="32"
-                                    HeightRequest="40"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-
-                            <!-- Camera Button -->
-                            <Button Grid.Column="3"
-                                    Text="📷"
-                                    Command="{Binding CapturePhotoCommand}"
-                                    BackgroundColor="Transparent"
-                                    TextColor="#8696A0"
-                                    FontSize="17"
-                                    WidthRequest="32"
-                                    HeightRequest="40"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Capsule Pill (2. WhatsApp Live Recording Mode: Red dot + Timer + Pause/Listen + Trash) -->
-                    <Border Grid.Column="0"
-                            BackgroundColor="#FEE2E2"
-                            Stroke="#FCA5A5"
-                            StrokeThickness="1"
-                            StrokeShape="RoundRectangle 24"
-                            Padding="10,0,10,0"
-                            HeightRequest="48"
-                            VerticalOptions="Center"
-                            IsVisible="{Binding IsRecordingVoice}">
-                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="6" VerticalOptions="Center">
-                            <Label Grid.Column="0" Text="🔴" FontSize="14" VerticalOptions="Center" />
-                            <Label Grid.Column="1"
-                                   Text="{Binding RecordingDurationText}"
-                                   TextColor="#991B1B"
-                                   FontAttributes="Bold"
-                                   FontSize="14"
-                                   VerticalOptions="Center" />
-
-                            <!-- Pause & Review Button: Taps this to stop & listen before sending! -->
-                            <Button Grid.Column="2"
-                                    Text="⏸ Listen"
-                                    Command="{Binding PauseAndPreviewVoiceCommand}"
-                                    BackgroundColor="#DC2626"
-                                    TextColor="White"
-                                    FontAttributes="Bold"
-                                    FontSize="12"
-                                    CornerRadius="14"
-                                    HeightRequest="30"
-                                    Padding="8,0"
-                                    VerticalOptions="Center" />
-
-                            <!-- Discard / Trash Button -->
-                            <Button Grid.Column="3"
-                                    Text="🗑️"
-                                    Command="{Binding CancelVoiceRecordingCommand}"
-                                    BackgroundColor="Transparent"
-                                    TextColor="#DC2626"
-                                    FontSize="18"
-                                    WidthRequest="30"
-                                    HeightRequest="40"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Capsule Pill (3. WhatsApp Audio Preview Mode: Trash + Play/Pause + Draggable Scrubber + Timer) -->
-                    <Border Grid.Column="0"
-                            BackgroundColor="White"
-                            Stroke="#CBD5E1"
-                            StrokeThickness="0.5"
-                            StrokeShape="RoundRectangle 24"
-                            Padding="8,0,10,0"
-                            HeightRequest="48"
-                            VerticalOptions="Center"
-                            IsVisible="{Binding IsVoicePreviewReady}">
-                        <Grid ColumnDefinitions="Auto, Auto, *, Auto" ColumnSpacing="6" VerticalOptions="Center">
-                            <!-- Discard / Trash Button -->
-                            <Button Grid.Column="0"
-                                    Text="🗑️"
-                                    Command="{Binding CancelVoiceRecordingCommand}"
-                                    BackgroundColor="Transparent"
-                                    TextColor="#EF4444"
-                                    FontSize="18"
-                                    WidthRequest="30"
-                                    HeightRequest="40"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-
-                            <!-- Play / Pause Preview Button -->
-                            <Button Grid.Column="1"
-                                    Text="{Binding VoicePreviewPlayIcon}"
-                                    Command="{Binding TogglePlayVoicePreviewCommand}"
-                                    BackgroundColor="#00A884"
-                                    TextColor="White"
-                                    FontSize="14"
-                                    FontAttributes="Bold"
-                                    CornerRadius="16"
-                                    WidthRequest="32"
-                                    HeightRequest="32"
-                                    Padding="0"
-                                    VerticalOptions="Center" />
-
-                            <!-- Draggable Audio Waveform Slider -->
-                            <Slider Grid.Column="2"
-                                    Value="{Binding VoicePreviewProgress}"
-                                    Minimum="0"
-                                    Maximum="1"
-                                    MinimumTrackColor="#00A884"
-                                    MaximumTrackColor="#E2E8F0"
-                                    ThumbColor="#00A884"
-                                    DragStarted="OnPreviewSliderDragStarted"
-                                    DragCompleted="OnPreviewSliderDragCompleted"
-                                    VerticalOptions="Center" />
-
-                            <!-- Preview Duration Text -->
-                            <Label Grid.Column="3"
-                                   Text="{Binding VoicePreviewTimeText}"
-                                   TextColor="#475569"
-                                   FontSize="11"
-                                   FontAttributes="Bold"
-                                   VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Circular WhatsApp Action FAB -->
-                    <!-- 1. Microphone FAB when input is empty, not recording, and not previewing -->
-                    <Button Grid.Column="1"
-                            Text="🎙️"
-                            Command="{Binding StartVoiceRecordingCommand}"
-                            BackgroundColor="#00A884"
-                            TextColor="White"
-                            FontSize="20"
-                            CornerRadius="24"
-                            WidthRequest="48"
-                            HeightRequest="48"
-                            Padding="0"
-                            VerticalOptions="Center">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding HasInputText}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-
-                    <!-- 2. Send Text FAB when input has text and not recording/previewing -->
-                    <Button Grid.Column="1"
-                            Text="➤"
-                            Command="{Binding SendMessageCommand}"
-                            BackgroundColor="#00A884"
-                            TextColor="White"
-                            FontSize="18"
-                            FontAttributes="Bold"
-                            CornerRadius="24"
-                            WidthRequest="48"
-                            HeightRequest="48"
-                            Padding="0"
-                            VerticalOptions="Center"
-                            IsVisible="{Binding HasInputText}">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-
-                    <!-- 3. Send Voice FAB when recording or previewing -->
-                    <Button Grid.Column="1"
-                            Text="➤"
-                            Command="{Binding SendVoiceRecordingCommand}"
-                            BackgroundColor="#00A884"
-                            TextColor="White"
-                            FontSize="18"
-                            FontAttributes="Bold"
-                            CornerRadius="24"
-                            WidthRequest="48"
-                            HeightRequest="48"
-                            Padding="0"
-                            VerticalOptions="Center">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
-                                <Setter Property="IsVisible" Value="True" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
-                                <Setter Property="IsVisible" Value="True" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="False">
-                                <Setter Property="IsVisible" Value="False" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-                </Grid>
-            </Grid>
-        </Grid>
-
-        <!-- Enhanced Message Context Menu Modal (WhatsApp Floating Card Style) -->
-        <Grid Grid.RowSpan="2"
-              IsVisible="{Binding IsMessageMenuVisible}"
-              BackgroundColor="#80000000"
-              ZIndex="99">
-            <Grid.GestureRecognizers>
-                <TapGestureRecognizer Command="{Binding CloseMessageMenuCommand}" />
-            </Grid.GestureRecognizers>
-
-            <Border BackgroundColor="White"
-                    Stroke="#CBD5E1"
-                    StrokeThickness="1"
-                    StrokeShape="RoundRectangle 16"
-                    Margin="24,0"
-                    Padding="0"
-                    HorizontalOptions="Fill"
-                    VerticalOptions="Center"
-                    MaximumWidthRequest="360">
-                <Border.Shadow>
-                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
-                </Border.Shadow>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer />
-                </Border.GestureRecognizers>
-
-                <VerticalStackLayout Spacing="0">
-                    <!-- Message Preview Card -->
-                    <Border BackgroundColor="#F8FAFC"
-                            Stroke="#E2E8F0"
-                            StrokeThickness="1"
-                            StrokeShape="RoundRectangle 12"
-                            Margin="16,16,16,12"
-                            Padding="12,10">
-                        <VerticalStackLayout Spacing="4">
-                            <Grid ColumnDefinitions="*, Auto">
-                                <Label Grid.Column="0"
-                                       Text="{Binding SelectedMessageSenderName}"
-                                       FontSize="12"
-                                       FontAttributes="Bold"
-                                       TextColor="#008069"
-                                       LineBreakMode="TailTruncation" />
-                                <Label Grid.Column="1"
-                                       Text="{Binding SelectedMessageTime}"
-                                       FontSize="11"
-                                       TextColor="#94A3B8" />
-                            </Grid>
-                            <Label Text="{Binding SelectedMessagePreviewText}"
-                                   FontSize="14"
-                                   TextColor="#334155"
-                                   MaxLines="3"
-                                   LineBreakMode="TailTruncation" />
-                        </VerticalStackLayout>
-                    </Border>
-
-                    <BoxView HeightRequest="1" Color="#F1F5F9" />
-
-                    <!-- Action 1: Copy Text -->
-                    <Grid Padding="20,14"
-                          ColumnDefinitions="32, *"
-                          IsVisible="{Binding CanCopySelectedMessage}">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding CopyMessageFromMenuCommand}" />
-                        </Grid.GestureRecognizers>
-                        <Label Grid.Column="0" Text="📋" FontSize="18" VerticalOptions="Center" />
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                            <Label Text="Copy Text" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
-                            <Label Text="Copy message text to clipboard" FontSize="11" TextColor="#64748B" />
-                        </VerticalStackLayout>
-                    </Grid>
-
-                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanCopySelectedMessage}" />
-
-                    <!-- Action 2: Forward Message (Admin Only) -->
-                    <Grid Padding="20,14"
-                          ColumnDefinitions="32, *"
-                          IsVisible="{Binding CanForwardSelectedMessage}">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding TriggerForwardFromMenuCommand}" />
-                        </Grid.GestureRecognizers>
-                        <Label Grid.Column="0" Text="↪️" FontSize="18" VerticalOptions="Center" />
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                            <Label Text="Forward Message" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
-                            <Label Text="Forward to any user in any department" FontSize="11" TextColor="#64748B" />
-                        </VerticalStackLayout>
-                    </Grid>
-
-                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanForwardSelectedMessage}" />
-
-                    <!-- Action 3: Delete for Everyone (Admin or Manager own message) -->
-                    <Grid Padding="20,14"
-                          ColumnDefinitions="32, *"
-                          IsVisible="{Binding CanDeleteSelectedMessage}">
-                        <Grid.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding TriggerDeleteFromMenuCommand}" />
-                        </Grid.GestureRecognizers>
-                        <Label Grid.Column="0" Text="🗑️" FontSize="18" VerticalOptions="Center" />
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                            <Label Text="Delete for Everyone" FontSize="15" FontAttributes="Bold" TextColor="#DC2626" />
-                            <Label Text="Remove this message for all participants" FontSize="11" TextColor="#EF4444" />
-                        </VerticalStackLayout>
-                    </Grid>
-
-                    <BoxView HeightRequest="1" Color="#E2E8F0" />
-
-                    <!-- Close / Dismiss Button -->
-                    <Button Text="Cancel"
-                            Command="{Binding CloseMessageMenuCommand}"
-                            BackgroundColor="Transparent"
-                            TextColor="#64748B"
-                            FontAttributes="Bold"
-                            FontSize="14"
-                            HeightRequest="44"
-                            Margin="16,4,16,12" />
-                </VerticalStackLayout>
-            </Border>
-        </Grid>
-
-        <!-- 3. Forward Message Modal Overlay (Admin Only - 2-Step Workflow) -->
-        <Grid Grid.RowSpan="2"
-              IsVisible="{Binding IsForwardModalVisible}"
-              BackgroundColor="#80000000"
-              ZIndex="100">
-            <Border BackgroundColor="White"
-                    Stroke="#CBD5E1"
-                    StrokeThickness="1"
-                    StrokeShape="RoundRectangle 16"
-                    Margin="20,30"
-                    Padding="0"
-                    HorizontalOptions="Fill"
-                    VerticalOptions="Center"
-                    MaximumHeightRequest="560">
-                <Border.Shadow>
-                    <Shadow Brush="#40000000" Offset="0,6" Radius="16" Opacity="0.3" />
-                </Border.Shadow>
-
-                <Grid RowDefinitions="Auto, Auto, *, Auto">
-                    <!-- Step 0 Header (Select Department) -->
-                    <Grid Grid.Row="0"
-                          BackgroundColor="#075E54"
-                          Padding="16,12"
-                          ColumnDefinitions="*, Auto"
-                          IsVisible="{Binding IsForwardStep0}">
-                        <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="Forward Message (1/2)"
-                                   TextColor="White"
-                                   FontAttributes="Bold"
-                                   FontSize="16" />
-                            <Label Text="Select the target department"
-                                   TextColor="#E2E8F0"
-                                   FontSize="12" />
-                        </VerticalStackLayout>
-                        <Button Grid.Column="1"
-                                Text="✕"
-                                Command="{Binding CloseForwardModalCommand}"
-                                BackgroundColor="Transparent"
-                                TextColor="White"
-                                FontSize="18"
-                                WidthRequest="36"
-                                HeightRequest="36"
-                                Padding="0"
-                                VerticalOptions="Center" />
-                    </Grid>
-
-                    <!-- Step 1 Header (Select User within Department) -->
-                    <Grid Grid.Row="0"
-                          BackgroundColor="#075E54"
-                          Padding="10,12,16,12"
-                          ColumnDefinitions="Auto, *, Auto"
-                          IsVisible="{Binding IsForwardStep1}">
-                        <Button Grid.Column="0"
-                                Text="←"
-                                Command="{Binding StepBackToDepartmentsCommand}"
-                                BackgroundColor="Transparent"
-                                TextColor="White"
-                                FontSize="20"
-                                WidthRequest="36"
-                                HeightRequest="36"
-                                Padding="0"
-                                VerticalOptions="Center" />
-                        <VerticalStackLayout Grid.Column="1" Spacing="2" Margin="4,0,0,0">
-                            <Label Text="Forward Message (2/2)"
-                                   TextColor="White"
-                                   FontAttributes="Bold"
-                                   FontSize="16" />
-                            <Label Text="{Binding SelectedForwardDepartment.Name, StringFormat='Select user in {0}'}"
-                                   TextColor="#E2E8F0"
-                                   FontSize="12"
-                                   LineBreakMode="TailTruncation" />
-                        </VerticalStackLayout>
-                        <Button Grid.Column="2"
-                                Text="✕"
-                                Command="{Binding CloseForwardModalCommand}"
-                                BackgroundColor="Transparent"
-                                TextColor="White"
-                                FontSize="18"
-                                WidthRequest="36"
-                                HeightRequest="36"
-                                Padding="0"
-                                VerticalOptions="Center" />
-                    </Grid>
-
-                    <!-- Search Bar Step 0: Department Search -->
-                    <Border Grid.Row="1"
-                            BackgroundColor="#F1F5F9"
-                            Stroke="#CBD5E1"
-                            StrokeThickness="1"
-                            StrokeShape="RoundRectangle 20"
-                            Margin="12,10,12,6"
-                            Padding="12,0"
-                            HeightRequest="40"
-                            IsVisible="{Binding IsForwardStep0}">
-                        <Grid ColumnDefinitions="Auto, *">
-                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
-                            <Entry Grid.Column="1"
-                                   Text="{Binding ForwardDeptSearchText}"
-                                   Placeholder="Search department..."
-                                   PlaceholderColor="#94A3B8"
-                                   TextColor="#0F172A"
-                                   FontSize="13"
-                                   VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Search Bar Step 1: User Search -->
-                    <Border Grid.Row="1"
-                            BackgroundColor="#F1F5F9"
-                            Stroke="#CBD5E1"
-                            StrokeThickness="1"
-                            StrokeShape="RoundRectangle 20"
-                            Margin="12,10,12,6"
-                            Padding="12,0"
-                            HeightRequest="40"
-                            IsVisible="{Binding IsForwardStep1}">
-                        <Grid ColumnDefinitions="Auto, *">
-                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
-                            <Entry Grid.Column="1"
-                                   Text="{Binding ForwardUserSearchText}"
-                                   Placeholder="Search user by name or email..."
-                                   PlaceholderColor="#94A3B8"
-                                   TextColor="#0F172A"
-                                   FontSize="13"
-                                   VerticalOptions="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- Loading Indicator -->
-                    <ActivityIndicator Grid.Row="2"
-                                       IsRunning="{Binding IsLoadingForwardData}"
-                                       IsVisible="{Binding IsLoadingForwardData}"
-                                       Color="#075E54"
-                                       WidthRequest="36"
-                                       HeightRequest="36"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center" />
-
-                    <!-- Step 0 List: Departments -->
-                    <CollectionView Grid.Row="2"
-                                    ItemsSource="{Binding FilteredForwardDepartments}"
-                                    Margin="8,4"
-                                    IsVisible="{Binding IsForwardStep0}"
-                                    EmptyView="No departments found.">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ForwardDepartmentItem">
-                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=SelectForwardDepartmentCommand}"
-                                                              CommandParameter="{Binding .}" />
-                                    </Border.GestureRecognizers>
-                                    <Grid ColumnDefinitions="36, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
-                                        <Label Grid.Column="0" Text="{Binding Icon}" FontSize="22" VerticalOptions="Center" HorizontalOptions="Center" />
-                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                            <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="14" TextColor="#0F172A" LineBreakMode="TailTruncation" />
-                                            <Label Text="{Binding Description}" FontSize="12" TextColor="#64748B" LineBreakMode="TailTruncation" />
-                                        </VerticalStackLayout>
-                                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" Padding="4,0" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-
-                    <!-- Step 1 List: Users in Selected Department -->
-                    <CollectionView Grid.Row="2"
-                                    ItemsSource="{Binding FilteredDepartmentForwardUsers}"
-                                    Margin="8,4"
-                                    IsVisible="{Binding IsForwardStep1}"
-                                    EmptyView="No users found in this department.">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ForwardUserItem">
-                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ExecuteForwardCommand}"
-                                                              CommandParameter="{Binding .}" />
-                                    </Border.GestureRecognizers>
-                                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
-                                        <!-- Avatar -->
-                                        <Border Grid.Column="0"
-                                                BackgroundColor="#00A884"
-                                                Stroke="Transparent"
-                                                StrokeShape="RoundRectangle 18"
-                                                WidthRequest="36"
-                                                HeightRequest="36"
-                                                VerticalOptions="Center">
-                                            <Label Text="{Binding AvatarInitial}"
-                                                   TextColor="White"
-                                                   FontAttributes="Bold"
-                                                   FontSize="15"
-                                                   HorizontalOptions="Center"
-                                                   VerticalOptions="Center" />
-                                        </Border>
-                                        <!-- Details -->
-                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                                                <Label Text="{Binding FullName}"
-                                                       FontAttributes="Bold"
-                                                       FontSize="14"
-                                                       TextColor="#0F172A"
-                                                       LineBreakMode="TailTruncation" />
-                                                <Border BackgroundColor="#DCFCE7"
-                                                        Stroke="Transparent"
-                                                        StrokeShape="RoundRectangle 4"
-                                                        Padding="6,1"
-                                                        VerticalOptions="Center"
-                                                        IsVisible="{Binding ShowOnlineBadge}">
-                                                    <Label Text="ONLINE" TextColor="#166534" FontSize="9" FontAttributes="Bold" />
-                                                </Border>
-                                            </HorizontalStackLayout>
-                                            <Label Text="{Binding Subtitle}"
-                                                   FontSize="12"
-                                                   TextColor="#64748B"
-                                                   LineBreakMode="TailTruncation" />
-                                        </VerticalStackLayout>
-                                        <!-- Forward Icon -->
-                                        <Label Grid.Column="2"
-                                               Text="↪️"
-                                               FontSize="18"
-                                               VerticalOptions="Center"
-                                               Padding="8,0" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
-
-                    <!-- Footer: Cancel Button -->
-                    <Grid Grid.Row="3" Margin="12,6,12,12">
-                        <Button Text="Cancel"
-                                Command="{Binding CloseForwardModalCommand}"
-                                BackgroundColor="#F1F5F9"
-                                TextColor="#475569"
-                                FontAttributes="Bold"
-                                HeightRequest="42"
-                                CornerRadius="8" />
-                    </Grid>
-                </Grid>
-            </Border>
-        </Grid>
-    </Grid>
-</ContentPage>
+<?xml version="1.0" encoding="utf-8" ?>
+
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+
+             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+
+             x:Class="DeptChat.Mobile.Views.ChatRoomPage"
+
+             Shell.NavBarIsVisible="False"
+
+             SafeAreaEdges="None"
+
+             BackgroundColor="#EFEAE2">
+
+
+
+    <Grid RowDefinitions="Auto, *">
+
+
+
+        <!-- 1. WhatsApp Top App Bar (Header with Avatar, Presence & Staff Menu) -->
+
+        <Grid Grid.Row="0"
+
+              BackgroundColor="#075E54"
+
+              HeightRequest="60"
+
+              Padding="6,4,12,4"
+
+              ColumnDefinitions="Auto, *, Auto">
+
+
+
+            <!-- Back Arrow + Contact Avatar + Title -->
+
+            <HorizontalStackLayout Grid.Column="0" Spacing="8" VerticalOptions="Center">
+
+                <!-- Back Button -->
+
+                <Button Text="←"
+
+                        Command="{Binding BackCommand}"
+
+                        BackgroundColor="Transparent"
+
+                        TextColor="White"
+
+                        FontSize="24"
+
+                        FontAttributes="Bold"
+
+                        Padding="0"
+
+                        WidthRequest="32"
+
+                        HeightRequest="44"
+
+                        VerticalOptions="Center" />
+
+
+
+                <!-- WhatsApp Circular Avatar -->
+
+                <Border BackgroundColor="#00A884"
+
+                        Stroke="White"
+
+                        StrokeThickness="1.5"
+
+                        StrokeShape="RoundRectangle 19"
+
+                        WidthRequest="38"
+
+                        HeightRequest="38"
+
+                        VerticalOptions="Center">
+
+                    <Label Text="{Binding AvatarInitial}"
+
+                           TextColor="White"
+
+                           FontAttributes="Bold"
+
+                           FontSize="16"
+
+                           HorizontalOptions="Center"
+
+                           VerticalOptions="Center" />
+
+                </Border>
+
+
+
+                <!-- Department / Contact Title & Real-Time Presence Subtitle (WhatsApp Style) -->
+
+                <VerticalStackLayout VerticalOptions="Center" Spacing="1" Margin="4,0,0,0">
+
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+
+                        <Label Text="{Binding ContactTitle}"
+
+                               TextColor="White"
+
+                               FontAttributes="Bold"
+
+                               FontSize="16"
+
+                               LineBreakMode="TailTruncation" />
+
+
+
+                        <!-- Target Customer Blocked Badge -->
+
+                        <Border BackgroundColor="#DC2626"
+
+                                Stroke="Transparent"
+
+                                StrokeShape="RoundRectangle 4"
+
+                                Padding="6,1"
+
+                                IsVisible="{Binding IsTargetUserBlocked}"
+
+                                VerticalOptions="Center">
+
+                            <Label Text="BLOCKED"
+
+                                   TextColor="White"
+
+                                   FontSize="10"
+
+                                   FontAttributes="Bold" />
+
+                        </Border>
+
+                    </HorizontalStackLayout>
+
+
+
+                    <Label Text="{Binding PresenceStatusText}"
+
+                           TextColor="{Binding PresenceTextColor}"
+
+                           IsVisible="{Binding HasPresenceStatus}"
+
+                           FontSize="12"
+
+                           LineBreakMode="TailTruncation" />
+
+                </VerticalStackLayout>
+
+            </HorizontalStackLayout>
+
+
+
+            <!-- Staff More Menu (⋮) for Block / Unblock Customer -->
+
+            <Button Grid.Column="2"
+
+                    Text="⋮"
+
+                    Command="{Binding ShowChatMenuOptionsCommand}"
+
+                    IsVisible="{Binding IsStaff}"
+
+                    BackgroundColor="Transparent"
+
+                    TextColor="White"
+
+                    FontSize="22"
+
+                    FontAttributes="Bold"
+
+                    Padding="0"
+
+                    WidthRequest="36"
+
+                    HeightRequest="44"
+
+                    VerticalOptions="Center" />
+
+        </Grid>
+
+
+
+        <!-- 2. Chat Area: WhatsApp Doodle Wallpaper + Messages + Floating Input -->
+
+        <Grid Grid.Row="1" x:Name="ChatAreaGrid">
+
+            <!-- Authentic WhatsApp Doodle Pattern Wallpaper -->
+
+            <Image Source="whatsapp_bg.png"
+
+                   Aspect="AspectFill"
+
+                   HorizontalOptions="FillAndExpand"
+
+                   VerticalOptions="FillAndExpand"
+
+                   InputTransparent="True" />
+
+
+
+            <Grid RowDefinitions="Auto, *, Auto" x:Name="ChatContentGrid">
+
+
+
+                <!-- In-App Cross-Department Toast Banner -->
+
+                <Border Grid.Row="0" 
+
+                        IsVisible="{Binding ShowInAppToast}" 
+
+                        BackgroundColor="#1E293B" 
+
+                        Padding="14,8" 
+
+                        Margin="8,4"
+
+                        StrokeShape="RoundRectangle 8">
+
+                    <Grid ColumnDefinitions="*, Auto">
+
+                        <Label Grid.Column="0" Text="{Binding InAppToastMessage}" TextColor="White" FontSize="13" VerticalOptions="Center" />
+
+                        <Button Grid.Column="1" Text="✕" Command="{Binding DismissToastCommand}" BackgroundColor="Transparent" TextColor="#94A3B8" Padding="6,0" HeightRequest="30" />
+
+                    </Grid>
+
+                </Border>
+
+
+
+                <!-- Floating Top Older Messages Loading Indicator (Overlay, non-disruptive) -->
+
+                <Border Grid.Row="1"
+
+                        IsVisible="{Binding IsLoadingOlderMessages}"
+
+                        HorizontalOptions="Center"
+
+                        VerticalOptions="Start"
+
+                        BackgroundColor="#075E54"
+
+                        StrokeShape="RoundRectangle 16"
+
+                        Padding="14,6"
+
+                        Margin="0,8"
+
+                        ZIndex="25"
+
+                        InputTransparent="True">
+
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+
+                        <ActivityIndicator IsRunning="{Binding IsLoadingOlderMessages}" Color="White" WidthRequest="16" HeightRequest="16" VerticalOptions="Center" />
+
+                        <Label Text="Loading older messages..." TextColor="White" FontSize="12" FontAttributes="Bold" VerticalOptions="Center" />
+
+                    </HorizontalStackLayout>
+
+                </Border>
+
+
+
+                <!-- Scrollable Messages Canvas -->
+
+                <CollectionView x:Name="MessagesCollectionView"
+
+                                Grid.Row="1"
+
+                                ItemsSource="{Binding Messages}"
+
+                                BackgroundColor="Transparent"
+
+                                Margin="8,4"
+
+                                Scrolled="OnMessagesScrolled">
+
+                    <CollectionView.ItemTemplate>
+
+                        <DataTemplate x:DataType="vm:ChatMessageItem">
+
+                            <VerticalStackLayout Spacing="0" HorizontalOptions="FillAndExpand">
+
+                                <!-- WhatsApp Authentic Centered Date Badge Pill -->
+
+                                <Border IsVisible="{Binding ShowDateHeader}"
+
+                                        HorizontalOptions="Center"
+
+                                        BackgroundColor="#FFFFFF"
+
+                                        Stroke="#CBD5E1"
+
+                                        StrokeThickness="0.6"
+
+                                        StrokeShape="RoundRectangle 8"
+
+                                        Padding="12,4"
+
+                                        Margin="0,8,0,6">
+
+                                    <Label Text="{Binding DateHeaderText}"
+
+                                           TextColor="#54656F"
+
+                                           FontSize="11.5"
+
+                                           FontAttributes="Bold"
+
+                                           HorizontalOptions="Center"
+
+                                           VerticalOptions="Center" />
+
+                                </Border>
+
+
+
+                                <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
+
+                                    <Border HorizontalOptions="{Binding Alignment}"
+
+                                            BackgroundColor="{Binding BubbleColor}"
+
+                                            Stroke="#CBD5E1"
+
+                                            StrokeThickness="0.4"
+
+                                            StrokeShape="RoundRectangle 14"
+
+                                            Padding="10,6,10,6"
+
+                                            MaximumWidthRequest="300">
+
+
+
+                                    <VerticalStackLayout Spacing="3">
+
+                                        <!-- Forwarded Indicator -->
+
+                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}">
+
+                                            <Label Text="↪️" FontSize="11" TextColor="#64748B" VerticalOptions="Center" />
+
+                                            <Label Text="Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" VerticalOptions="Center" />
+
+                                        </HorizontalStackLayout>
+
+
+
+                                        <!-- Sender Name (Only shown on incoming departmental messages) -->
+
+                                        <Label Text="{Binding SenderName}"
+
+                                               FontSize="12"
+
+                                               TextColor="#075E54"
+
+                                               FontAttributes="Bold"
+
+                                               IsVisible="{Binding ShowSenderName}" />
+
+
+
+                                        <!-- Deleted Message Indicator -->
+
+                                        <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsDeleted}" Margin="0,2">
+
+                                            <Label Text="🚫" FontSize="13" TextColor="#64748B" VerticalOptions="Center" />
+
+                                            <Label Text="This message was deleted"
+
+                                                   FontSize="14"
+
+                                                   FontAttributes="Italic"
+
+                                                   TextColor="#64748B"
+
+                                                   VerticalOptions="Center" />
+
+                                        </HorizontalStackLayout>
+
+
+
+                                        <!-- Regular Text Message -->
+
+                                        <Label Text="{Binding Content}"
+
+                                               FontSize="15"
+
+                                               TextColor="#111B21"
+
+                                               LineBreakMode="WordWrap"
+
+                                               IsVisible="{Binding IsTextVisible}" />
+
+
+
+                                        <!-- WhatsApp Style Image Message -->
+
+                                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsImageVisible}">
+
+                                            <Border Stroke="Transparent"
+
+                                                    StrokeShape="RoundRectangle 12"
+
+                                                    HeightRequest="200"
+
+                                                    WidthRequest="240"
+
+                                                    HorizontalOptions="Center">
+
+                                                <Border.GestureRecognizers>
+
+                                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenImageCommand}"
+
+                                                                          CommandParameter="{Binding .}" />
+
+                                                </Border.GestureRecognizers>
+
+                                                <Image Source="{Binding ImageUrl}"
+
+                                                       Aspect="AspectFill"
+
+                                                       HorizontalOptions="Fill"
+
+                                                       VerticalOptions="Fill" />
+
+                                            </Border>
+
+
+
+                                            <!-- Optional Image Caption -->
+
+                                            <Label Text="{Binding ImageCaption}"
+
+                                                   IsVisible="{Binding HasCaption}"
+
+                                                   FontSize="14"
+
+                                                   TextColor="#111B21"
+
+                                                   LineBreakMode="WordWrap"
+
+                                                   Margin="2,2,2,0" />
+
+                                        </VerticalStackLayout>
+
+
+
+                                        <!-- WhatsApp Style Document Message -->
+
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4" IsVisible="{Binding IsDocumentVisible}">
+
+                                            <Grid.GestureRecognizers>
+
+                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenDocumentCommand}"
+
+                                                                      CommandParameter="{Binding .}" />
+
+                                            </Grid.GestureRecognizers>
+
+
+
+                                            <!-- File Icon Badge -->
+
+                                            <Border Grid.Column="0"
+
+                                                    BackgroundColor="#F1F5F9"
+
+                                                    Stroke="#CBD5E1"
+
+                                                    StrokeShape="RoundRectangle 8"
+
+                                                    WidthRequest="38"
+
+                                                    HeightRequest="42"
+
+                                                    VerticalOptions="Center">
+
+                                                <Label Text="📄"
+
+                                                       FontSize="20"
+
+                                                       HorizontalOptions="Center"
+
+                                                       VerticalOptions="Center" />
+
+                                            </Border>
+
+
+
+                                            <!-- File Details -->
+
+                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+
+                                                <Label Text="{Binding DocumentFileName}"
+
+                                                       FontSize="13"
+
+                                                       FontAttributes="Bold"
+
+                                                       TextColor="#0F172A"
+
+                                                       LineBreakMode="TailTruncation"
+
+                                                       MaxLines="1" />
+
+                                                <Label Text="{Binding DocumentFileSizeText}"
+
+                                                       FontSize="11"
+
+                                                       TextColor="#64748B" />
+
+                                            </VerticalStackLayout>
+
+                                        </Grid>
+
+
+
+                                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
+
+                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
+
+                                            <!-- Circular Play/Pause Button -->
+
+                                            <Button Grid.Column="0"
+
+                                                    Text="{Binding PlayButtonIcon}"
+
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=TogglePlayVoiceCommand}"
+
+                                                    CommandParameter="{Binding .}"
+
+                                                    BackgroundColor="{Binding PlayButtonColor}"
+
+                                                    TextColor="White"
+
+                                                    WidthRequest="38"
+
+                                                    HeightRequest="38"
+
+                                                    CornerRadius="19"
+
+                                                    Padding="0"
+
+                                                    FontSize="15"
+
+                                                    FontAttributes="Bold"
+
+                                                    VerticalOptions="Center" />
+
+
+
+                                            <!-- Waveform Draggable Scrubber & Duration -->
+
+                                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+
+                                                <!-- Draggable Slider Scrubber -->
+
+                                                <Slider Value="{Binding PlaybackProgress}"
+
+                                                        Minimum="0"
+
+                                                        Maximum="1"
+
+                                                        MinimumTrackColor="#00A884"
+
+                                                        MaximumTrackColor="#CBD5E1"
+
+                                                        ThumbColor="#00A884"
+
+                                                        DragStarted="OnMessageSliderDragStarted"
+
+                                                        DragCompleted="OnMessageSliderDragCompleted"
+
+                                                        HeightRequest="28"
+
+                                                        Margin="0,-3" />
+
+
+
+                                                <!-- Duration + Mic Badge -->
+
+                                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
+
+                                                    <Label Grid.Column="0" 
+
+                                                           Text="{Binding CurrentPlaybackTime}" 
+
+                                                           FontSize="11" 
+
+                                                           TextColor="#667781" 
+
+                                                           FontAttributes="Bold" 
+
+                                                           VerticalOptions="Center" />
+
+                                                    <Label Grid.Column="1" 
+
+                                                           Text="🎙️" 
+
+                                                           FontSize="11" 
+
+                                                           TextColor="#34B7F1"
+
+                                                           VerticalOptions="Center" />
+
+                                                </Grid>
+
+                                            </VerticalStackLayout>
+
+                                        </Grid>
+
+
+
+                                        <!-- Metadata Footer (Timestamp + WhatsApp Delivery Blue Ticks) -->
+
+                                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+
+                                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+
+                                            <Label Text="{Binding StatusIcon}" 
+
+                                                   TextColor="{Binding StatusColor}" 
+
+                                                   FontSize="11" 
+
+                                                   FontAttributes="Bold"
+
+                                                   VerticalOptions="Center"
+
+                                                   IsVisible="{Binding IsStatusVisible}" />
+
+                                        </HorizontalStackLayout>
+
+                                    </VerticalStackLayout>
+
+                                </Border>
+
+                            </Grid>
+
+                        </VerticalStackLayout>
+
+                    </DataTemplate>
+
+                </CollectionView.ItemTemplate>
+
+                </CollectionView>
+
+
+
+                <!-- 1. Centered Floating Loading Card (When entering room with 0 messages) -->
+
+                <Border Grid.Row="1"
+
+                        IsVisible="{Binding IsLoadingMessages}"
+
+                        HorizontalOptions="Center"
+
+                        VerticalOptions="Center"
+
+                        BackgroundColor="#FFFFFF"
+
+                        Padding="20,14"
+
+                        Stroke="#E2E8F0"
+
+                        StrokeThickness="1"
+
+                        StrokeShape="RoundRectangle 16"
+
+                        ZIndex="20">
+
+                    <Border.Shadow>
+
+                        <Shadow Brush="#25000000" Offset="0,4" Radius="12" Opacity="0.2" />
+
+                    </Border.Shadow>
+
+                    <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
+
+                        <ActivityIndicator IsRunning="{Binding IsLoadingMessages}"
+
+                                           Color="#00A884"
+
+                                           WidthRequest="22"
+
+                                           HeightRequest="22"
+
+                                           VerticalOptions="Center" />
+
+                        <Label Text="{Binding LoadingStatusText}"
+
+                               TextColor="#1E293B"
+
+                               FontSize="14"
+
+                               FontAttributes="Bold"
+
+                               VerticalOptions="Center" />
+
+                    </HorizontalStackLayout>
+
+                </Border>
+
+
+
+                <!-- 2. Subtle Top Syncing Pill (When messages are cached but delta syncing in background) -->
+
+                <Border Grid.Row="1"
+
+                        IsVisible="{Binding IsSyncingMessages}"
+
+                        HorizontalOptions="Center"
+
+                        VerticalOptions="Start"
+
+                        Margin="0,8,0,0"
+
+                        BackgroundColor="#E7FFDB"
+
+                        Padding="12,6"
+
+                        Stroke="#86EFAC"
+
+                        StrokeThickness="1"
+
+                        StrokeShape="RoundRectangle 16"
+
+                        ZIndex="20">
+
+                    <Border.Shadow>
+
+                        <Shadow Brush="#1A000000" Offset="0,2" Radius="6" Opacity="0.15" />
+
+                    </Border.Shadow>
+
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+
+                        <ActivityIndicator IsRunning="{Binding IsSyncingMessages}"
+
+                                           Color="#075E54"
+
+                                           WidthRequest="14"
+
+                                           HeightRequest="14"
+
+                                           VerticalOptions="Center" />
+
+                        <Label Text="Updating chat..."
+
+                               TextColor="#075E54"
+
+                               FontSize="12"
+
+                               FontAttributes="Bold"
+
+                               VerticalOptions="Center" />
+
+                    </HorizontalStackLayout>
+
+                </Border>
+
+
+
+                <!-- Blocked User Warning (Replaces input bar when blocked) -->
+
+                <Border Grid.Row="2"
+
+                        IsVisible="{Binding IsCurrentUserBlocked}"
+
+                        BackgroundColor="#FEE2E2"
+
+                        Stroke="#FCA5A5"
+
+                        StrokeThickness="1"
+
+                        StrokeShape="RoundRectangle 12"
+
+                        Padding="14,12"
+
+                        Margin="10,4,10,8">
+
+                    <HorizontalStackLayout Spacing="8" HorizontalOptions="Center" VerticalOptions="Center">
+
+                        <Label Text="🚫" FontSize="16" VerticalOptions="Center" />
+
+                        <Label Text="You have been blocked from sending messages in this chat."
+
+                               TextColor="#991B1B"
+
+                               FontAttributes="Bold"
+
+                               FontSize="13"
+
+                               VerticalOptions="Center" />
+
+                    </HorizontalStackLayout>
+
+                </Border>
+
+
+
+                <!-- 3. WhatsApp Bottom Input Area (Floating Capsule + Green FAB) + Attachment Preview -->
+                <VerticalStackLayout Grid.Row="2" VerticalOptions="End" Spacing="2">
+                    <!-- WhatsApp Style Transaction Receipt / Image Attachment Preview Capsule -->
+                    <Border IsVisible="{Binding HasPendingAttachment}"
+                            BackgroundColor="White"
+                            Stroke="#00A884"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 14"
+                            Margin="8,0,8,2"
+                            Padding="8,6">
+                        <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                            <Border Grid.Column="0"
+                                    StrokeShape="RoundRectangle 8"
+                                    WidthRequest="48"
+                                    HeightRequest="48"
+                                    BackgroundColor="#F1F5F9"
+                                    VerticalOptions="Center">
+                                <Image Source="{Binding PendingAttachmentPreview}" Aspect="AspectFill" />
+                            </Border>
+
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                <Label Text="{Binding PendingAttachmentTitle}"
+                                       FontAttributes="Bold"
+                                       FontSize="13"
+                                       TextColor="#0F172A"
+                                       LineBreakMode="TailTruncation" />
+                                <Label Text="{Binding PendingAttachmentSubtitle}"
+                                       FontSize="11"
+                                       TextColor="#008069"
+                                       FontAttributes="Bold" />
+                            </VerticalStackLayout>
+
+                            <Button Grid.Column="2"
+                                    Text="✕"
+                                    Command="{Binding CancelPendingAttachmentCommand}"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#64748B"
+                                    FontSize="16"
+                                    FontAttributes="Bold"
+                                    WidthRequest="36"
+                                    HeightRequest="36"
+                                    Padding="0"
+                                    VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
+                    <Grid ColumnDefinitions="*, Auto"
+                          ColumnSpacing="6"
+                          Padding="6,2,6,8"
+                          BackgroundColor="Transparent">
+                        <Grid.Triggers>
+                            <DataTrigger TargetType="Grid" Binding="{Binding IsCurrentUserBlocked}" Value="True">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+                        </Grid.Triggers>
+
+
+
+                    <!-- Capsule Pill (1. Normal Text Entry Mode) -->
+
+                    <Border Grid.Column="0"
+
+                            BackgroundColor="White"
+
+                            Stroke="#CBD5E1"
+
+                            StrokeThickness="0.5"
+
+                            StrokeShape="RoundRectangle 24"
+
+                            Padding="6,0,8,0"
+
+                            HeightRequest="48"
+
+                            VerticalOptions="Center">
+
+                        <Border.Triggers>
+
+                            <DataTrigger TargetType="Border" Binding="{Binding IsRecordingVoice}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Border" Binding="{Binding IsVoicePreviewReady}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                        </Border.Triggers>
+
+
+
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="2" VerticalOptions="Center">
+
+                            <!-- Emoji Button -->
+
+                            <Button Grid.Column="0"
+
+                                    Text="😊"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#8696A0"
+
+                                    FontSize="18"
+
+                                    WidthRequest="32"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Message Entry Box -->
+
+                            <Entry Grid.Column="1"
+
+                                   Text="{Binding InputMessage}" 
+
+                                   Placeholder="Message" 
+
+                                   PlaceholderColor="#8696A0" 
+
+                                   TextColor="#111B21"
+
+                                   FontSize="15"
+
+                                   VerticalOptions="Center"
+
+                                   HeightRequest="42"
+
+                                   Focused="OnMessageEntryFocused" />
+
+
+
+                            <!-- Attachment Paperclip Button -->
+
+                            <Button Grid.Column="2"
+
+                                    Text="📎"
+
+                                    Command="{Binding AttachFileCommand}"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#8696A0"
+
+                                    FontSize="18"
+
+                                    WidthRequest="32"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Camera Button -->
+
+                            <Button Grid.Column="3"
+
+                                    Text="📷"
+
+                                    Command="{Binding CapturePhotoCommand}"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#8696A0"
+
+                                    FontSize="17"
+
+                                    WidthRequest="32"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+                        </Grid>
+
+                    </Border>
+
+
+
+                    <!-- Capsule Pill (2. WhatsApp Live Recording Mode: Red dot + Timer + Pause/Listen + Trash) -->
+
+                    <Border Grid.Column="0"
+
+                            BackgroundColor="#FEE2E2"
+
+                            Stroke="#FCA5A5"
+
+                            StrokeThickness="1"
+
+                            StrokeShape="RoundRectangle 24"
+
+                            Padding="10,0,10,0"
+
+                            HeightRequest="48"
+
+                            VerticalOptions="Center"
+
+                            IsVisible="{Binding IsRecordingVoice}">
+
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="6" VerticalOptions="Center">
+
+                            <Label Grid.Column="0" Text="🔴" FontSize="14" VerticalOptions="Center" />
+
+                            <Label Grid.Column="1"
+
+                                   Text="{Binding RecordingDurationText}"
+
+                                   TextColor="#991B1B"
+
+                                   FontAttributes="Bold"
+
+                                   FontSize="14"
+
+                                   VerticalOptions="Center" />
+
+
+
+                            <!-- Pause & Review Button: Taps this to stop & listen before sending! -->
+
+                            <Button Grid.Column="2"
+
+                                    Text="⏸ Listen"
+
+                                    Command="{Binding PauseAndPreviewVoiceCommand}"
+
+                                    BackgroundColor="#DC2626"
+
+                                    TextColor="White"
+
+                                    FontAttributes="Bold"
+
+                                    FontSize="12"
+
+                                    CornerRadius="14"
+
+                                    HeightRequest="30"
+
+                                    Padding="8,0"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Discard / Trash Button -->
+
+                            <Button Grid.Column="3"
+
+                                    Text="🗑️"
+
+                                    Command="{Binding CancelVoiceRecordingCommand}"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#DC2626"
+
+                                    FontSize="18"
+
+                                    WidthRequest="30"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+                        </Grid>
+
+                    </Border>
+
+
+
+                    <!-- Capsule Pill (3. WhatsApp Audio Preview Mode: Trash + Play/Pause + Draggable Scrubber + Timer) -->
+
+                    <Border Grid.Column="0"
+
+                            BackgroundColor="White"
+
+                            Stroke="#CBD5E1"
+
+                            StrokeThickness="0.5"
+
+                            StrokeShape="RoundRectangle 24"
+
+                            Padding="8,0,10,0"
+
+                            HeightRequest="48"
+
+                            VerticalOptions="Center"
+
+                            IsVisible="{Binding IsVoicePreviewReady}">
+
+                        <Grid ColumnDefinitions="Auto, Auto, *, Auto" ColumnSpacing="6" VerticalOptions="Center">
+
+                            <!-- Discard / Trash Button -->
+
+                            <Button Grid.Column="0"
+
+                                    Text="🗑️"
+
+                                    Command="{Binding CancelVoiceRecordingCommand}"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#EF4444"
+
+                                    FontSize="18"
+
+                                    WidthRequest="30"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Play / Pause Preview Button -->
+
+                            <Button Grid.Column="1"
+
+                                    Text="{Binding VoicePreviewPlayIcon}"
+
+                                    Command="{Binding TogglePlayVoicePreviewCommand}"
+
+                                    BackgroundColor="#00A884"
+
+                                    TextColor="White"
+
+                                    FontSize="14"
+
+                                    FontAttributes="Bold"
+
+                                    CornerRadius="16"
+
+                                    WidthRequest="32"
+
+                                    HeightRequest="32"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Draggable Audio Waveform Slider -->
+
+                            <Slider Grid.Column="2"
+
+                                    Value="{Binding VoicePreviewProgress}"
+
+                                    Minimum="0"
+
+                                    Maximum="1"
+
+                                    MinimumTrackColor="#00A884"
+
+                                    MaximumTrackColor="#E2E8F0"
+
+                                    ThumbColor="#00A884"
+
+                                    DragStarted="OnPreviewSliderDragStarted"
+
+                                    DragCompleted="OnPreviewSliderDragCompleted"
+
+                                    VerticalOptions="Center" />
+
+
+
+                            <!-- Preview Duration Text -->
+
+                            <Label Grid.Column="3"
+
+                                   Text="{Binding VoicePreviewTimeText}"
+
+                                   TextColor="#475569"
+
+                                   FontSize="11"
+
+                                   FontAttributes="Bold"
+
+                                   VerticalOptions="Center" />
+
+                        </Grid>
+
+                    </Border>
+
+
+
+                    <!-- Circular WhatsApp Action FAB -->
+
+                    <!-- 1. Microphone FAB when input is empty, not recording, and not previewing -->
+
+                    <Button Grid.Column="1"
+
+                            Text="🎙️"
+
+                            Command="{Binding StartVoiceRecordingCommand}"
+
+                            BackgroundColor="#00A884"
+
+                            TextColor="White"
+
+                            FontSize="20"
+
+                            CornerRadius="24"
+
+                            WidthRequest="48"
+
+                            HeightRequest="48"
+
+                            Padding="0"
+
+                            VerticalOptions="Center">
+
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding HasPendingAttachment}" Value="True">
+                                <Setter Property="IsVisible" Value="False" />
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding HasInputText}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                        </Button.Triggers>
+
+                    </Button>
+
+
+
+                    <!-- 2. Send Text FAB when input has text and not recording/previewing -->
+
+                    <Button Grid.Column="1"
+
+                            Text="➤"
+
+                            Command="{Binding SendMessageCommand}"
+
+                            BackgroundColor="#00A884"
+
+                            TextColor="White"
+
+                            FontSize="18"
+
+                            FontAttributes="Bold"
+
+                            CornerRadius="24"
+
+                            WidthRequest="48"
+
+                            HeightRequest="48"
+
+                            Padding="0"
+
+                            VerticalOptions="Center"
+
+                            IsVisible="{Binding HasInputText}">
+
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button" Binding="{Binding HasPendingAttachment}" Value="True">
+                                <Setter Property="IsVisible" Value="True" />
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                        </Button.Triggers>
+
+                    </Button>
+
+
+
+                    <!-- 3. Send Voice FAB when recording or previewing -->
+
+                    <Button Grid.Column="1"
+
+                            Text="➤"
+
+                            Command="{Binding SendVoiceRecordingCommand}"
+
+                            BackgroundColor="#00A884"
+
+                            TextColor="White"
+
+                            FontSize="18"
+
+                            FontAttributes="Bold"
+
+                            CornerRadius="24"
+
+                            WidthRequest="48"
+
+                            HeightRequest="48"
+
+                            Padding="0"
+
+                            VerticalOptions="Center">
+
+                        <Button.Triggers>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="True">
+
+                                <Setter Property="IsVisible" Value="True" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsVoicePreviewReady}" Value="True">
+
+                                <Setter Property="IsVisible" Value="True" />
+
+                            </DataTrigger>
+
+                            <DataTrigger TargetType="Button" Binding="{Binding IsRecordingVoice}" Value="False">
+
+                                <Setter Property="IsVisible" Value="False" />
+
+                            </DataTrigger>
+
+                        </Button.Triggers>
+
+                    </Button>
+
+                </Grid>
+                </VerticalStackLayout>
+
+            </Grid>
+
+        </Grid>
+
+
+
+        <!-- Enhanced Message Context Menu Modal (WhatsApp Floating Card Style) -->
+
+        <Grid Grid.RowSpan="2"
+
+              IsVisible="{Binding IsMessageMenuVisible}"
+
+              BackgroundColor="#80000000"
+
+              ZIndex="99">
+
+            <Grid.GestureRecognizers>
+
+                <TapGestureRecognizer Command="{Binding CloseMessageMenuCommand}" />
+
+            </Grid.GestureRecognizers>
+
+
+
+            <Border BackgroundColor="White"
+
+                    Stroke="#CBD5E1"
+
+                    StrokeThickness="1"
+
+                    StrokeShape="RoundRectangle 16"
+
+                    Margin="24,0"
+
+                    Padding="0"
+
+                    HorizontalOptions="Fill"
+
+                    VerticalOptions="Center"
+
+                    MaximumWidthRequest="360">
+
+                <Border.Shadow>
+
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+
+                </Border.Shadow>
+
+                <Border.GestureRecognizers>
+
+                    <TapGestureRecognizer />
+
+                </Border.GestureRecognizers>
+
+
+
+                <VerticalStackLayout Spacing="0">
+
+                    <!-- Message Preview Card -->
+
+                    <Border BackgroundColor="#F8FAFC"
+
+                            Stroke="#E2E8F0"
+
+                            StrokeThickness="1"
+
+                            StrokeShape="RoundRectangle 12"
+
+                            Margin="16,16,16,12"
+
+                            Padding="12,10">
+
+                        <VerticalStackLayout Spacing="4">
+
+                            <Grid ColumnDefinitions="*, Auto">
+
+                                <Label Grid.Column="0"
+
+                                       Text="{Binding SelectedMessageSenderName}"
+
+                                       FontSize="12"
+
+                                       FontAttributes="Bold"
+
+                                       TextColor="#008069"
+
+                                       LineBreakMode="TailTruncation" />
+
+                                <Label Grid.Column="1"
+
+                                       Text="{Binding SelectedMessageTime}"
+
+                                       FontSize="11"
+
+                                       TextColor="#94A3B8" />
+
+                            </Grid>
+
+                            <Label Text="{Binding SelectedMessagePreviewText}"
+
+                                   FontSize="14"
+
+                                   TextColor="#334155"
+
+                                   MaxLines="3"
+
+                                   LineBreakMode="TailTruncation" />
+
+                        </VerticalStackLayout>
+
+                    </Border>
+
+
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+
+
+                    <!-- Action 1: Copy Text -->
+
+                    <Grid Padding="20,14"
+
+                          ColumnDefinitions="32, *"
+
+                          IsVisible="{Binding CanCopySelectedMessage}">
+
+                        <Grid.GestureRecognizers>
+
+                            <TapGestureRecognizer Command="{Binding CopyMessageFromMenuCommand}" />
+
+                        </Grid.GestureRecognizers>
+
+                        <Label Grid.Column="0" Text="📋" FontSize="18" VerticalOptions="Center" />
+
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+
+                            <Label Text="Copy Text" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+
+                            <Label Text="Copy message text to clipboard" FontSize="11" TextColor="#64748B" />
+
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanCopySelectedMessage}" />
+
+
+
+                    <!-- Action 2: Forward Message (Admin Only) -->
+
+                    <Grid Padding="20,14"
+
+                          ColumnDefinitions="32, *"
+
+                          IsVisible="{Binding CanForwardSelectedMessage}">
+
+                        <Grid.GestureRecognizers>
+
+                            <TapGestureRecognizer Command="{Binding TriggerForwardFromMenuCommand}" />
+
+                        </Grid.GestureRecognizers>
+
+                        <Label Grid.Column="0" Text="↪️" FontSize="18" VerticalOptions="Center" />
+
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+
+                            <Label Text="Forward Message" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+
+                            <Label Text="Forward to any user in any department" FontSize="11" TextColor="#64748B" />
+
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanForwardSelectedMessage}" />
+
+
+
+                    <!-- Action 3: Delete for Everyone (Admin or Manager own message) -->
+
+                    <Grid Padding="20,14"
+
+                          ColumnDefinitions="32, *"
+
+                          IsVisible="{Binding CanDeleteSelectedMessage}">
+
+                        <Grid.GestureRecognizers>
+
+                            <TapGestureRecognizer Command="{Binding TriggerDeleteFromMenuCommand}" />
+
+                        </Grid.GestureRecognizers>
+
+                        <Label Grid.Column="0" Text="🗑️" FontSize="18" VerticalOptions="Center" />
+
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+
+                            <Label Text="Delete for Everyone" FontSize="15" FontAttributes="Bold" TextColor="#DC2626" />
+
+                            <Label Text="Remove this message for all participants" FontSize="11" TextColor="#EF4444" />
+
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+
+
+                    <BoxView HeightRequest="1" Color="#E2E8F0" />
+
+
+
+                    <!-- Close / Dismiss Button -->
+
+                    <Button Text="Cancel"
+
+                            Command="{Binding CloseMessageMenuCommand}"
+
+                            BackgroundColor="Transparent"
+
+                            TextColor="#64748B"
+
+                            FontAttributes="Bold"
+
+                            FontSize="14"
+
+                            HeightRequest="44"
+
+                            Margin="16,4,16,12" />
+
+                </VerticalStackLayout>
+
+            </Border>
+
+        </Grid>
+
+
+
+        <!-- 3. Forward Message Modal Overlay (Admin Only - 2-Step Workflow) -->
+
+        <Grid Grid.RowSpan="2"
+
+              IsVisible="{Binding IsForwardModalVisible}"
+
+              BackgroundColor="#80000000"
+
+              ZIndex="100">
+
+            <Border BackgroundColor="White"
+
+                    Stroke="#CBD5E1"
+
+                    StrokeThickness="1"
+
+                    StrokeShape="RoundRectangle 16"
+
+                    Margin="20,30"
+
+                    Padding="0"
+
+                    HorizontalOptions="Fill"
+
+                    VerticalOptions="Center"
+
+                    MaximumHeightRequest="560">
+
+                <Border.Shadow>
+
+                    <Shadow Brush="#40000000" Offset="0,6" Radius="16" Opacity="0.3" />
+
+                </Border.Shadow>
+
+
+
+                <Grid RowDefinitions="Auto, Auto, *, Auto">
+
+                    <!-- Step 0 Header (Select Department) -->
+
+                    <Grid Grid.Row="0"
+
+                          BackgroundColor="#075E54"
+
+                          Padding="16,12"
+
+                          ColumnDefinitions="*, Auto"
+
+                          IsVisible="{Binding IsForwardStep0}">
+
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+
+                            <Label Text="Forward Message (1/2)"
+
+                                   TextColor="White"
+
+                                   FontAttributes="Bold"
+
+                                   FontSize="16" />
+
+                            <Label Text="Select the target department"
+
+                                   TextColor="#E2E8F0"
+
+                                   FontSize="12" />
+
+                        </VerticalStackLayout>
+
+                        <Button Grid.Column="1"
+
+                                Text="✕"
+
+                                Command="{Binding CloseForwardModalCommand}"
+
+                                BackgroundColor="Transparent"
+
+                                TextColor="White"
+
+                                FontSize="18"
+
+                                WidthRequest="36"
+
+                                HeightRequest="36"
+
+                                Padding="0"
+
+                                VerticalOptions="Center" />
+
+                    </Grid>
+
+
+
+                    <!-- Step 1 Header (Select User within Department) -->
+
+                    <Grid Grid.Row="0"
+
+                          BackgroundColor="#075E54"
+
+                          Padding="10,12,16,12"
+
+                          ColumnDefinitions="Auto, *, Auto"
+
+                          IsVisible="{Binding IsForwardStep1}">
+
+                        <Button Grid.Column="0"
+
+                                Text="←"
+
+                                Command="{Binding StepBackToDepartmentsCommand}"
+
+                                BackgroundColor="Transparent"
+
+                                TextColor="White"
+
+                                FontSize="20"
+
+                                WidthRequest="36"
+
+                                HeightRequest="36"
+
+                                Padding="0"
+
+                                VerticalOptions="Center" />
+
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" Margin="4,0,0,0">
+
+                            <Label Text="Forward Message (2/2)"
+
+                                   TextColor="White"
+
+                                   FontAttributes="Bold"
+
+                                   FontSize="16" />
+
+                            <Label Text="{Binding SelectedForwardDepartment.Name, StringFormat='Select user in {0}'}"
+
+                                   TextColor="#E2E8F0"
+
+                                   FontSize="12"
+
+                                   LineBreakMode="TailTruncation" />
+
+                        </VerticalStackLayout>
+
+                        <Button Grid.Column="2"
+
+                                Text="✕"
+
+                                Command="{Binding CloseForwardModalCommand}"
+
+                                BackgroundColor="Transparent"
+
+                                TextColor="White"
+
+                                FontSize="18"
+
+                                WidthRequest="36"
+
+                                HeightRequest="36"
+
+                                Padding="0"
+
+                                VerticalOptions="Center" />
+
+                    </Grid>
+
+
+
+                    <!-- Search Bar Step 0: Department Search -->
+
+                    <Border Grid.Row="1"
+
+                            BackgroundColor="#F1F5F9"
+
+                            Stroke="#CBD5E1"
+
+                            StrokeThickness="1"
+
+                            StrokeShape="RoundRectangle 20"
+
+                            Margin="12,10,12,6"
+
+                            Padding="12,0"
+
+                            HeightRequest="40"
+
+                            IsVisible="{Binding IsForwardStep0}">
+
+                        <Grid ColumnDefinitions="Auto, *">
+
+                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
+
+                            <Entry Grid.Column="1"
+
+                                   Text="{Binding ForwardDeptSearchText}"
+
+                                   Placeholder="Search department..."
+
+                                   PlaceholderColor="#94A3B8"
+
+                                   TextColor="#0F172A"
+
+                                   FontSize="13"
+
+                                   VerticalOptions="Center" />
+
+                        </Grid>
+
+                    </Border>
+
+
+
+                    <!-- Search Bar Step 1: User Search -->
+
+                    <Border Grid.Row="1"
+
+                            BackgroundColor="#F1F5F9"
+
+                            Stroke="#CBD5E1"
+
+                            StrokeThickness="1"
+
+                            StrokeShape="RoundRectangle 20"
+
+                            Margin="12,10,12,6"
+
+                            Padding="12,0"
+
+                            HeightRequest="40"
+
+                            IsVisible="{Binding IsForwardStep1}">
+
+                        <Grid ColumnDefinitions="Auto, *">
+
+                            <Label Grid.Column="0" Text="🔍" FontSize="14" VerticalOptions="Center" Margin="0,0,8,0" />
+
+                            <Entry Grid.Column="1"
+
+                                   Text="{Binding ForwardUserSearchText}"
+
+                                   Placeholder="Search user by name or email..."
+
+                                   PlaceholderColor="#94A3B8"
+
+                                   TextColor="#0F172A"
+
+                                   FontSize="13"
+
+                                   VerticalOptions="Center" />
+
+                        </Grid>
+
+                    </Border>
+
+
+
+                    <!-- Loading Indicator -->
+
+                    <ActivityIndicator Grid.Row="2"
+
+                                       IsRunning="{Binding IsLoadingForwardData}"
+
+                                       IsVisible="{Binding IsLoadingForwardData}"
+
+                                       Color="#075E54"
+
+                                       WidthRequest="36"
+
+                                       HeightRequest="36"
+
+                                       HorizontalOptions="Center"
+
+                                       VerticalOptions="Center" />
+
+
+
+                    <!-- Step 0 List: Departments -->
+
+                    <CollectionView Grid.Row="2"
+
+                                    ItemsSource="{Binding FilteredForwardDepartments}"
+
+                                    Margin="8,4"
+
+                                    IsVisible="{Binding IsForwardStep0}"
+
+                                    EmptyView="No departments found.">
+
+                        <CollectionView.ItemTemplate>
+
+                            <DataTemplate x:DataType="vm:ForwardDepartmentItem">
+
+                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
+
+                                    <Border.GestureRecognizers>
+
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=SelectForwardDepartmentCommand}"
+
+                                                              CommandParameter="{Binding .}" />
+
+                                    </Border.GestureRecognizers>
+
+                                    <Grid ColumnDefinitions="36, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+
+                                        <Label Grid.Column="0" Text="{Binding Icon}" FontSize="22" VerticalOptions="Center" HorizontalOptions="Center" />
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+
+                                            <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="14" TextColor="#0F172A" LineBreakMode="TailTruncation" />
+
+                                            <Label Text="{Binding Description}" FontSize="12" TextColor="#64748B" LineBreakMode="TailTruncation" />
+
+                                        </VerticalStackLayout>
+
+                                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" Padding="4,0" />
+
+                                    </Grid>
+
+                                </Border>
+
+                            </DataTemplate>
+
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
+
+
+
+                    <!-- Step 1 List: Users in Selected Department -->
+
+                    <CollectionView Grid.Row="2"
+
+                                    ItemsSource="{Binding FilteredDepartmentForwardUsers}"
+
+                                    Margin="8,4"
+
+                                    IsVisible="{Binding IsForwardStep1}"
+
+                                    EmptyView="No users found in this department.">
+
+                        <CollectionView.ItemTemplate>
+
+                            <DataTemplate x:DataType="vm:ForwardUserItem">
+
+                                <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="4,3" Padding="12,10">
+
+                                    <Border.GestureRecognizers>
+
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ExecuteForwardCommand}"
+
+                                                              CommandParameter="{Binding .}" />
+
+                                    </Border.GestureRecognizers>
+
+                                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+
+                                        <!-- Avatar -->
+
+                                        <Border Grid.Column="0"
+
+                                                BackgroundColor="#00A884"
+
+                                                Stroke="Transparent"
+
+                                                StrokeShape="RoundRectangle 18"
+
+                                                WidthRequest="36"
+
+                                                HeightRequest="36"
+
+                                                VerticalOptions="Center">
+
+                                            <Label Text="{Binding AvatarInitial}"
+
+                                                   TextColor="White"
+
+                                                   FontAttributes="Bold"
+
+                                                   FontSize="15"
+
+                                                   HorizontalOptions="Center"
+
+                                                   VerticalOptions="Center" />
+
+                                        </Border>
+
+                                        <!-- Details -->
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+
+                                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+
+                                                <Label Text="{Binding FullName}"
+
+                                                       FontAttributes="Bold"
+
+                                                       FontSize="14"
+
+                                                       TextColor="#0F172A"
+
+                                                       LineBreakMode="TailTruncation" />
+
+                                                <Border BackgroundColor="#DCFCE7"
+
+                                                        Stroke="Transparent"
+
+                                                        StrokeShape="RoundRectangle 4"
+
+                                                        Padding="6,1"
+
+                                                        VerticalOptions="Center"
+
+                                                        IsVisible="{Binding ShowOnlineBadge}">
+
+                                                    <Label Text="ONLINE" TextColor="#166534" FontSize="9" FontAttributes="Bold" />
+
+                                                </Border>
+
+                                            </HorizontalStackLayout>
+
+                                            <Label Text="{Binding Subtitle}"
+
+                                                   FontSize="12"
+
+                                                   TextColor="#64748B"
+
+                                                   LineBreakMode="TailTruncation" />
+
+                                        </VerticalStackLayout>
+
+                                        <!-- Forward Icon -->
+
+                                        <Label Grid.Column="2"
+
+                                               Text="↪️"
+
+                                               FontSize="18"
+
+                                               VerticalOptions="Center"
+
+                                               Padding="8,0" />
+
+                                    </Grid>
+
+                                </Border>
+
+                            </DataTemplate>
+
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
+
+
+
+                    <!-- Footer: Cancel Button -->
+
+                    <Grid Grid.Row="3" Margin="12,6,12,12">
+
+                        <Button Text="Cancel"
+
+                                Command="{Binding CloseForwardModalCommand}"
+
+                                BackgroundColor="#F1F5F9"
+
+                                TextColor="#475569"
+
+                                FontAttributes="Bold"
+
+                                HeightRequest="42"
+
+                                CornerRadius="8" />
+
+                    </Grid>
+
+                </Grid>
+
+            </Border>
+
+        </Grid>
+
+    </Grid>
+
+</ContentPage>
+

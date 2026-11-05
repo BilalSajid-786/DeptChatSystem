@@ -22,6 +22,7 @@ public partial class DepartmentsPage : ContentPage
         {
             Console.WriteLine($"DEBUG_PAGE: OnAppearing vm found. Initial vm.IsAdmin={vm.IsAdmin}");
             vm.RefreshUserInfo();
+            vm.CheckPendingShare();
             Console.WriteLine($"DEBUG_PAGE: OnAppearing after Refresh. vm.IsAdmin={vm.IsAdmin}");
             await vm.LoadDepartmentsAsync();
         }

@@ -12,6 +12,18 @@ namespace DeptChat.Mobile;
     MainLauncher = true, 
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density | ConfigChanges.Keyboard | ConfigChanges.KeyboardHidden,
     WindowSoftInputMode = SoftInput.AdjustResize)]
+[IntentFilter(
+    new[] { Android.Content.Intent.ActionSend },
+    Categories = new[] { Android.Content.Intent.CategoryDefault },
+    DataMimeType = "image/*")]
+[IntentFilter(
+    new[] { Android.Content.Intent.ActionSend },
+    Categories = new[] { Android.Content.Intent.CategoryDefault },
+    DataMimeType = "application/pdf")]
+[IntentFilter(
+    new[] { Android.Content.Intent.ActionSendMultiple },
+    Categories = new[] { Android.Content.Intent.CategoryDefault },
+    DataMimeType = "image/*")]
 public class MainActivity : MauiAppCompatActivity
 {
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -52,6 +64,98 @@ public class MainActivity : MauiAppCompatActivity
         catch
         {
             // Ignore if Google Play Services is pending initialization
+        }
+
+        // Handle incoming external share (e.g. JazzCash or banking transaction receipt)
+        HandleIncomingIntent(Intent);
+    }
+
+    protected override void OnNewIntent(Android.Content.Intent? intent)
+    {
+        base.OnNewIntent(intent);
+        Intent = intent;
+        HandleIncomingIntent(intent);
+    }
+
+    private void HandleIncomingIntent(Android.Content.Intent? intent)
+    {
+        if (intent == null) return;
+
+        if (intent.Action == Android.Content.Intent.ActionSend)
+        {
+            Android.Net.Uri? uri = null;
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.Tiramisu)
+            {
+                uri = intent.GetParcelableExtra(Android.Content.Intent.ExtraStream, Java.Lang.Class.FromType(typeof(Android.Net.Uri))) as Android.Net.Uri;
+            }
+            else
+            {
+#pragma warning disable CS0618
+                uri = intent.GetParcelableExtra(Android.Content.Intent.ExtraStream) as Android.Net.Uri;
+#pragma warning restore CS0618
+            }
+
+            if (uri == null && intent.ClipData != null && intent.ClipData.ItemCount > 0)
+            {
+                uri = intent.ClipData.GetItemAt(0)?.Uri;
+            }
+
+            if (uri != null)
+            {
+                CopyAndStoreSharedUri(uri, intent.Type);
+            }
+        }
+        else if (intent.Action == Android.Content.Intent.ActionSendMultiple)
+        {
+            if (intent.ClipData != null && intent.ClipData.ItemCount > 0)
+            {
+                var uri = intent.ClipData.GetItemAt(0)?.Uri;
+                if (uri != null)
+                {
+                    CopyAndStoreSharedUri(uri, intent.Type);
+                }
+            }
+        }
+    }
+
+    private void CopyAndStoreSharedUri(Android.Net.Uri uri, string? mimeType)
+    {
+        try
+        {
+            using var stream = ContentResolver?.OpenInputStream(uri);
+            if (stream == null) return;
+
+            var ext = ".jpg";
+            if (mimeType?.Contains("png", StringComparison.OrdinalIgnoreCase) == true) ext = ".png";
+            else if (mimeType?.Contains("pdf", StringComparison.OrdinalIgnoreCase) == true) ext = ".pdf";
+
+            var cacheDir = FileSystem.CacheDirectory;
+            var fileName = $"shared_receipt_{Guid.NewGuid():N}{ext}";
+            var destPath = Path.Combine(cacheDir, fileName);
+
+            using (var destStream = File.Create(destPath))
+            {
+                stream.CopyTo(destStream);
+            }
+
+            Services.IncomingShareService.Instance.SetPendingShare(destPath, fileName, mimeType);
+
+            // Bring user to department selector screen so they can choose where to send receipt
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                try
+                {
+                    if (Shell.Current != null)
+                    {
+                        await Shell.Current.GoToAsync("//DepartmentsPage");
+                    }
+                }
+                catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainActivity] CopyAndStoreSharedUri error: {ex.Message}");
         }
     }
 
