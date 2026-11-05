@@ -2258,16 +2258,26 @@ public partial class ChatRoomViewModel : ObservableObject
                 ? (msg.SenderRole == UserRole.User)
                 : (msg.SenderRole != UserRole.User);
 
-            // 1. Acknowledge delivery (only if recipient role matches intended recipient)
             if (shouldAcknowledge)
             {
-                _ = _signalRService.AcknowledgeDeliveryAsync(msg.Id);
-            }
-
-            // 2. Mark as Read in real-time:
-            if (shouldAcknowledge && ActiveConversationId == _conversationId)
-            {
-                _ = _signalRService.MarkAsReadAsync(_conversationId, msg.SequenceNumber);
+                if (ActiveConversationId == _conversationId)
+                {
+                    // Recipient is actively viewing this room:
+                    // If not already marked as Read by server, mark as Read immediately (never trigger intermediate double grey ticks)
+                    if (msg.Status < MessageDeliveryStatus.Read)
+                    {
+                        _ = _signalRService.MarkAsReadAsync(_conversationId, msg.SequenceNumber);
+                    }
+                }
+                else
+                {
+                    // Recipient device received message while outside the room (in background/home):
+                    // Acknowledge delivery so sender sees double grey ticks until room is opened
+                    if (msg.Status < MessageDeliveryStatus.Delivered)
+                    {
+                        _ = _signalRService.AcknowledgeDeliveryAsync(msg.Id);
+                    }
+                }
             }
         }
 
