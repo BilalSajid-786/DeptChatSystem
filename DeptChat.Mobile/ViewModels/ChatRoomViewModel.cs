@@ -1217,7 +1217,6 @@ public partial class ChatRoomViewModel : ObservableObject
                     {
                         PresenceStatusText = string.Empty;
                     }
-                    RequestScrollToBottom?.Invoke();
                 });
 
                 // 5. Connect to SignalR and enter room in background
@@ -1270,7 +1269,6 @@ public partial class ChatRoomViewModel : ObservableObject
                     {
                         PresenceStatusText = string.Empty;
                     }
-                    RequestScrollToBottom?.Invoke();
                 });
             }
         });

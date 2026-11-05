@@ -3,6 +3,7 @@ namespace DeptChat.Mobile.Views;
 public partial class ChatRoomPage : ContentPage
 {
     private ViewModels.ChatRoomViewModel? _vm;
+    private bool _hasInitiallyScrolledToBottom;
 #if ANDROID
     private Platforms.Android.KeyboardHeightObserver? _keyboardObserver;
     private MessageRecyclerViewTouchListener? _rvTouchListener;
@@ -57,7 +58,10 @@ public partial class ChatRoomPage : ContentPage
     {
         if (e.PropertyName == nameof(ViewModels.ChatRoomViewModel.IsLoadingMessages) && _vm?.IsLoadingMessages == false)
         {
-            ScrollToBottom(animate: false);
+            if (_vm.Messages.Count > 0 && !_hasInitiallyScrolledToBottom)
+            {
+                ScrollToBottom(animate: false);
+            }
         }
     }
 
@@ -72,9 +76,13 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.SetItemViewCacheSize(25);
+            rv.SetItemViewCacheSize(30);
             rv.SetItemAnimator(null);
             rv.NestedScrollingEnabled = true;
+
+            // Expand Android RecycledViewPool so up to 35 bubble views remain warm in memory.
+            // This eliminates view destruction and re-inflation lag during scrolling!
+            rv.GetRecycledViewPool()?.SetMaxRecycledViews(0, 35);
 
             if (_rvTouchListener != null)
             {
@@ -143,7 +151,16 @@ public partial class ChatRoomPage : ContentPage
     {
         if (_vm == null) return;
 
-        if (e.FirstVisibleItemIndex == 0 && _vm.HasMoreOlderMessages && !_vm.IsLoadingOlderMessages && !_vm.IsLoadingMessages)
+        // Only trigger older messages if:
+        // 1. Initial scroll to bottom has completed
+        // 2. User is at the top (FirstVisibleItemIndex == 0)
+        // 3. User is actively dragging/scrolling upwards (VerticalDelta < 0)
+        if (_hasInitiallyScrolledToBottom &&
+            e.FirstVisibleItemIndex == 0 &&
+            e.VerticalDelta < 0 &&
+            _vm.HasMoreOlderMessages &&
+            !_vm.IsLoadingOlderMessages &&
+            !_vm.IsLoadingMessages)
         {
             if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 2000)
             {
@@ -162,6 +179,17 @@ public partial class ChatRoomPage : ContentPage
 
     public void ScrollToBottom(bool animate = false)
     {
+#if ANDROID
+        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvTouchCheck)
+        {
+            // If the user is actively touching, dragging, or flinging the list, never interrupt!
+            if (rvTouchCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+            {
+                return;
+            }
+        }
+#endif
+
         _scrollToBottomCts?.Cancel();
         _scrollToBottomCts?.Dispose();
         _scrollToBottomCts = new CancellationTokenSource();
@@ -175,6 +203,15 @@ public partial class ChatRoomPage : ContentPage
                 await Task.Delay(100, token);
                 if (!token.IsCancellationRequested)
                 {
+#if ANDROID
+                    if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvDelayedCheck)
+                    {
+                        if (rvDelayedCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+                        {
+                            return;
+                        }
+                    }
+#endif
                     PerformScroll(false);
                 }
             }
@@ -186,21 +223,34 @@ public partial class ChatRoomPage : ContentPage
     {
         try
         {
+#if ANDROID
+            if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck)
+            {
+                if (rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+                {
+                    return;
+                }
+            }
+#endif
             if (_vm?.Messages.Count > 0)
             {
                 var lastIndex = _vm.Messages.Count - 1;
                 var lastItem = _vm.Messages[lastIndex];
 
                 MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
+                _hasInitiallyScrolledToBottom = true;
 
 #if ANDROID
-                if (MessagesCollectionView.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
                 {
                     rv.Post(() =>
                     {
                         try
                         {
-                            rv.ScrollToPosition(lastIndex);
+                            if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+                            {
+                                rv.ScrollToPosition(lastIndex);
+                            }
                         }
                         catch { }
                     });
@@ -288,6 +338,7 @@ public partial class ChatRoomPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        _hasInitiallyScrolledToBottom = false;
 
         SetupRecyclerView();
 
