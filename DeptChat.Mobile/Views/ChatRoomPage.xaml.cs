@@ -4,6 +4,7 @@ public partial class ChatRoomPage : ContentPage
 {
     private ViewModels.ChatRoomViewModel? _vm;
     private bool _hasInitiallyScrolledToBottom;
+    private bool _isUserNearBottom = true;
 #if ANDROID
     private Platforms.Android.KeyboardHeightObserver? _keyboardObserver;
     private MessageRecyclerViewTouchListener? _rvTouchListener;
@@ -76,7 +77,7 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.SetItemViewCacheSize(40);
+            rv.SetItemViewCacheSize(60);
             rv.SetItemAnimator(null);
             rv.NestedScrollingEnabled = false;
 
@@ -97,7 +98,7 @@ public partial class ChatRoomPage : ContentPage
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
                 lm.ItemPrefetchEnabled = true;
-                lm.InitialPrefetchItemCount = 10;
+                lm.InitialPrefetchItemCount = 25;
             }
 
             if (_rvTouchListener != null)
@@ -167,6 +168,15 @@ public partial class ChatRoomPage : ContentPage
     {
         if (_vm == null) return;
 
+        // Track whether user is looking at bottom or reading older messages
+        _isUserNearBottom = (_vm.Messages.Count == 0) || (e.LastVisibleItemIndex >= _vm.Messages.Count - 2);
+
+        // Cancel any pending programmatic scroll to bottom if user is scrolling up
+        if (e.VerticalDelta < -1)
+        {
+            _scrollToBottomCts?.Cancel();
+        }
+
         // Only trigger older messages if:
         // 1. Initial scroll to bottom has completed
         // 2. We have at least 20 messages loaded (avoid false pagination when all messages fit on screen)
@@ -212,6 +222,11 @@ public partial class ChatRoomPage : ContentPage
         }
 #endif
 
+        if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
+        {
+            return;
+        }
+
         _scrollToBottomCts?.Cancel();
         _scrollToBottomCts?.Dispose();
         _scrollToBottomCts = new CancellationTokenSource();
@@ -238,6 +253,10 @@ public partial class ChatRoomPage : ContentPage
                         }
                     }
 #endif
+                    if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
+                    {
+                        return;
+                    }
                     PerformScroll(false);
                 }
             }
@@ -262,6 +281,11 @@ public partial class ChatRoomPage : ContentPage
                 }
             }
 #endif
+            if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
+            {
+                return;
+            }
+
             if (_vm?.Messages.Count > 0)
             {
                 var lastIndex = _vm.Messages.Count - 1;
@@ -422,16 +446,19 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
     private readonly AndroidX.RecyclerView.Widget.RecyclerView _recyclerView;
     private readonly Func<int, ViewModels.ChatMessageItem?> _getItemAtPosition;
     private readonly Action<ViewModels.ChatMessageItem> _onLongPress;
+    private readonly Action? _onTouchDown;
 
     public MessageRecyclerViewTouchListener(
         Android.Content.Context context,
         AndroidX.RecyclerView.Widget.RecyclerView recyclerView,
         Func<int, ViewModels.ChatMessageItem?> getItemAtPosition,
-        Action<ViewModels.ChatMessageItem> onLongPress)
+        Action<ViewModels.ChatMessageItem> onLongPress,
+        Action? onTouchDown = null)
     {
         _recyclerView = recyclerView;
         _getItemAtPosition = getItemAtPosition;
         _onLongPress = onLongPress;
+        _onTouchDown = onTouchDown;
 
         _gestureDetector = new Android.Views.GestureDetector(context, new LongPressGestureListener(this));
         _gestureDetector.IsLongpressEnabled = true;

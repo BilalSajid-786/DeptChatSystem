@@ -392,9 +392,7 @@ public partial class ChatRoomViewModel : ObservableObject
             return "TODAY";
         if (date == today.AddDays(-1))
             return "YESTERDAY";
-        if (date > today.AddDays(-7))
-            return date.ToString("dddd").ToUpperInvariant();
-        return date.ToString("MMMM d, yyyy");
+        return date.ToString("dddd, d MMMM yyyy");
     }
 
     private void SortMessages()
