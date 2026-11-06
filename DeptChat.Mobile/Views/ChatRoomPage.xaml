@@ -426,7 +426,9 @@
 
                                                 <Image Source="{Binding ImageUrl}"
 
-                                                       Aspect="AspectFill"
+                                                       Aspect="AspectFit"
+
+                                                       BackgroundColor="#121B22"
 
                                                        HorizontalOptions="Fill"
 
@@ -825,7 +827,7 @@
                                     HeightRequest="48"
                                     BackgroundColor="#F1F5F9"
                                     VerticalOptions="Center">
-                                <Image Source="{Binding PendingAttachmentPreview}" Aspect="AspectFill" />
+                                <Image Source="{Binding PendingAttachmentPreview}" Aspect="AspectFit" />
                             </Border>
 
                             <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
