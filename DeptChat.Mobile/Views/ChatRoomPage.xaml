@@ -912,6 +912,8 @@
 
                                     Text="😊"
 
+                                    Command="{Binding EmojiStickerCommand}"
+
                                     BackgroundColor="Transparent"
 
                                     TextColor="#8696A0"

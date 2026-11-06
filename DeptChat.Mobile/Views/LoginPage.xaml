@@ -25,7 +25,7 @@
                        HorizontalOptions="Center" />
             </VerticalStackLayout>
 
-            <!-- Login / Register Card Form -->
+            <!-- Login Card Form -->
             <Border Stroke="#E2E8F0" StrokeThickness="1" BackgroundColor="White" StrokeShape="RoundRectangle 16" Padding="20">
                 <VerticalStackLayout Spacing="14">
 
@@ -37,43 +37,11 @@
                            IsVisible="{Binding HasError}"
                            HorizontalOptions="Center" />
 
-                    <!-- Full Name (Register Only) -->
-                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
-                        <Label Text="Full Name" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding FullName}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="John Doe" PlaceholderColor="#94A3B8" HeightRequest="40" />
-                        </Border>
-                    </VerticalStackLayout>
-
-                    <!-- Company Code (Register Only - Required) -->
-                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
-                        <Label Text="Company / Org Code *" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding CompanyCode}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="e.g. MAIN or ACME" PlaceholderColor="#94A3B8" HeightRequest="40" />
-                        </Border>
-                    </VerticalStackLayout>
-
                     <!-- Email Address or Phone (Identifier) -->
                     <VerticalStackLayout Spacing="4">
                         <Label Text="{Binding IdentifierLabel}" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
                         <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
                             <Entry Text="{Binding Email}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="{Binding IdentifierPlaceholder}" PlaceholderColor="#94A3B8" HeightRequest="40" />
-                        </Border>
-                    </VerticalStackLayout>
-
-                    <!-- Phone Number (Register Only) -->
-                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
-                        <Label Text="Phone Number (Optional if email provided)" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding PhoneNumber}" BackgroundColor="Transparent" TextColor="#0F172A" Keyboard="Telephone" Placeholder="+1 (555) 000-0000" PlaceholderColor="#94A3B8" HeightRequest="40" />
-                        </Border>
-                    </VerticalStackLayout>
-
-                    <!-- Address (Register Only - Optional) -->
-                    <VerticalStackLayout Spacing="4" IsVisible="{Binding IsRegisterMode}">
-                        <Label Text="Address (Optional)" TextColor="#475569" FontSize="12" FontAttributes="Bold" />
-                        <Border StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,2" Stroke="#CBD5E1">
-                            <Entry Text="{Binding Address}" BackgroundColor="Transparent" TextColor="#0F172A" Placeholder="City, State / Street" PlaceholderColor="#94A3B8" HeightRequest="40" />
                         </Border>
                     </VerticalStackLayout>
 
@@ -116,65 +84,10 @@
                             HeightRequest="48"
                             Margin="0,8,0,0" />
 
-                    <!-- Toggle Mode -->
-                    <Button Text="{Binding ToggleModeText}"
-                            Command="{Binding ToggleModeCommand}"
-                            BackgroundColor="Transparent"
-                            TextColor="#008069"
-                            FontAttributes="Bold"
-                            FontSize="12" />
-
                 </VerticalStackLayout>
             </Border>
 
-            <!-- Quick 1-Tap Demo Logins (John Customer Removed) -->
-            <VerticalStackLayout Spacing="8" Margin="0,4,0,0">
-                <Label Text="QUICK 1-CLICK DEMO LOGINS"
-                       FontSize="11"
-                       TextColor="#667781"
-                       FontAttributes="Bold"
-                       HorizontalOptions="Center" />
-
-                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8" HeightRequest="40">
-                    <Button Grid.Column="0"
-                            Text="👑 Admin"
-                            Command="{Binding QuickLoginAdminCommand}"
-                            BackgroundColor="White"
-                            BorderColor="#008069"
-                            BorderWidth="1"
-                            TextColor="#008069"
-                            FontAttributes="Bold"
-                            FontSize="12"
-                            CornerRadius="8"
-                            Padding="0" />
-
-                    <Button Grid.Column="1"
-                            Text="📱 User (u100)"
-                            Command="{Binding QuickLoginU100Command}"
-                            BackgroundColor="White"
-                            BorderColor="#25D366"
-                            BorderWidth="1"
-                            TextColor="#059669"
-                            FontAttributes="Bold"
-                            FontSize="12"
-                            CornerRadius="8"
-                            Padding="0" />
-
-                    <Button Grid.Column="2"
-                            Text="👔 Manager"
-                            Command="{Binding QuickLoginManagerCommand}"
-                            BackgroundColor="White"
-                            BorderColor="#0284C7"
-                            BorderWidth="1"
-                            TextColor="#0284C7"
-                            FontAttributes="Bold"
-                            FontSize="12"
-                            CornerRadius="8"
-                            Padding="0" />
-                </Grid>
-            </VerticalStackLayout>
-
-                </VerticalStackLayout>
+        </VerticalStackLayout>
     </ScrollView>
 
 </ContentPage>

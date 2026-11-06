@@ -15,16 +15,16 @@ public partial class LoginViewModel : ObservableObject
     private string _serverUrl = string.Empty;
 
     [ObservableProperty]
-    private string _email = "john@example.com";
+    private string _email = string.Empty;
 
     [ObservableProperty]
-    private string _password = "Password123!";
+    private string _password = string.Empty;
 
     [ObservableProperty]
     private bool _isPasswordHidden = true;
 
     [ObservableProperty]
-    private string _fullName = "John Doe";
+    private string _fullName = string.Empty;
 
     [ObservableProperty]
     private string _companyCode = "MAIN";
@@ -44,7 +44,7 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty]
     private string _errorMessage = string.Empty;
 
-    public string SubmitButtonText => IsRegisterMode ? "Create Account" : "Sign In";
+    public string SubmitButtonText => "Sign In";
     public string ToggleModeText => IsRegisterMode ? "Already have an account? Sign In" : "Need an account? Register";
     public string IdentifierLabel => IsRegisterMode ? "Email Address (Optional if phone provided)" : "Email or Phone Number";
     public string IdentifierPlaceholder => IsRegisterMode ? "user@example.com" : "user@example.com or +1234567890";

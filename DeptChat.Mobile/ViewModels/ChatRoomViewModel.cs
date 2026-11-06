@@ -2064,6 +2064,37 @@ public partial class ChatRoomViewModel : ObservableObject
         }
     }
 
+        [RelayCommand]
+    private async Task EmojiStickerAsync()
+    {
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+        if (myRole != UserRole.Admin && myRole != UserRole.Manager)
+        {
+            // Only Admin or Manager sends the deposit done sticker
+            return;
+        }
+
+        try
+        {
+            var cachePath = Path.Combine(FileSystem.CacheDirectory, "sticker_deposit_done.jpg");
+            if (!File.Exists(cachePath) || new FileInfo(cachePath).Length == 0)
+            {
+                using var assetStream = await FileSystem.OpenAppPackageFileAsync("sticker_deposit_done.jpg");
+                using var targetStream = File.Create(cachePath);
+                await assetStream.CopyToAsync(targetStream);
+            }
+
+            if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
+            {
+                await ProcessAndSendImageAsync(cachePath, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoom] EmojiSticker error: {ex.Message}");
+        }
+    }
+
     [RelayCommand]
     private async Task AttachFileAsync()
     {
