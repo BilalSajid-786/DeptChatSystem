@@ -373,14 +373,15 @@ public partial class ChatRoomViewModel : ObservableObject
             var msgDate = msg.MessageDate.Date;
             if (!previousDate.HasValue || previousDate.Value != msgDate)
             {
-                msg.ShowDateHeader = true;
-                msg.DateHeaderText = FormatDateHeader(msgDate);
+                if (!msg.ShowDateHeader) msg.ShowDateHeader = true;
+                var formatted = FormatDateHeader(msgDate);
+                if (msg.DateHeaderText != formatted) msg.DateHeaderText = formatted;
                 previousDate = msgDate;
             }
             else
             {
-                msg.ShowDateHeader = false;
-                msg.DateHeaderText = string.Empty;
+                if (msg.ShowDateHeader) msg.ShowDateHeader = false;
+                if (!string.IsNullOrEmpty(msg.DateHeaderText)) msg.DateHeaderText = string.Empty;
             }
         }
     }
@@ -566,7 +567,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
         try
         {
-            var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
+            var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 50);
             if (paged != null)
             {
                 HasMoreOlderMessages = paged.HasMore;
@@ -718,11 +719,6 @@ public partial class ChatRoomViewModel : ObservableObject
                             }
                         }
                         UpdateDateHeaders();
-
-                        if (previousTopItem != null)
-                        {
-                            RequestScrollToItem?.Invoke(previousTopItem);
-                        }
                     });
                 }
             }
@@ -1183,7 +1179,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private async Task LoadLocalMessagesAsync(Guid convId)
     {
         if (_outboxService == null) return;
-        var localMessages = await _outboxService.GetRecentConversationMessagesAsync(convId, limit: 25);
+        var localMessages = await _outboxService.GetRecentConversationMessagesAsync(convId, limit: 50);
         if (localMessages.Count > 0)
         {
             MainThread.BeginInvokeOnMainThread(() =>

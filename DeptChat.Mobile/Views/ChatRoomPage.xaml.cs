@@ -77,28 +77,23 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.SetItemViewCacheSize(60);
+            rv.SetItemViewCacheSize(10);
             rv.SetItemAnimator(null);
-            rv.NestedScrollingEnabled = false;
+            rv.NestedScrollingEnabled = true;
 
-            // Expand Android RecycledViewPool across all common view types so cells are recycled instead of re-inflated
+            // Expand Android RecycledViewPool so cells are recycled instead of re-inflated
             var pool = rv.GetRecycledViewPool();
             if (pool != null)
             {
-                for (int vt = 0; vt <= 50; vt++)
+                for (int vt = 0; vt <= 10; vt++)
                 {
-                    pool.SetMaxRecycledViews(vt, 40);
-                }
-                for (int vt = 3580; vt <= 3595; vt++)
-                {
-                    pool.SetMaxRecycledViews(vt, 40);
+                    pool.SetMaxRecycledViews(vt, 30);
                 }
             }
 
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
                 lm.ItemPrefetchEnabled = true;
-                lm.InitialPrefetchItemCount = 25;
             }
 
             if (_rvTouchListener != null)
@@ -133,7 +128,10 @@ public partial class ChatRoomPage : ContentPage
 
         if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
         {
-            ScrollToBottom(animate: false);
+            if (_isUserNearBottom)
+            {
+                ScrollToBottom(animate: false);
+            }
         }
     }
 
@@ -179,18 +177,18 @@ public partial class ChatRoomPage : ContentPage
 
         // Only trigger older messages if:
         // 1. Initial scroll to bottom has completed
-        // 2. We have at least 20 messages loaded (avoid false pagination when all messages fit on screen)
-        // 3. User is actively pulling down at the top (FirstVisibleItemIndex == 0, VerticalDelta < -5)
+        // 2. We have at least 20 messages loaded
+        // 3. User is scrolling near top (FirstVisibleItemIndex <= 2, VerticalDelta < 0)
         // 4. Server confirmed there are more older messages
         if (_hasInitiallyScrolledToBottom &&
             _vm.Messages.Count >= 20 &&
-            e.FirstVisibleItemIndex == 0 &&
-            e.VerticalDelta < -5 &&
+            e.FirstVisibleItemIndex <= 2 &&
+            e.VerticalDelta < 0 &&
             _vm.HasMoreOlderMessages &&
             !_vm.IsLoadingOlderMessages &&
             !_vm.IsLoadingMessages)
         {
-            if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 2000)
+            if ((DateTime.UtcNow - _lastOlderMessagesFetchTime).TotalMilliseconds > 1500)
             {
                 _lastOlderMessagesFetchTime = DateTime.UtcNow;
                 _vm.LoadOlderMessagesCommand.Execute(null);
@@ -230,37 +228,10 @@ public partial class ChatRoomPage : ContentPage
         _scrollToBottomCts?.Cancel();
         _scrollToBottomCts?.Dispose();
         _scrollToBottomCts = new CancellationTokenSource();
-        var token = _scrollToBottomCts.Token;
 
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            try
-            {
-                PerformScroll(animate);
-                await Task.Delay(100, token);
-                if (!token.IsCancellationRequested)
-                {
-#if ANDROID
-                    if (_rvTouchListener?.IsTouching == true)
-                    {
-                        return;
-                    }
-                    if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvDelayedCheck)
-                    {
-                        if (rvDelayedCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-                        {
-                            return;
-                        }
-                    }
-#endif
-                    if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
-                    {
-                        return;
-                    }
-                    PerformScroll(false);
-                }
-            }
-            catch (TaskCanceledException) { }
+            PerformScroll(animate);
         });
     }
 
@@ -293,23 +264,6 @@ public partial class ChatRoomPage : ContentPage
 
                 MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
                 _hasInitiallyScrolledToBottom = true;
-
-#if ANDROID
-                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
-                {
-                    rv.Post(() =>
-                    {
-                        try
-                        {
-                            if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-                            {
-                                rv.ScrollToPosition(lastIndex);
-                            }
-                        }
-                        catch { }
-                    });
-                }
-#endif
             }
         }
         catch { }
@@ -471,14 +425,22 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         if (e.ActionMasked == Android.Views.MotionEventActions.Down)
         {
             IsTouching = true;
+            _gestureDetector.OnTouchEvent(e);
         }
         else if (e.ActionMasked == Android.Views.MotionEventActions.Up || e.ActionMasked == Android.Views.MotionEventActions.Cancel)
         {
             IsTouching = false;
+            _gestureDetector.OnTouchEvent(e);
         }
-
-        // Deliver event to GestureDetector to track long press holding
-        _gestureDetector.OnTouchEvent(e);
+        else if (e.ActionMasked == Android.Views.MotionEventActions.Move)
+        {
+            // If RecyclerView is actively scrolling or flinging, bypass GestureDetector completely!
+            // This ensures 100% native 60/120fps touch dispatch with zero latency or hitching!
+            if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+            {
+                _gestureDetector.OnTouchEvent(e);
+            }
+        }
 
         // Always return false: allows RecyclerView to receive the full touch stream
         // and handle smooth scrolling and flinging without any interference or delays!
@@ -544,7 +506,7 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
 
         public override bool OnDown(Android.Views.MotionEvent? e)
         {
-            return true;
+            return false;
         }
     }
 }
