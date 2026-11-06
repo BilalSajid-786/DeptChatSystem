@@ -458,26 +458,27 @@ public class ConversationsController : ControllerBase
             .Select(c => c.CreatedByUserId)
             .ToHashSetAsync();
 
-        // Users who haven't started chatting in this department yet
-        var availableUsers = users.Where(u => !existingConvUserIds.Contains(u.Id)).ToList();
+        // Return all registered customers in the client organization
+        var availableUsers = users;
 
         var result = new List<AvailableDepartmentUserDto>();
         foreach (var u in availableUsers)
         {
             var isOnline = await _presenceService.IsUserOnlineAsync(u.Id);
+            var hasExistingChat = existingConvUserIds.Contains(u.Id);
             result.Add(new AvailableDepartmentUserDto(
                 u.Id,
                 u.FullName,
                 u.Email ?? u.PhoneNumber ?? "",
                 u.Role,
                 isOnline,
-                false,
+                hasExistingChat,
                 u.IsBlocked
             ));
         }
 
-        // Sort online users to top, then alphabetical
-        return Ok(result.OrderByDescending(u => u.IsOnline).ThenBy(u => u.FullName).ToList());
+        // Sort customers with active conversations first, then online status, then alphabetical
+        return Ok(result.OrderByDescending(u => u.HasExistingChat).ThenByDescending(u => u.IsOnline).ThenBy(u => u.FullName).ToList());
     }
 
     /// <summary>

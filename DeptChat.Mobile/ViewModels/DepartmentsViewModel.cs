@@ -1288,16 +1288,49 @@ public partial class DepartmentsViewModel : ObservableObject
             _allShareUsers.Clear();
             ShareUsers.Clear();
 
-            var users = await _apiService.GetAvailableUsersForDepartmentAsync(deptId);
-            if (users != null)
+            // 1. Fetch existing active conversations in this department
+            var existingConvsTask = _apiService.GetConversationsForDepartmentAsync(deptId);
+
+            // 2. Fetch all other registered customers
+            var availableUsersTask = _apiService.GetAvailableUsersForDepartmentAsync(deptId);
+
+            await Task.WhenAll(existingConvsTask, availableUsersTask);
+
+            var existingConvs = existingConvsTask.Result ?? new List<ConversationSummaryDto>();
+            var availableUsers = availableUsersTask.Result ?? new List<AvailableDepartmentUserDto>();
+
+            var seenUserIds = new HashSet<Guid>();
+
+            // Prioritize customers with existing conversations in this department
+            foreach (var conv in existingConvs)
             {
-                foreach (var u in users)
+                if (conv.CreatedByUserId != Guid.Empty && seenUserIds.Add(conv.CreatedByUserId))
+                {
+                    _allShareUsers.Add(new AvailableUserItem
+                    {
+                        Id = conv.CreatedByUserId,
+                        FullName = conv.CreatedByUserName,
+                        Email = !string.IsNullOrWhiteSpace(conv.LastMessagePreview)
+                            ? conv.LastMessagePreview
+                            : "Active Chat",
+                        Role = UserRole.User,
+                        HasExistingChat = true,
+                        IsOnline = conv.IsOnline,
+                        IsBlocked = conv.IsUserBlocked
+                    });
+                }
+            }
+
+            // Append any additional registered customers
+            foreach (var u in availableUsers)
+            {
+                if (seenUserIds.Add(u.Id))
                 {
                     _allShareUsers.Add(new AvailableUserItem
                     {
                         Id = u.Id,
                         FullName = u.FullName,
-                        Email = u.Email,
+                        Email = u.Email ?? "",
                         Role = u.Role,
                         HasExistingChat = u.HasExistingChat,
                         IsOnline = u.IsOnline,
@@ -1525,6 +1558,8 @@ public partial class DepartmentsViewModel : ObservableObject
             await Shell.Current.GoToAsync($"ChatRoomPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}");
         }
     }
+
+    [RelayCommand]
     public async Task LogoutAsync()
 
     {
