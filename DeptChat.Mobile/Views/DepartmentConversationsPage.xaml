@@ -13,7 +13,7 @@
         <ToolbarItem Text="Log Out" Command="{Binding LogoutCommand}" />
     </ContentPage.ToolbarItems>
 
-    <Grid RowDefinitions="Auto, Auto, Auto, *">
+    <Grid RowDefinitions="Auto, Auto, *">
         <!-- WhatsApp Header Banner -->
         <Border Grid.Row="0" BackgroundColor="#008069" Padding="16,12" StrokeThickness="0">
             <VerticalStackLayout Spacing="8">
@@ -57,42 +57,8 @@
             </VerticalStackLayout>
         </Border>
 
-        <!-- Incoming Shared Receipt Banner -->
+<!-- Search Bar (WhatsApp Pill Design) -->
         <Border Grid.Row="1"
-                IsVisible="{Binding IsShareModeBanner}"
-                BackgroundColor="#075E54"
-                Stroke="#00A884"
-                StrokeThickness="1"
-                StrokeShape="RoundRectangle 12"
-                Margin="16,8,16,4"
-                Padding="12,10">
-            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
-                <Border Grid.Column="0"
-                        StrokeShape="RoundRectangle 8"
-                        WidthRequest="38"
-                        HeightRequest="38"
-                        BackgroundColor="#128C7E">
-                    <Label Text="📎" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
-                </Border>
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-                    <Label Text="Receipt ready to share" TextColor="White" FontAttributes="Bold" FontSize="13" />
-                    <Label Text="Select a customer conversation to send this receipt" TextColor="#D1FAE5" FontSize="11" />
-                </VerticalStackLayout>
-                <Button Grid.Column="2"
-                        Text="✕"
-                        Command="{Binding CancelShareModeCommand}"
-                        BackgroundColor="Transparent"
-                        TextColor="White"
-                        FontSize="16"
-                        FontAttributes="Bold"
-                        Padding="0"
-                        WidthRequest="32"
-                        HeightRequest="32" />
-            </Grid>
-        </Border>
-
-        <!-- Search Bar (WhatsApp Pill Design) -->
-        <Border Grid.Row="2"
                 IsVisible="{Binding ShowSearchBar}"
                 BackgroundColor="White"
                 Stroke="#CBD5E1"
@@ -365,7 +331,7 @@
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer />
                 </Border.GestureRecognizers>
-                <Grid RowDefinitions="Auto, Auto, Auto, *">
+                <Grid RowDefinitions="Auto, Auto, *">
                     <!-- Title & Close Button -->
                     <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalOptions="Center">
                         <VerticalStackLayout Grid.Column="0" Spacing="2">
@@ -399,7 +365,7 @@
                     </Border>
 
                     <!-- Loading Indicator -->
-                    <ActivityIndicator Grid.Row="3"
+                    <ActivityIndicator Grid.Row="2"
                                        IsRunning="{Binding IsLoadingUsers}"
                                        IsVisible="{Binding IsLoadingUsers}"
                                        Color="#008069"
@@ -418,7 +384,7 @@
                     </VerticalStackLayout>
 
                     <!-- Available Users List -->
-                    <CollectionView Grid.Row="3"
+                    <CollectionView Grid.Row="2"
                                     ItemsSource="{Binding FilteredUsers}"
                                     MaximumHeightRequest="360"
                                     Margin="0,4,0,0">
