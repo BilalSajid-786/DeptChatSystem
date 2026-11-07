@@ -94,8 +94,6 @@ public partial class ChatRoomPage : ContentPage
 
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
-                // Native WhatsApp standard: Stack from end pins the list at the bottom automatically
-                lm.StackFromEnd = true;
                 lm.ItemPrefetchEnabled = true;
                 lm.InitialPrefetchItemCount = 10;
             }
@@ -281,6 +279,7 @@ public partial class ChatRoomPage : ContentPage
                             if (currentLast >= 0)
                             {
                                 rv.ScrollToPosition(currentLast);
+                                MessagesCollectionView?.ScrollTo(currentLast, position: ScrollToPosition.End, animate: false);
                             }
                             _hasInitiallyScrolledToBottom = true;
                             _isUserNearBottom = true;
@@ -407,20 +406,10 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
             if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
             {
-                if (!rvInitial.IsLaidOut)
+                rvInitial.PostDelayed(() =>
                 {
-                    rvInitial.AddOnLayoutChangeListener(new OneShotBottomScrollLayoutListener(rvInitial, () =>
-                    {
-                        ScrollToBottom(animate: false);
-                    }));
-                }
-                else
-                {
-                    rvInitial.Post(() =>
-                    {
-                        ScrollToBottom(animate: false);
-                    });
-                }
+                    ScrollToBottom(animate: false);
+                }, 60);
             }
 #endif
         }

@@ -411,7 +411,11 @@ public partial class ChatRoomViewModel : ObservableObject
                 break;
             }
         }
-        if (isSorted) return;
+        if (isSorted)
+        {
+            UpdateDateHeaders();
+            return;
+        }
 
         var sorted = Messages.OrderBy(m => m.SequenceNumber > 0 ? m.SequenceNumber : long.MaxValue).ToList();
         for (int i = 0; i < sorted.Count; i++)
@@ -661,6 +665,38 @@ public partial class ChatRoomViewModel : ObservableObject
 
                 if (paged.Messages.Count > 0)
                 {
+                    // Save to SQLite outbox cache on background thread to prevent UI thread stutter
+                    if (_outboxService != null)
+                    {
+                        var convId = _conversationId;
+                        var myUserId = _authService?.UserId ?? Guid.Empty;
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                foreach (var m in paged.Messages)
+                                {
+                                    await _outboxService.SaveServerMessageAsync(
+                                        convId,
+                                        m.Id,
+                                        m.SenderId,
+                                        m.SenderRole,
+                                        m.ClientGeneratedId,
+                                        m.Content,
+                                        m.SenderName,
+                                        m.SenderId == myUserId,
+                                        m.SequenceNumber,
+                                        m.Status,
+                                        m.SentAt,
+                                        m.IsDeleted,
+                                        m.IsForwarded
+                                    );
+                                }
+                            }
+                            catch { }
+                        });
+                    }
+
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
                         var previousTopItem = Messages.FirstOrDefault();
@@ -697,25 +733,6 @@ public partial class ChatRoomViewModel : ObservableObject
                                 UpdateStatusVisuals(newItem, m.Status);
 
                                 Messages.Insert(insertIndex++, newItem);
-                            }
-
-                            if (_outboxService != null)
-                            {
-                                _ = _outboxService.SaveServerMessageAsync(
-                                    _conversationId,
-                                    m.Id,
-                                    m.SenderId,
-                                    m.SenderRole,
-                                    m.ClientGeneratedId,
-                                    m.Content,
-                                    m.SenderName,
-                                    m.SenderId == (_authService?.UserId ?? Guid.Empty),
-                                    m.SequenceNumber,
-                                    m.Status,
-                                    m.SentAt,
-                                    m.IsDeleted,
-                                    m.IsForwarded
-                                );
                             }
                         }
                         UpdateDateHeaders();
@@ -1200,13 +1217,6 @@ public partial class ChatRoomViewModel : ObservableObject
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
-                // If the collection is already populated with the identical messages, avoid clearing and resetting scroll offset
-                if (Messages.Count == items.Count && Messages.Count > 0 &&
-                    Messages[0].Id == items[0].Id && Messages[^1].Id == items[^1].Id)
-                {
-                    return;
-                }
-
                 Messages.Clear();
                 foreach (var item in items)
                 {

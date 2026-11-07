@@ -286,12 +286,11 @@
 
                         <DataTemplate x:DataType="vm:ChatMessageItem">
 
-                            <Grid RowDefinitions="Auto, Auto" HorizontalOptions="FillAndExpand">
+                            <VerticalStackLayout Spacing="0" HorizontalOptions="FillAndExpand">
 
                                 <!-- WhatsApp Authentic Centered Date Badge Pill -->
 
-                                <Border Grid.Row="0"
-                                        IsVisible="{Binding ShowDateHeader}"
+                                <Border IsVisible="{Binding ShowDateHeader}"
 
                                         HorizontalOptions="Center"
 
@@ -323,7 +322,7 @@
 
 
 
-                                <Grid Grid.Row="1" Padding="0,3" HorizontalOptions="FillAndExpand">
+                                <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
 
                                     <Border HorizontalOptions="{Binding Alignment}"
 
@@ -649,7 +648,7 @@
 
                             </Grid>
 
-                        </Grid>
+                        </VerticalStackLayout>
 
                     </DataTemplate>
 
