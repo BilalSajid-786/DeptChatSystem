@@ -280,7 +280,6 @@
 
                                 Margin="8,4"
 
-                                ItemsUpdatingScrollMode="KeepScrollOffset"
                                 Scrolled="OnMessagesScrolled">
 
                     <CollectionView.ItemTemplate>

@@ -262,8 +262,21 @@ public partial class ChatRoomPage : ContentPage
                 var lastIndex = _vm.Messages.Count - 1;
                 var lastItem = _vm.Messages[lastIndex];
 
+#if ANDROID
+                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+                    rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+                {
+                    lm.ScrollToPositionWithOffset(lastIndex, 0);
+                    _hasInitiallyScrolledToBottom = true;
+                    _isUserNearBottom = true;
+                    MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepScrollOffset;
+                    return;
+                }
+#endif
                 MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
                 _hasInitiallyScrolledToBottom = true;
+                _isUserNearBottom = true;
+                MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepScrollOffset;
             }
         }
         catch { }
@@ -347,6 +360,8 @@ public partial class ChatRoomPage : ContentPage
     {
         base.OnAppearing();
         _hasInitiallyScrolledToBottom = false;
+        _isUserNearBottom = true;
+        MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepItemsInView;
 
         SetupRecyclerView();
 
@@ -373,6 +388,19 @@ public partial class ChatRoomPage : ContentPage
 
             // Auto-scroll to the very last message when opening a chat
             ScrollToBottom(animate: false);
+
+#if ANDROID
+            if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
+            {
+                rvInitial.Post(() =>
+                {
+                    if (!_hasInitiallyScrolledToBottom && _vm?.Messages.Count > 0)
+                    {
+                        ScrollToBottom(animate: false);
+                    }
+                });
+            }
+#endif
         }
     }
 

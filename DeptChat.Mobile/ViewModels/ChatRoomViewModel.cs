@@ -1182,21 +1182,28 @@ public partial class ChatRoomViewModel : ObservableObject
         var localMessages = await _outboxService.GetRecentConversationMessagesAsync(convId, limit: 50);
         if (localMessages.Count > 0)
         {
-            MainThread.BeginInvokeOnMainThread(() =>
+            var ordered = localMessages.OrderBy(m => m.SequenceNumber > 0 ? m.SequenceNumber : long.MaxValue).ThenBy(m => m.Timestamp).ToList();
+            var items = new List<ChatMessageItem>();
+            foreach (var lm in ordered)
+            {
+                var item = MapLocalToChatItem(lm);
+                items.Add(item);
+                if (lm.SequenceNumber > 0 && lm.SequenceNumber < _earliestLoadedSequenceNumber)
+                {
+                    _earliestLoadedSequenceNumber = lm.SequenceNumber;
+                }
+                if (lm.SequenceNumber > _lastSequenceNumber)
+                {
+                    _lastSequenceNumber = lm.SequenceNumber;
+                }
+            }
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 Messages.Clear();
-                foreach (var lm in localMessages.OrderBy(m => m.SequenceNumber > 0 ? m.SequenceNumber : long.MaxValue).ThenBy(m => m.Timestamp))
+                foreach (var item in items)
                 {
-                    var item = MapLocalToChatItem(lm);
                     Messages.Add(item);
-                    if (lm.SequenceNumber > 0 && lm.SequenceNumber < _earliestLoadedSequenceNumber)
-                    {
-                        _earliestLoadedSequenceNumber = lm.SequenceNumber;
-                    }
-                    if (lm.SequenceNumber > _lastSequenceNumber)
-                    {
-                        _lastSequenceNumber = lm.SequenceNumber;
-                    }
                 }
                 UpdateDateHeaders();
             });
@@ -1249,6 +1256,8 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             try
             {
+                // Yield 250ms so UI thread can render initial screen and bottom scroll cleanly with 0% CPU contention!
+                await Task.Delay(250);
                 if (isCustomer && Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)
                 {
                     var convs = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
