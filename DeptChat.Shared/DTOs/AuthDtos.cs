@@ -8,11 +8,12 @@ public record RegisterRequestDto(
     string Password,
     string CompanyCode,
     string? PhoneNumber = null,
-    string? Address = null
+    string? Address = null,
+    string? Username = null
 );
 
 public record LoginRequestDto(
-    string Email, // Can be Email address or Phone number
+    string Email, // Can be Username, Email address, or Phone number
     string Password
 );
 
@@ -26,7 +27,8 @@ public record AuthResponseDto(
     Guid ClientId,
     string ClientName,
     string? PhoneNumber = null,
-    string? Address = null
+    string? Address = null,
+    string? Username = null
 );
 
 public record UserProfileDto(
@@ -36,14 +38,16 @@ public record UserProfileDto(
     UserRole Role,
     Guid ClientId,
     string ClientName,
-    string? PhoneNumber,
-    string? Address
+    string? PhoneNumber = null,
+    string? Address = null,
+    string? Username = null
 );
 
 public record UpdateProfileRequestDto(
     string FullName,
     string? PhoneNumber,
-    string? Address
+    string? Address,
+    string? Username = null
 );
 
 public record RegisterDeviceTokenDto(
@@ -57,7 +61,8 @@ public record CreateUserRequestDto(
     string? PhoneNumber,
     string Password,
     UserRole Role,
-    string? Address = null
+    string? Address = null,
+    string? Username = null
 );
 
 public record UserSummaryDto(
@@ -68,7 +73,8 @@ public record UserSummaryDto(
     UserRole Role,
     string? Address,
     DateTime CreatedAt,
-    bool IsBlocked = false
+    bool IsBlocked = false,
+    string? Username = null
 );
 
 public record ClientSummaryDto(

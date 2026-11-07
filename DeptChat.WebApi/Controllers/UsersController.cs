@@ -51,15 +51,36 @@ public class UsersController : ControllerBase
             return BadRequest(new { message = "Password must be at least 6 characters long." });
         }
 
+        var hasUsername = !string.IsNullOrWhiteSpace(dto.Username);
         var hasEmail = !string.IsNullOrWhiteSpace(dto.Email);
         var hasPhone = !string.IsNullOrWhiteSpace(dto.PhoneNumber);
 
-        if (!hasEmail && !hasPhone)
+        if (!hasUsername && !hasEmail && !hasPhone)
         {
-            return BadRequest(new { message = "Please provide either an email address or a phone number." });
+            return BadRequest(new { message = "Please provide a username, an email address, or a phone number." });
         }
 
         var clientId = GetClientId();
+
+        string? normalizedUsername = null;
+        if (hasUsername)
+        {
+            normalizedUsername = dto.Username!.Trim().ToLowerInvariant();
+            if (normalizedUsername.Length < 3 || normalizedUsername.Length > 50)
+            {
+                return BadRequest(new { message = "Username must be between 3 and 50 characters." });
+            }
+            if (!System.Text.RegularExpressions.Regex.IsMatch(normalizedUsername, @"^[a-z0-9_.-]+$"))
+            {
+                return BadRequest(new { message = "Username can only contain letters, numbers, underscores, hyphens, and periods." });
+            }
+
+            var usernameExists = await _dbContext.Users.AnyAsync(u => u.ClientId == clientId && u.Username != null && u.Username == normalizedUsername);
+            if (usernameExists)
+            {
+                return Conflict(new { message = "This username is already taken in your organization." });
+            }
+        }
 
         string? normalizedEmail = null;
         if (hasEmail)
@@ -88,6 +109,7 @@ public class UsersController : ControllerBase
             Id = Guid.NewGuid(),
             ClientId = clientId,
             FullName = dto.FullName.Trim(),
+            Username = normalizedUsername,
             Email = normalizedEmail,
             PhoneNumber = normalizedPhone,
             PasswordHash = _passwordHasher.HashPassword(dto.Password),
@@ -107,7 +129,9 @@ public class UsersController : ControllerBase
             user.PhoneNumber,
             user.Role,
             user.Address,
-            user.CreatedAt
+            user.CreatedAt,
+            user.IsBlocked,
+            user.Username
         );
 
         return StatusCode(StatusCodes.Status201Created, summary);
@@ -133,7 +157,8 @@ public class UsersController : ControllerBase
                 u.Role,
                 u.Address,
                 u.CreatedAt,
-                u.IsBlocked
+                u.IsBlocked,
+                u.Username
             ))
             .ToListAsync();
 

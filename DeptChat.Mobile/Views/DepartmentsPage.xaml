@@ -1848,6 +1848,30 @@
 
 
 
+                        <!-- Username -->
+
+                        <VerticalStackLayout Spacing="4">
+
+                            <Label Text="Username (Can be used instead of Email/Phone)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+
+                            <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
+
+                                <Entry Text="{Binding NewUserUsername}"
+
+                                       Placeholder="e.g. sarah_connor"
+
+                                       PlaceholderColor="#94A3B8"
+
+                                       TextColor="#0F172A"
+
+                                       FontSize="13" />
+
+                            </Border>
+
+                        </VerticalStackLayout>
+
+
+
                         <!-- Email Address -->
 
 
@@ -1856,7 +1880,7 @@
 
 
 
-                            <Label Text="Email Address (Optional if phone entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+                            <Label Text="Email Address (Optional if username or phone entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
 
 
@@ -1908,7 +1932,7 @@
 
 
 
-                            <Label Text="Phone Number (Optional if email entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
+                            <Label Text="Phone Number (Optional if username or email entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
 
 

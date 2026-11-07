@@ -311,6 +311,12 @@ public partial class DepartmentsViewModel : ObservableObject
 
     [ObservableProperty]
 
+    private string _newUserUsername = string.Empty;
+
+
+
+    [ObservableProperty]
+
     private string _newUserEmail = string.Empty;
 
 
@@ -1888,6 +1894,8 @@ public partial class DepartmentsViewModel : ObservableObject
 
         NewUserName = string.Empty;
 
+        NewUserUsername = string.Empty;
+
         NewUserEmail = string.Empty;
 
         NewUserPhone = string.Empty;
@@ -1980,11 +1988,11 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
 
-        if (string.IsNullOrWhiteSpace(NewUserEmail) && string.IsNullOrWhiteSpace(NewUserPhone))
+        if (string.IsNullOrWhiteSpace(NewUserUsername) && string.IsNullOrWhiteSpace(NewUserEmail) && string.IsNullOrWhiteSpace(NewUserPhone))
 
         {
 
-            AddUserErrorMessage = "Please enter either an email address or a phone number.";
+            AddUserErrorMessage = "Please enter a username, an email address, or a phone number.";
 
             return;
 
@@ -2022,7 +2030,9 @@ public partial class DepartmentsViewModel : ObservableObject
 
                 SelectedUserRole,
 
-                string.IsNullOrWhiteSpace(NewUserAddress) ? null : NewUserAddress.Trim()
+                string.IsNullOrWhiteSpace(NewUserAddress) ? null : NewUserAddress.Trim(),
+
+                string.IsNullOrWhiteSpace(NewUserUsername) ? null : NewUserUsername.Trim()
 
             );
 

@@ -45,6 +45,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(u => u.Email)
                 .HasMaxLength(256);
 
+            entity.Property(u => u.Username)
+                .HasMaxLength(100);
+
             entity.Property(u => u.PhoneNumber)
                 .HasMaxLength(50);
 
@@ -55,6 +58,10 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(u => u.PhoneNumber)
                 .IsUnique()
                 .HasFilter("[PhoneNumber] IS NOT NULL");
+
+            entity.HasIndex(u => new { u.ClientId, u.Username })
+                .IsUnique()
+                .HasFilter("[Username] IS NOT NULL");
         });
 
         modelBuilder.Entity<Conversation>()
@@ -147,6 +154,7 @@ public class ApplicationDbContext : DbContext
                 Id = adminId,
                 ClientId = defaultClientId,
                 FullName = "System Admin",
+                Username = "admin",
                 Email = "admin@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:U/DqBR8Pec8uVGI+nbX02p0SRXsy8UjaWvogXMTsRd4=", // Password: Admin123!
                 Role = UserRole.Admin,
@@ -157,6 +165,7 @@ public class ApplicationDbContext : DbContext
                 Id = managerId,
                 ClientId = defaultClientId,
                 FullName = "Alex Manager",
+                Username = "manager",
                 Email = "manager@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:BfR+wSV3hUcPqCjeqhx9dCRNyQv+DVJF+EufQ/AMMI8=", // Password: Manager123!
                 Role = UserRole.Manager,

@@ -10,6 +10,7 @@ public class User
     public Client Client { get; set; } = null!;
 
     public string FullName { get; set; } = string.Empty;
+    public string? Username { get; set; }
     public string? Email { get; set; }
     public string PasswordHash { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
