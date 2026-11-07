@@ -18,6 +18,8 @@ public partial class DepartmentsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        _ = App.CheckAndEnforceUpdateAsync();
+
         if (BindingContext is ViewModels.DepartmentsViewModel vm)
         {
             Console.WriteLine($"DEBUG_PAGE: OnAppearing vm found. Initial vm.IsAdmin={vm.IsAdmin}");

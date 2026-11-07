@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DeptChat.Mobile.Views.ForceUpdatePage"
+             BackgroundColor="#0B141B"
+             NavigationPage.HasNavigationBar="False">
+
+    <ScrollView VerticalOptions="Center">
+        <VerticalStackLayout Spacing="0"
+                             Padding="28,24"
+                             MaximumWidthRequest="460"
+                             HorizontalOptions="CenterAndExpand">
+
+            <!-- Circular Update Icon Badge -->
+            <Border Stroke="#00A884"
+                    StrokeThickness="2"
+                    BackgroundColor="#103629"
+                    StrokeShape="RoundRectangle 44"
+                    HeightRequest="88"
+                    WidthRequest="88"
+                    HorizontalOptions="Center"
+                    Margin="0,0,0,24">
+                <Label Text="⤓"
+                       FontSize="40"
+                       FontAttributes="Bold"
+                       TextColor="#00A884"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center" />
+            </Border>
+
+            <!-- Main Title -->
+            <Label Text="Update Required"
+                   FontSize="22"
+                   FontAttributes="Bold"
+                   TextColor="#E9EDEF"
+                   HorizontalTextAlignment="Center"
+                   Margin="0,0,0,8" />
+
+            <!-- Subtitle -->
+            <Label Text="A newer version of DeptChat is required to continue. Please update now to access your chats and messages."
+                   FontSize="14"
+                   TextColor="#8696A0"
+                   HorizontalTextAlignment="Center"
+                   LineHeight="1.3"
+                   Margin="0,0,0,24" />
+
+            <!-- Version Comparison Card -->
+            <Border Stroke="#202C33"
+                    BackgroundColor="#111B21"
+                    StrokeShape="RoundRectangle 12"
+                    Padding="16,12"
+                    Margin="0,0,0,16">
+                <Grid ColumnDefinitions="*, Auto, *">
+                    <VerticalStackLayout Grid.Column="0" HorizontalOptions="Center">
+                        <Label Text="CURRENT" FontSize="11" TextColor="#8696A0" FontAttributes="Bold" HorizontalTextAlignment="Center" />
+                        <Label x:Name="CurrentVersionLabel" Text="v1.0.0" FontSize="15" TextColor="#E9EDEF" FontAttributes="Bold" HorizontalTextAlignment="Center" Margin="0,2,0,0" />
+                    </VerticalStackLayout>
+
+                    <Label Grid.Column="1" Text="➔" FontSize="18" TextColor="#00A884" VerticalOptions="Center" HorizontalOptions="Center" Margin="8,0" />
+
+                    <VerticalStackLayout Grid.Column="2" HorizontalOptions="Center">
+                        <Label Text="LATEST" FontSize="11" TextColor="#00A884" FontAttributes="Bold" HorizontalTextAlignment="Center" />
+                        <Label x:Name="LatestVersionLabel" Text="v1.0.1" FontSize="15" TextColor="#00A884" FontAttributes="Bold" HorizontalTextAlignment="Center" Margin="0,2,0,0" />
+                    </VerticalStackLayout>
+                </Grid>
+            </Border>
+
+            <!-- Release Notes Card -->
+            <Border Stroke="#202C33"
+                    BackgroundColor="#111B21"
+                    StrokeShape="RoundRectangle 12"
+                    Padding="16"
+                    Margin="0,0,0,24">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="WHAT'S NEW IN THIS RELEASE"
+                           FontSize="11"
+                           FontAttributes="Bold"
+                           TextColor="#00A884" />
+                    <Label x:Name="ReleaseNotesLabel"
+                           Text="• Performance improvements and bug fixes."
+                           FontSize="13"
+                           TextColor="#D1D7DB"
+                           LineHeight="1.35" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Primary Action: Download APK -->
+            <Button x:Name="DownloadButton"
+                    Text="Download &amp; Update Now"
+                    BackgroundColor="#00A884"
+                    TextColor="#FFFFFF"
+                    FontAttributes="Bold"
+                    FontSize="15"
+                    CornerRadius="25"
+                    HeightRequest="50"
+                    Clicked="OnDownloadClicked" />
+
+            <!-- Instructions Note -->
+            <Label Text="💡 Once downloaded, tap the APK in your notification bar or Downloads folder to install."
+                   FontSize="12"
+                   TextColor="#8696A0"
+                   HorizontalTextAlignment="Center"
+                   LineHeight="1.3"
+                   Margin="0,12,0,0" />
+
+            <!-- Secondary Action: Check Again -->
+            <Button Text="Check Again"
+                    BackgroundColor="Transparent"
+                    TextColor="#00A884"
+                    FontSize="14"
+                    HeightRequest="42"
+                    Margin="0,16,0,0"
+                    Clicked="OnCheckAgainClicked" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

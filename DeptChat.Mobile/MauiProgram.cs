@@ -32,6 +32,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<AuthService>();
         builder.Services.AddSingleton<ChatApiService>();
+        builder.Services.AddSingleton<AppVersionService>();
 
         var signalR = new SignalRService(serverConfig.CurrentUrl);
         serverConfig.OnUrlChanged += (newUrl) =>
@@ -57,6 +58,7 @@ public static class MauiProgram
 
         builder.Services.AddTransient<ChatRoomViewModel>();
         builder.Services.AddTransient<ChatRoomPage>();
+        builder.Services.AddTransient<ForceUpdatePage>();
 
         return builder.Build();
     }

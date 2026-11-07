@@ -17,6 +17,16 @@ public class ChatApiService
         _httpClient = httpClient;
         _authService = authService;
         _serverConfig = serverConfig;
+
+        try
+        {
+            if (!_httpClient.DefaultRequestHeaders.Contains("X-App-Version"))
+            {
+                _httpClient.DefaultRequestHeaders.Add("X-App-Version", AppInfo.Current.VersionString);
+                _httpClient.DefaultRequestHeaders.Add("X-App-Build", AppInfo.Current.BuildString);
+            }
+        }
+        catch { }
     }
 
     private string BuildUrl(string path) => $"{_serverConfig.CurrentUrl.TrimEnd('/')}/{path.TrimStart('/')}";

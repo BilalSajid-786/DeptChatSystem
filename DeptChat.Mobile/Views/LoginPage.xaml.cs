@@ -19,6 +19,8 @@ public partial class LoginPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        _ = App.CheckAndEnforceUpdateAsync();
+
         if (BindingContext is LoginViewModel vm)
         {
             await vm.CheckAutoLoginAsync();
