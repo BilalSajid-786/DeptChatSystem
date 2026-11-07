@@ -607,6 +607,7 @@ public partial class ChatRoomViewModel : ObservableObject
                             }
                         }
                         SortMessages();
+                        TriggerScrollToBottom();
                     });
 
                     if (paged.LatestSequenceNumber.HasValue && paged.LatestSequenceNumber.Value > _lastSequenceNumber)
@@ -699,6 +700,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
+                        PreparingOlderMessagesInsert?.Invoke();
                         var previousTopItem = Messages.FirstOrDefault();
                         var sortedOlder = paged.Messages.OrderBy(m => m.SequenceNumber).ToList();
                         int insertIndex = 0;
@@ -736,6 +738,7 @@ public partial class ChatRoomViewModel : ObservableObject
                             }
                         }
                         UpdateDateHeaders();
+                        OlderMessagesInserted?.Invoke(insertIndex);
                     });
                 }
             }
@@ -1040,6 +1043,8 @@ public partial class ChatRoomViewModel : ObservableObject
 
     public event Action? RequestScrollToBottom;
     public event Action<ChatMessageItem>? RequestScrollToItem;
+    public event Action? PreparingOlderMessagesInsert;
+    public event Action<int>? OlderMessagesInserted;
 
     public void TriggerScrollToBottom() => RequestScrollToBottom?.Invoke();
 
@@ -1217,12 +1222,20 @@ public partial class ChatRoomViewModel : ObservableObject
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
+                if (Messages.Count == items.Count && Messages.Count > 0 &&
+                    Messages[0].Id == items[0].Id && Messages[^1].Id == items[^1].Id)
+                {
+                    TriggerScrollToBottom();
+                    return;
+                }
+
                 Messages.Clear();
                 foreach (var item in items)
                 {
                     Messages.Add(item);
                 }
                 UpdateDateHeaders();
+                TriggerScrollToBottom();
             });
         }
     }

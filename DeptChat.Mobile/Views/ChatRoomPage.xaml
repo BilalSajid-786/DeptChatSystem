@@ -280,6 +280,10 @@
 
                                 Margin="8,4"
 
+                                VerticalScrollBarVisibility="Never"
+
+                                HorizontalScrollBarVisibility="Never"
+
                                 Scrolled="OnMessagesScrolled">
 
                     <CollectionView.ItemTemplate>

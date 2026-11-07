@@ -44,6 +44,11 @@ public partial class ChatRoomPage : ContentPage
 
         _vm.Messages.CollectionChanged -= OnMessagesCollectionChanged;
         _vm.Messages.CollectionChanged += OnMessagesCollectionChanged;
+
+        _vm.PreparingOlderMessagesInsert -= OnPreparingOlderMessagesInsert;
+        _vm.PreparingOlderMessagesInsert += OnPreparingOlderMessagesInsert;
+        _vm.OlderMessagesInserted -= OnOlderMessagesInserted;
+        _vm.OlderMessagesInserted += OnOlderMessagesInserted;
     }
 
     private void DetachScrollHandler()
@@ -53,6 +58,8 @@ public partial class ChatRoomPage : ContentPage
         _vm.RequestScrollToItem -= OnRequestScrollToItem;
         _vm.PropertyChanged -= OnViewModelPropertyChanged;
         _vm.Messages.CollectionChanged -= OnMessagesCollectionChanged;
+        _vm.PreparingOlderMessagesInsert -= OnPreparingOlderMessagesInsert;
+        _vm.OlderMessagesInserted -= OnOlderMessagesInserted;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -66,6 +73,36 @@ public partial class ChatRoomPage : ContentPage
         }
     }
 
+    private int _anchorPosition = -1;
+    private int _anchorTopOffset = 0;
+
+    private void OnPreparingOlderMessagesInsert()
+    {
+#if ANDROID
+        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+            rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+        {
+            _anchorPosition = lm.FindFirstVisibleItemPosition();
+            var view = lm.FindViewByPosition(_anchorPosition);
+            _anchorTopOffset = view?.Top ?? 0;
+        }
+#endif
+    }
+
+    private void OnOlderMessagesInserted(int insertedCount)
+    {
+#if ANDROID
+        if (insertedCount > 0 && _anchorPosition >= 0 &&
+            MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+            rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+        {
+            int restoredPosition = _anchorPosition + insertedCount;
+            lm.ScrollToPositionWithOffset(restoredPosition, _anchorTopOffset);
+            _anchorPosition = -1;
+        }
+#endif
+    }
+
     protected override void OnHandlerChanged()
     {
         base.OnHandlerChanged();
@@ -77,8 +114,10 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
+            rv.VerticalScrollBarEnabled = false;
+            rv.HorizontalScrollBarEnabled = false;
             rv.HasFixedSize = false;
-            rv.SetItemViewCacheSize(20);
+            rv.SetItemViewCacheSize(30);
             rv.SetItemAnimator(null);
             rv.NestedScrollingEnabled = true;
 
@@ -169,7 +208,13 @@ public partial class ChatRoomPage : ContentPage
         if (_vm == null) return;
 
         // Track whether user is looking at bottom or reading older messages
-        _isUserNearBottom = (_vm.Messages.Count == 0) || (e.LastVisibleItemIndex >= _vm.Messages.Count - 2);
+        bool nearBottom = (_vm.Messages.Count == 0) || (e.LastVisibleItemIndex >= _vm.Messages.Count - 2);
+        _isUserNearBottom = nearBottom;
+
+        if (nearBottom)
+        {
+            _hasInitiallyScrolledToBottom = true;
+        }
 
         // Cancel any pending programmatic scroll to bottom if user is scrolling up
         if (e.VerticalDelta < -1)
@@ -178,11 +223,12 @@ public partial class ChatRoomPage : ContentPage
         }
 
         // Only trigger older messages if:
-        // 1. Initial scroll to bottom has completed
+        // 1. Initial scroll to bottom has completed AND user is NOT looking at bottom
         // 2. We have at least 20 messages loaded
         // 3. User is scrolling near top (FirstVisibleItemIndex <= 2, VerticalDelta < 0)
         // 4. Server confirmed there are more older messages
         if (_hasInitiallyScrolledToBottom &&
+            !_isUserNearBottom &&
             _vm.Messages.Count >= 20 &&
             e.FirstVisibleItemIndex <= 2 &&
             e.VerticalDelta < 0 &&
@@ -265,9 +311,10 @@ public partial class ChatRoomPage : ContentPage
                 var lastItem = _vm.Messages[lastIndex];
 
 #if ANDROID
-                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
+                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+                    rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
                 {
-                    // Scroll to bottom natively
+                    lm.ScrollToPositionWithOffset(lastIndex, 0);
                     rv.ScrollToPosition(lastIndex);
                     MessagesCollectionView.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: animate);
 
@@ -278,11 +325,10 @@ public partial class ChatRoomPage : ContentPage
                             int currentLast = (_vm?.Messages.Count ?? 0) - 1;
                             if (currentLast >= 0)
                             {
+                                lm.ScrollToPositionWithOffset(currentLast, 0);
                                 rv.ScrollToPosition(currentLast);
                                 MessagesCollectionView?.ScrollTo(currentLast, position: ScrollToPosition.End, animate: false);
                             }
-                            _hasInitiallyScrolledToBottom = true;
-                            _isUserNearBottom = true;
                         }
                         catch { }
                     });
@@ -290,8 +336,6 @@ public partial class ChatRoomPage : ContentPage
                 }
 #endif
                 MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
-                _hasInitiallyScrolledToBottom = true;
-                _isUserNearBottom = true;
             }
         }
         catch { }
@@ -406,10 +450,20 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
             if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
             {
-                rvInitial.PostDelayed(() =>
+                if (!rvInitial.IsLaidOut)
                 {
-                    ScrollToBottom(animate: false);
-                }, 60);
+                    rvInitial.AddOnLayoutChangeListener(new OneShotBottomScrollLayoutListener(rvInitial, () =>
+                    {
+                        ScrollToBottom(animate: false);
+                    }));
+                }
+                else
+                {
+                    rvInitial.Post(() =>
+                    {
+                        ScrollToBottom(animate: false);
+                    });
+                }
             }
 #endif
         }
@@ -492,7 +546,10 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         {
             IsTouching = false;
         }
-        _gestureDetector.OnTouchEvent(e);
+        if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+        {
+            _gestureDetector.OnTouchEvent(e);
+        }
     }
 
     public void OnRequestDisallowInterceptTouchEvent(bool disallowIntercept)
