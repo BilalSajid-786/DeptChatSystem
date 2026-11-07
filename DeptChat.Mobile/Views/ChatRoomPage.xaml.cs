@@ -85,6 +85,11 @@ public partial class ChatRoomPage : ContentPage
             _anchorPosition = lm.FindFirstVisibleItemPosition();
             var view = lm.FindViewByPosition(_anchorPosition);
             _anchorTopOffset = view?.Top ?? 0;
+            try
+            {
+                rv.SuppressLayout(true);
+            }
+            catch { }
         }
 #endif
     }
@@ -92,13 +97,21 @@ public partial class ChatRoomPage : ContentPage
     private void OnOlderMessagesInserted(int insertedCount)
     {
 #if ANDROID
-        if (insertedCount > 0 && _anchorPosition >= 0 &&
-            MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
             rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
         {
-            int restoredPosition = _anchorPosition + insertedCount;
-            lm.ScrollToPositionWithOffset(restoredPosition, _anchorTopOffset);
-            _anchorPosition = -1;
+            try
+            {
+                rv.SuppressLayout(false);
+            }
+            catch { }
+
+            if (insertedCount > 0 && _anchorPosition >= 0)
+            {
+                int restoredPosition = _anchorPosition + insertedCount;
+                lm.ScrollToPositionWithOffset(restoredPosition, _anchorTopOffset);
+                _anchorPosition = -1;
+            }
         }
 #endif
     }
@@ -117,7 +130,7 @@ public partial class ChatRoomPage : ContentPage
             rv.VerticalScrollBarEnabled = false;
             rv.HorizontalScrollBarEnabled = false;
             rv.HasFixedSize = false;
-            rv.SetItemViewCacheSize(30);
+            rv.SetItemViewCacheSize(4);
             rv.SetItemAnimator(null);
             rv.NestedScrollingEnabled = true;
 
@@ -127,14 +140,13 @@ public partial class ChatRoomPage : ContentPage
             {
                 for (int vt = 0; vt <= 15; vt++)
                 {
-                    pool.SetMaxRecycledViews(vt, 30);
+                    pool.SetMaxRecycledViews(vt, 15);
                 }
             }
 
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
                 lm.ItemPrefetchEnabled = true;
-                lm.InitialPrefetchItemCount = 10;
             }
 
             if (_rvTouchListener != null)
@@ -171,6 +183,15 @@ public partial class ChatRoomPage : ContentPage
         {
             if (_isUserNearBottom)
             {
+#if ANDROID
+                // Don't interrupt active user touch gestures
+                if (_rvTouchListener?.IsTouching == true) return;
+                if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck &&
+                    rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+                {
+                    return;
+                }
+#endif
                 ScrollToBottom(animate: false);
             }
         }
@@ -315,19 +336,19 @@ public partial class ChatRoomPage : ContentPage
                     rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
                 {
                     lm.ScrollToPositionWithOffset(lastIndex, 0);
-                    rv.ScrollToPosition(lastIndex);
-                    MessagesCollectionView.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: animate);
 
                     rv.Post(() =>
                     {
                         try
                         {
+                            if (_hasInitiallyScrolledToBottom && (!_isUserNearBottom || _rvTouchListener?.IsTouching == true || rv.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle))
+                            {
+                                return;
+                            }
                             int currentLast = (_vm?.Messages.Count ?? 0) - 1;
                             if (currentLast >= 0)
                             {
                                 lm.ScrollToPositionWithOffset(currentLast, 0);
-                                rv.ScrollToPosition(currentLast);
-                                MessagesCollectionView?.ScrollTo(currentLast, position: ScrollToPosition.End, animate: false);
                             }
                         }
                         catch { }
@@ -518,25 +539,16 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         if (e.ActionMasked == Android.Views.MotionEventActions.Down)
         {
             IsTouching = true;
-            _gestureDetector.OnTouchEvent(e);
         }
         else if (e.ActionMasked == Android.Views.MotionEventActions.Up || e.ActionMasked == Android.Views.MotionEventActions.Cancel)
         {
             IsTouching = false;
-            _gestureDetector.OnTouchEvent(e);
-        }
-        else if (e.ActionMasked == Android.Views.MotionEventActions.Move)
-        {
-            // If RecyclerView is actively scrolling or flinging, bypass GestureDetector completely!
-            // This ensures 100% native 60/120fps touch dispatch with zero latency or hitching!
-            if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-            {
-                _gestureDetector.OnTouchEvent(e);
-            }
         }
 
-        // Always return false: allows RecyclerView to receive the full touch stream
-        // and handle smooth scrolling and flinging without any interference or delays!
+        // Pass all touch events to GestureDetector so its state machine correctly
+        // tracks drag movement and cancels the long-press timer when the user scrolls
+        _gestureDetector.OnTouchEvent(e);
+
         return false;
     }
 
@@ -546,10 +558,7 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         {
             IsTouching = false;
         }
-        if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-        {
-            _gestureDetector.OnTouchEvent(e);
-        }
+        _gestureDetector.OnTouchEvent(e);
     }
 
     public void OnRequestDisallowInterceptTouchEvent(bool disallowIntercept)
@@ -558,6 +567,12 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
 
     private void HandleLongPress(Android.Views.MotionEvent e)
     {
+        // Strictly prevent long-press if the user is scrolling or flinging!
+        if (_recyclerView.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+        {
+            return;
+        }
+
         var child = _recyclerView.FindChildViewUnder(e.GetX(), e.GetY());
         if (child == null) return;
 

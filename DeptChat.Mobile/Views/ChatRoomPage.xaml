@@ -290,11 +290,13 @@
 
                         <DataTemplate x:DataType="vm:ChatMessageItem">
 
-                            <VerticalStackLayout Spacing="0" HorizontalOptions="FillAndExpand">
+                            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
 
                                 <!-- WhatsApp Authentic Centered Date Badge Pill -->
 
-                                <Border IsVisible="{Binding ShowDateHeader}"
+                                <Border Grid.Row="0"
+
+                                        IsVisible="{Binding ShowDateHeader}"
 
                                         HorizontalOptions="Center"
 
@@ -326,7 +328,7 @@
 
 
 
-                                <Grid Padding="0,3" HorizontalOptions="FillAndExpand">
+                                <Grid Grid.Row="1" Padding="0,3" HorizontalOptions="FillAndExpand">
 
                                     <Border HorizontalOptions="{Binding Alignment}"
 
@@ -422,9 +424,7 @@
 
                                                 <Border.GestureRecognizers>
 
-                                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenImageCommand}"
-
-                                                                          CommandParameter="{Binding .}" />
+                                                    <TapGestureRecognizer Command="{Binding OpenImageCommand}" />
 
                                                 </Border.GestureRecognizers>
 
@@ -466,9 +466,7 @@
 
                                             <Grid.GestureRecognizers>
 
-                                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=OpenDocumentCommand}"
-
-                                                                      CommandParameter="{Binding .}" />
+                                                <TapGestureRecognizer Command="{Binding OpenDocumentCommand}" />
 
                                             </Grid.GestureRecognizers>
 
@@ -540,9 +538,7 @@
 
                                                     Text="{Binding PlayButtonIcon}"
 
-                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=TogglePlayVoiceCommand}"
-
-                                                    CommandParameter="{Binding .}"
+                                                    Command="{Binding TogglePlayVoiceCommand}"
 
                                                     BackgroundColor="{Binding PlayButtonColor}"
 
@@ -652,7 +648,7 @@
 
                             </Grid>
 
-                        </VerticalStackLayout>
+                        </Grid>
 
                     </DataTemplate>
 

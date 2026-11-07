@@ -7,8 +7,21 @@ using DeptChat.Shared.Enums;
 
 namespace DeptChat.Mobile.ViewModels;
 
-public class ChatMessageItem : ObservableObject
+public partial class ChatMessageItem : ObservableObject
 {
+    public static Action<ChatMessageItem>? OnOpenImage;
+    public static Action<ChatMessageItem>? OnOpenDocument;
+    public static Action<ChatMessageItem>? OnTogglePlayVoice;
+
+    [RelayCommand]
+    private void OpenImage() => OnOpenImage?.Invoke(this);
+
+    [RelayCommand]
+    private void OpenDocument() => OnOpenDocument?.Invoke(this);
+
+    [RelayCommand]
+    private void TogglePlayVoice() => OnTogglePlayVoice?.Invoke(this);
+
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SenderId { get; set; }
     public UserRole SenderRole { get; set; } = UserRole.User;
@@ -18,14 +31,25 @@ public class ChatMessageItem : ObservableObject
     public string TimeFormatted { get; set; } = DateTime.Now.ToString("h:mm tt");
     public DateTime MessageDate { get; set; } = DateTime.Now;
 
-    private bool _showDateHeader;
+    internal bool _showDateHeader;
     public bool ShowDateHeader
     {
         get => _showDateHeader;
-        set => SetProperty(ref _showDateHeader, value);
+        set
+        {
+            if (SetProperty(ref _showDateHeader, value))
+            {
+                OnPropertyChanged(nameof(DateHeaderRowHeight));
+                OnPropertyChanged(nameof(DateHeaderOpacity));
+            }
+        }
     }
 
-    private string _dateHeaderText = string.Empty;
+    // Uses GridLength instead of IsVisible to avoid InvalidateMeasure on recycle
+    public GridLength DateHeaderRowHeight => _showDateHeader ? GridLength.Auto : new GridLength(0);
+    public double DateHeaderOpacity => _showDateHeader ? 1.0 : 0.0;
+
+    internal string _dateHeaderText = string.Empty;
     public string DateHeaderText
     {
         get => _dateHeaderText;
@@ -371,17 +395,44 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             var msg = Messages[i];
             var msgDate = msg.MessageDate.Date;
-            if (!previousDate.HasValue || previousDate.Value != msgDate)
+            bool shouldShow = !previousDate.HasValue || previousDate.Value != msgDate;
+            if (shouldShow)
             {
-                if (!msg.ShowDateHeader) msg.ShowDateHeader = true;
                 var formatted = FormatDateHeader(msgDate);
+                // Only fire PropertyChanged if value actually changed
                 if (msg.DateHeaderText != formatted) msg.DateHeaderText = formatted;
+                if (!msg.ShowDateHeader) msg.ShowDateHeader = true;
                 previousDate = msgDate;
             }
             else
             {
                 if (msg.ShowDateHeader) msg.ShowDateHeader = false;
-                if (!string.IsNullOrEmpty(msg.DateHeaderText)) msg.DateHeaderText = string.Empty;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pre-computes ShowDateHeader/DateHeaderText on items BEFORE they are inserted
+    /// into the ObservableCollection, so no PropertyChanged fires during scroll.
+    /// Call this on a list of items that will be inserted at position 0.
+    /// </summary>
+    public void PreComputeDateHeaders(IReadOnlyList<ChatMessageItem> items)
+    {
+        DateTime? previousDate = null;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var msg = items[i];
+            var msgDate = msg.MessageDate.Date;
+            if (!previousDate.HasValue || previousDate.Value != msgDate)
+            {
+                msg._showDateHeader = true;
+                msg._dateHeaderText = FormatDateHeader(msgDate);
+                previousDate = msgDate;
+            }
+            else
+            {
+                msg._showDateHeader = false;
+                msg._dateHeaderText = string.Empty;
             }
         }
     }
@@ -700,10 +751,8 @@ public partial class ChatRoomViewModel : ObservableObject
 
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        PreparingOlderMessagesInsert?.Invoke();
-                        var previousTopItem = Messages.FirstOrDefault();
                         var sortedOlder = paged.Messages.OrderBy(m => m.SequenceNumber).ToList();
-                        int insertIndex = 0;
+                        var newItems = new List<ChatMessageItem>();
 
                         foreach (var m in sortedOlder)
                         {
@@ -734,11 +783,32 @@ public partial class ChatRoomViewModel : ObservableObject
                                 ParseMessagePayload(newItem, m.Content);
                                 UpdateStatusVisuals(newItem, m.Status);
 
-                                Messages.Insert(insertIndex++, newItem);
+                                newItems.Add(newItem);
                             }
                         }
-                        UpdateDateHeaders();
-                        OlderMessagesInserted?.Invoke(insertIndex);
+
+                        if (newItems.Count > 0)
+                        {
+                            // Precompute date headers on the new older batch
+                            PreComputeDateHeaders(newItems);
+
+                            // Also adjust boundary: if the last item of newItems has the same date
+                            // as what used to be the first item of Messages, hide header on first existing
+                            var firstExisting = Messages.FirstOrDefault();
+                            if (firstExisting != null && newItems[^1].MessageDate.Date == firstExisting.MessageDate.Date)
+                            {
+                                firstExisting.ShowDateHeader = false;
+                            }
+
+                            PreparingOlderMessagesInsert?.Invoke();
+
+                            for (int i = 0; i < newItems.Count; i++)
+                            {
+                                Messages.Insert(i, newItems[i]);
+                            }
+
+                            OlderMessagesInserted?.Invoke(newItems.Count);
+                        }
                     });
                 }
             }
@@ -1114,6 +1184,10 @@ public partial class ChatRoomViewModel : ObservableObject
         _outboxService = outboxService;
         _audioService = audioService;
 
+        ChatMessageItem.OnOpenImage = item => _ = OpenImageAsync(item);
+        ChatMessageItem.OnOpenDocument = item => _ = OpenDocumentAsync(item);
+        ChatMessageItem.OnTogglePlayVoice = item => _ = TogglePlayVoiceAsync(item);
+
         SubscribeToEvents();
 
         // Check if an external receipt/image was shared into DeptChat
@@ -1129,6 +1203,9 @@ public partial class ChatRoomViewModel : ObservableObject
 
     public ChatRoomViewModel()
     {
+        ChatMessageItem.OnOpenImage = item => _ = OpenImageAsync(item);
+        ChatMessageItem.OnOpenDocument = item => _ = OpenDocumentAsync(item);
+        ChatMessageItem.OnTogglePlayVoice = item => _ = TogglePlayVoiceAsync(item);
         LoadSampleMessages();
     }
 
@@ -1229,12 +1306,13 @@ public partial class ChatRoomViewModel : ObservableObject
                     return;
                 }
 
+                PreComputeDateHeaders(items);
+
                 Messages.Clear();
                 foreach (var item in items)
                 {
                     Messages.Add(item);
                 }
-                UpdateDateHeaders();
                 TriggerScrollToBottom();
             });
         }
