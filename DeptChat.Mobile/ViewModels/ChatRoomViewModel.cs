@@ -1200,6 +1200,13 @@ public partial class ChatRoomViewModel : ObservableObject
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
+                // If the collection is already populated with the identical messages, avoid clearing and resetting scroll offset
+                if (Messages.Count == items.Count && Messages.Count > 0 &&
+                    Messages[0].Id == items[0].Id && Messages[^1].Id == items[^1].Id)
+                {
+                    return;
+                }
+
                 Messages.Clear();
                 foreach (var item in items)
                 {
@@ -1256,8 +1263,8 @@ public partial class ChatRoomViewModel : ObservableObject
         {
             try
             {
-                // Yield 250ms so UI thread can render initial screen and bottom scroll cleanly with 0% CPU contention!
-                await Task.Delay(250);
+                // Yield 400ms so UI thread can complete transition, layout, and bottom scroll with 0% CPU contention!
+                await Task.Delay(400);
                 if (isCustomer && Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)
                 {
                     var convs = await _apiService.GetConversationsForDepartmentAsync(deptGuid);

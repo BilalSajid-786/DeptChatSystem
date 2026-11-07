@@ -77,7 +77,7 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
         {
-            rv.HasFixedSize = true;
+            rv.HasFixedSize = false;
             rv.SetItemViewCacheSize(20);
             rv.SetItemAnimator(null);
             rv.NestedScrollingEnabled = true;
@@ -94,6 +94,8 @@ public partial class ChatRoomPage : ContentPage
 
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
+                // Native WhatsApp standard: Stack from end pins the list at the bottom automatically
+                lm.StackFromEnd = true;
                 lm.ItemPrefetchEnabled = true;
                 lm.InitialPrefetchItemCount = 10;
             }
@@ -212,9 +214,9 @@ public partial class ChatRoomPage : ContentPage
         {
             return;
         }
-        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvTouchCheck)
+        if (_hasInitiallyScrolledToBottom && MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvTouchCheck)
         {
-            // If the user is actively touching, dragging, or flinging the list, never interrupt!
+            // If the user has settled into the room and is actively dragging or flinging history, don't interrupt
             if (rvTouchCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
             {
                 return;
@@ -246,7 +248,7 @@ public partial class ChatRoomPage : ContentPage
             {
                 return;
             }
-            if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck)
+            if (_hasInitiallyScrolledToBottom && MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck)
             {
                 if (rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
                 {
@@ -267,30 +269,21 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
                 if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
                 {
-                    // Native Android scrollToPosition scrolls the item into view at the bottom of the viewport
+                    // Scroll to bottom natively
                     rv.ScrollToPosition(lastIndex);
                     MessagesCollectionView.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: animate);
 
-                    // Reaffirm on next UI pass once adapter items are fully measured and bound
                     rv.Post(() =>
                     {
                         try
                         {
-                            if (_isUserNearBottom || !_hasInitiallyScrolledToBottom)
+                            int currentLast = (_vm?.Messages.Count ?? 0) - 1;
+                            if (currentLast >= 0)
                             {
-                                int currentLast = (_vm?.Messages.Count ?? 0) - 1;
-                                if (currentLast >= 0)
-                                {
-                                    rv.ScrollToPosition(currentLast);
-                                    MessagesCollectionView?.ScrollTo(currentLast, position: ScrollToPosition.End, animate: false);
-                                }
+                                rv.ScrollToPosition(currentLast);
                             }
                             _hasInitiallyScrolledToBottom = true;
                             _isUserNearBottom = true;
-                            if (MessagesCollectionView != null)
-                            {
-                                MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepScrollOffset;
-                            }
                         }
                         catch { }
                     });
@@ -300,7 +293,6 @@ public partial class ChatRoomPage : ContentPage
                 MessagesCollectionView.ScrollTo(lastItem, position: ScrollToPosition.End, animate: animate);
                 _hasInitiallyScrolledToBottom = true;
                 _isUserNearBottom = true;
-                MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepScrollOffset;
             }
         }
         catch { }
@@ -385,7 +377,6 @@ public partial class ChatRoomPage : ContentPage
         base.OnAppearing();
         _hasInitiallyScrolledToBottom = false;
         _isUserNearBottom = true;
-        MessagesCollectionView.ItemsUpdatingScrollMode = ItemsUpdatingScrollMode.KeepItemsInView;
 
         SetupRecyclerView();
 
