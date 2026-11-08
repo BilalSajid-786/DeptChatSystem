@@ -185,8 +185,6 @@ public partial class ChatRoomPage : ContentPage
             if (_isUserNearBottom)
             {
 #if ANDROID
-                // Don't interrupt active user touch gestures
-                if (_rvTouchListener?.IsTouching == true) return;
                 if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck &&
                     rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
                 {
@@ -275,13 +273,6 @@ public partial class ChatRoomPage : ContentPage
 
     public void ScrollToBottom(bool animate = false)
     {
-#if ANDROID
-        if (_rvTouchListener?.IsTouching == true)
-        {
-            return;
-        }
-#endif
-
         _scrollToBottomCts?.Cancel();
         _scrollToBottomCts?.Dispose();
         _scrollToBottomCts = new CancellationTokenSource();
@@ -296,12 +287,6 @@ public partial class ChatRoomPage : ContentPage
     {
         try
         {
-#if ANDROID
-            if (_rvTouchListener?.IsTouching == true)
-            {
-                return;
-            }
-#endif
             if (_vm?.Messages.Count > 0)
             {
                 int lastIndex = _vm.Messages.Count - 1;
@@ -317,7 +302,6 @@ public partial class ChatRoomPage : ContentPage
                     {
                         try
                         {
-                            if (_rvTouchListener?.IsTouching == true) return;
                             int currentLast = (_vm?.Messages.Count ?? 0) - 1;
                             if (currentLast >= 0)
                             {
@@ -452,6 +436,7 @@ public partial class ChatRoomPage : ContentPage
                 rvInitial.Post(() => ScrollToBottom(animate: false));
                 rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 80);
                 rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 200);
+                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 400);
             }
 #endif
         }
@@ -503,14 +488,11 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
         _handler = new Android.OS.Handler(Android.OS.Looper.MainLooper!);
     }
 
-    public bool IsTouching { get; private set; }
-
     public bool OnInterceptTouchEvent(AndroidX.RecyclerView.Widget.RecyclerView rv, Android.Views.MotionEvent e)
     {
         switch (e.ActionMasked)
         {
             case Android.Views.MotionEventActions.Down:
-                IsTouching = true;
                 _downX = e.GetX();
                 _downY = e.GetY();
                 _hasMoved = false;
@@ -541,7 +523,6 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
 
             case Android.Views.MotionEventActions.Up:
             case Android.Views.MotionEventActions.Cancel:
-                IsTouching = false;
                 CancelPendingLongPress();
                 break;
         }
@@ -563,7 +544,6 @@ public class MessageRecyclerViewTouchListener : Java.Lang.Object, AndroidX.Recyc
 
             case Android.Views.MotionEventActions.Up:
             case Android.Views.MotionEventActions.Cancel:
-                IsTouching = false;
                 CancelPendingLongPress();
                 break;
         }

@@ -276,8 +276,44 @@ public class ForwardUserItem
 [QueryProperty(nameof(InitialIsOnlineString), "isOnline")]
 [QueryProperty(nameof(InitialIsBlockedString), "isBlocked")]
 [QueryProperty(nameof(SharedFilePath), "sharedFilePath")]
-public partial class ChatRoomViewModel : ObservableObject
+public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 {
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (query.TryGetValue("deptId", out var deptIdObj) && deptIdObj != null)
+            DepartmentId = Uri.UnescapeDataString(deptIdObj.ToString() ?? string.Empty);
+
+        if (query.TryGetValue("deptName", out var deptNameObj) && deptNameObj != null)
+            DepartmentName = Uri.UnescapeDataString(deptNameObj.ToString() ?? string.Empty);
+
+        if (query.TryGetValue("convId", out var convIdObj) && convIdObj != null)
+        {
+            var cStr = convIdObj.ToString() ?? string.Empty;
+            ConversationIdString = cStr;
+            if (Guid.TryParse(cStr, out var cGuid) && cGuid != Guid.Empty)
+            {
+                _conversationId = cGuid;
+                _convIdTcs.TrySetResult(_conversationId);
+                ActiveConversationId = _conversationId;
+            }
+        }
+
+        if (query.TryGetValue("userName", out var userNameObj) && userNameObj != null)
+            CustomerName = Uri.UnescapeDataString(userNameObj.ToString() ?? string.Empty);
+
+        if (query.TryGetValue("userId", out var userIdObj) && userIdObj != null)
+            OtherUserIdString = userIdObj.ToString() ?? string.Empty;
+
+        if (query.TryGetValue("isOnline", out var isOnlineObj) && isOnlineObj != null)
+            InitialIsOnlineString = isOnlineObj.ToString() ?? string.Empty;
+
+        if (query.TryGetValue("isBlocked", out var isBlockedObj) && isBlockedObj != null)
+            InitialIsBlockedString = isBlockedObj.ToString() ?? string.Empty;
+
+        if (query.TryGetValue("sharedFilePath", out var shareObj) && shareObj != null)
+            SharedFilePath = Uri.UnescapeDataString(shareObj.ToString() ?? string.Empty);
+    }
+
     [ObservableProperty]
     private string _sharedFilePath = string.Empty;
 
@@ -355,6 +391,7 @@ public partial class ChatRoomViewModel : ObservableObject
     private readonly IAudioService? _audioService;
 
     public static Guid ActiveConversationId { get; set; } = Guid.Empty;
+    private CancellationTokenSource _disposeCts = new();
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly SemaphoreSlim _outgoingSendLock = new(1, 1);
     private bool _isSubscribed;
@@ -1206,7 +1243,6 @@ public partial class ChatRoomViewModel : ObservableObject
         ChatMessageItem.OnOpenImage = item => _ = OpenImageAsync(item);
         ChatMessageItem.OnOpenDocument = item => _ = OpenDocumentAsync(item);
         ChatMessageItem.OnTogglePlayVoice = item => _ = TogglePlayVoiceAsync(item);
-        LoadSampleMessages();
     }
 
     public void SubscribeToEvents()
@@ -1359,13 +1395,20 @@ public partial class ChatRoomViewModel : ObservableObject
             IsSyncingMessages = true;
         }
 
+        _disposeCts.Cancel();
+        _disposeCts.Dispose();
+        _disposeCts = new CancellationTokenSource();
+        var ct = _disposeCts.Token;
+
         // 3. Perform network synchronization in background without blocking the UI
         _ = Task.Run(async () =>
         {
             try
             {
                 // Yield 400ms so UI thread can complete transition, layout, and bottom scroll with 0% CPU contention!
-                await Task.Delay(400);
+                await Task.Delay(400, ct);
+                if (ct.IsCancellationRequested) return;
+
                 if (isCustomer && Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)
                 {
                     var convs = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
@@ -1392,10 +1435,11 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
                 }
 
-                if (_conversationId == Guid.Empty) return;
+                if (_conversationId == Guid.Empty || ct.IsCancellationRequested) return;
 
                 // 4. Fetch messages immediately from REST API (sub-second response)
                 await SyncMissedMessagesAsync();
+                if (ct.IsCancellationRequested) return;
 
                 // Dismiss loading indicators immediately once messages are rendered
                 MainThread.BeginInvokeOnMainThread(() =>
@@ -1409,21 +1453,24 @@ public partial class ChatRoomViewModel : ObservableObject
                 });
 
                 // 5. Connect to SignalR and enter room in background
-                if (_signalRService != null)
+                if (_signalRService != null && !ct.IsCancellationRequested)
                 {
                     if (!_signalRService.IsConnected && !string.IsNullOrEmpty(_authService?.Token))
                     {
                         try { await _signalRService.ConnectAsync(_authService.Token); } catch { }
                     }
 
-                    if (_signalRService.IsConnected)
+                    if (_signalRService.IsConnected && !ct.IsCancellationRequested)
                     {
                         await _signalRService.EnterRoomAsync(_conversationId);
                     }
                 }
 
                 // Flush outbox
-                await FlushOutboxAsync();
+                if (!ct.IsCancellationRequested)
+                {
+                    await FlushOutboxAsync();
+                }
 
                 // Initial presence check for other user
                 if (OtherUserId == Guid.Empty)
@@ -1435,15 +1482,16 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
                 }
 
-                if (OtherUserId != Guid.Empty && _signalRService != null && _signalRService.IsConnected)
+                if (OtherUserId != Guid.Empty && _signalRService != null && _signalRService.IsConnected && !ct.IsCancellationRequested)
                 {
                     var presence = await _signalRService.GetPresenceAsync(OtherUserId, _conversationId);
-                    if (presence != null)
+                    if (presence != null && !ct.IsCancellationRequested)
                     {
                         ApplyPresence(presence);
                     }
                 }
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ChatRoom] Background sync error: {ex.Message}");
@@ -1460,7 +1508,7 @@ public partial class ChatRoomViewModel : ObservableObject
                     }
                 });
             }
-        });
+        }, ct);
     }
 
     public async Task FlushOutboxAsync()
@@ -2905,6 +2953,7 @@ public partial class ChatRoomViewModel : ObservableObject
 
     public async Task OnDisappearingAsync()
     {
+        _disposeCts.Cancel();
         if (ActiveConversationId == _conversationId)
         {
             ActiveConversationId = Guid.Empty;
@@ -2951,33 +3000,9 @@ public partial class ChatRoomViewModel : ObservableObject
         }
     }
 
-    private void LoadSampleMessages()
-    {
-        Messages = new ObservableCollection<ChatMessageItem>
-        {
-            new ChatMessageItem
-            {
-                SenderName = "Support Staff",
-                Content = "Hello! How can we assist you with this department today?",
-                TimeFormatted = "10:15 AM",
-                IsOutgoing = false
-            },
-            new ChatMessageItem
-            {
-                SenderName = "You",
-                Content = "My order #8849 arrived with broken packaging. I would like to request an exchange or replacement.",
-                TimeFormatted = "10:17 AM",
-                IsOutgoing = true,
-                StatusIcon = "✓✓",
-                StatusColor = Color.FromArgb("#34B7F1")
-            }
-        };
-    }
-
     [RelayCommand]
     public async Task BackAsync()
     {
-        await OnDisappearingAsync();
         await Shell.Current.GoToAsync("..");
     }
 
