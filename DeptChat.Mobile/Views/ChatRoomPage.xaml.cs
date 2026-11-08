@@ -146,6 +146,7 @@ public partial class ChatRoomPage : ContentPage
 
             if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
             {
+                lm.StackFromEnd = true;
                 lm.ItemPrefetchEnabled = true;
                 lm.InitialPrefetchItemCount = 4;
             }
@@ -225,10 +226,10 @@ public partial class ChatRoomPage : ContentPage
 
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
-        if (_vm == null) return;
+        if (_vm == null || _vm.Messages.Count == 0) return;
 
         // Track whether user is looking at bottom or reading older messages
-        bool nearBottom = (_vm.Messages.Count == 0) || (e.LastVisibleItemIndex >= _vm.Messages.Count - 2);
+        bool nearBottom = e.LastVisibleItemIndex >= _vm.Messages.Count - 2;
         _isUserNearBottom = nearBottom;
 
         if (nearBottom)
@@ -236,8 +237,8 @@ public partial class ChatRoomPage : ContentPage
             _hasInitiallyScrolledToBottom = true;
         }
 
-        // Cancel any pending programmatic scroll to bottom if user is scrolling up
-        if (e.VerticalDelta < -1)
+        // Cancel any pending programmatic scroll to bottom ONLY if user has already arrived at bottom and is scrolling up manually
+        if (_hasInitiallyScrolledToBottom && e.VerticalDelta < -1)
         {
             _scrollToBottomCts?.Cancel();
         }
@@ -295,6 +296,17 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
                 if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv)
                 {
+                    if (rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
+                    {
+                        lm.StackFromEnd = true;
+                    }
+
+                    if (rv.IsComputingLayout)
+                    {
+                        rv.Post(() => PerformScroll(animate));
+                        return;
+                    }
+
                     rv.ScrollToPosition(lastIndex);
                     MessagesCollectionView.ScrollTo(lastIndex, position: ScrollToPosition.End, animate: animate);
 
