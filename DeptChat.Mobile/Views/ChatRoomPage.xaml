@@ -328,69 +328,40 @@
 
 
 
-                                <Grid Grid.Row="1" Padding="0,3" HorizontalOptions="FillAndExpand">
-
-                                    <Border HorizontalOptions="{Binding Alignment}"
-
-                                            BackgroundColor="{Binding BubbleColor}"
-
-                                            Stroke="#CBD5E1"
-
-                                            StrokeThickness="0.4"
-
-                                            StrokeShape="RoundRectangle 14"
-
-                                            Padding="10,6,10,6"
-
-                                            MaximumWidthRequest="300">
-
-
+                                <Border Grid.Row="1"
+                                        HorizontalOptions="{Binding Alignment}"
+                                        BackgroundColor="{Binding BubbleColor}"
+                                        Stroke="#CBD5E1"
+                                        StrokeThickness="0.4"
+                                        StrokeShape="RoundRectangle 14"
+                                        Padding="10,6,10,6"
+                                        Margin="0,3"
+                                        MaximumWidthRequest="300">
 
                                     <VerticalStackLayout Spacing="3">
 
                                         <!-- Forwarded Indicator -->
-
-                                        <HorizontalStackLayout Spacing="4" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}">
-
-                                            <Label Text="↪️" FontSize="11" TextColor="#64748B" VerticalOptions="Center" />
-
-                                            <Label Text="Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" VerticalOptions="Center" />
-
-                                        </HorizontalStackLayout>
-
-
+                                        <Label Text="↪️ Forwarded"
+                                               FontSize="11"
+                                               FontAttributes="Italic"
+                                               TextColor="#64748B"
+                                               Margin="0,0,0,2"
+                                               IsVisible="{Binding IsForwardedVisible}" />
 
                                         <!-- Sender Name (Only shown on incoming departmental messages) -->
-
                                         <Label Text="{Binding SenderName}"
-
                                                FontSize="12"
-
                                                TextColor="#075E54"
-
                                                FontAttributes="Bold"
-
                                                IsVisible="{Binding ShowSenderName}" />
 
-
-
                                         <!-- Deleted Message Indicator -->
-
-                                        <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsDeleted}" Margin="0,2">
-
-                                            <Label Text="🚫" FontSize="13" TextColor="#64748B" VerticalOptions="Center" />
-
-                                            <Label Text="This message was deleted"
-
-                                                   FontSize="14"
-
-                                                   FontAttributes="Italic"
-
-                                                   TextColor="#64748B"
-
-                                                   VerticalOptions="Center" />
-
-                                        </HorizontalStackLayout>
+                                        <Label Text="🚫 This message was deleted"
+                                               FontSize="14"
+                                               FontAttributes="Italic"
+                                               TextColor="#64748B"
+                                               Margin="0,2"
+                                               IsVisible="{Binding IsDeleted}" />
 
 
 
@@ -645,8 +616,6 @@
                                     </VerticalStackLayout>
 
                                 </Border>
-
-                            </Grid>
 
                         </Grid>
 
