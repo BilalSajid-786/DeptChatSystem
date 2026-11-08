@@ -97,13 +97,6 @@
 </ItemGroup>
 
 
-	<!-- Production Release Signing with Dedicated Keystore -->
-	<PropertyGroup Condition="'$(Configuration)' == 'Release' and $(TargetFramework.StartsWith('net10.0-android'))">
-		<AndroidKeyStore>True</AndroidKeyStore>
-		<AndroidSigningKeyStore>deptchat.keystore</AndroidSigningKeyStore>
-		<AndroidSigningKeyAlias>deptchat</AndroidSigningKeyAlias>
-		<AndroidSigningKeyPass>DeptChat@2026Release!</AndroidSigningKeyPass>
-		<AndroidSigningStorePass>DeptChat@2026Release!</AndroidSigningStorePass>
-	</PropertyGroup>
+
 
 </Project>
