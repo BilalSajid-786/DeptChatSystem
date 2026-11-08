@@ -942,56 +942,7 @@
 
                     </VerticalStackLayout>
 
-
-
-
-
-
-
-                    
-                    <!-- Change Password Section in Profile -->
-                    <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,8" Margin="0,4">
-                        <VerticalStackLayout Spacing="6">
-                            <Button Text="🔒 Change Password"
-                                    Command="{Binding ToggleChangePasswordSectionCommand}"
-                                    BackgroundColor="#E2E8F0"
-                                    TextColor="#0F172A"
-                                    FontAttributes="Bold"
-                                    FontSize="12"
-                                    CornerRadius="6"
-                                    HeightRequest="32"
-                                    Padding="10,0" />
-
-                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsChangePasswordSectionVisible}" Margin="0,4,0,0">
-                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
-                                    <Entry Text="{Binding ChangePasswordCurrent}" Placeholder="Current Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
-                                </Border>
-                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
-                                    <Entry Text="{Binding ChangePasswordNew}" Placeholder="New Password (min 6 chars)" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
-                                </Border>
-                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
-                                    <Entry Text="{Binding ChangePasswordConfirm}" Placeholder="Confirm New Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
-                                </Border>
-
-                                <Label Text="{Binding ChangePasswordErrorMessage}" TextColor="#EF4444" FontSize="11" IsVisible="{Binding HasChangePasswordError}" />
-
-                                <Button Text="Update Password"
-                                        Command="{Binding SaveChangePasswordCommand}"
-                                        IsEnabled="{Binding CanSaveChangePassword}"
-                                        BackgroundColor="#008069"
-                                        TextColor="White"
-                                        FontAttributes="Bold"
-                                        FontSize="12"
-                                        CornerRadius="6"
-                                        HeightRequest="34" />
-                            </VerticalStackLayout>
-                        </VerticalStackLayout>
-                    </Border>
-
-
                     <!-- Error Message -->
-
-
 
                     <Label Text="{Binding AddDepartmentErrorMessage}"
 
@@ -1427,15 +1378,46 @@
 
                     </VerticalStackLayout>
 
+                    <!-- Change Password Section in Profile -->
+                    <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,8" Margin="0,4">
+                        <VerticalStackLayout Spacing="6">
+                            <Button Text="🔒 Change Password"
+                                    Command="{Binding ToggleChangePasswordSectionCommand}"
+                                    BackgroundColor="#E2E8F0"
+                                    TextColor="#0F172A"
+                                    FontAttributes="Bold"
+                                    FontSize="12"
+                                    CornerRadius="6"
+                                    HeightRequest="32"
+                                    Padding="10,0" />
 
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsChangePasswordSectionVisible}" Margin="0,4,0,0">
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordCurrent}" Placeholder="Current Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordNew}" Placeholder="New Password (min 6 chars)" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordConfirm}" Placeholder="Confirm New Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
 
+                                <Label Text="{Binding ChangePasswordErrorMessage}" TextColor="#EF4444" FontSize="11" IsVisible="{Binding HasChangePasswordError}" />
 
-
-
+                                <Button Text="Update Password"
+                                        Command="{Binding SaveChangePasswordCommand}"
+                                        IsEnabled="{Binding CanSaveChangePassword}"
+                                        BackgroundColor="#008069"
+                                        TextColor="White"
+                                        FontAttributes="Bold"
+                                        FontSize="12"
+                                        CornerRadius="6"
+                                        HeightRequest="34" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
 
                     <!-- Error Message -->
-
-
 
                     <Label Text="{Binding ProfileErrorMessage}"
 
