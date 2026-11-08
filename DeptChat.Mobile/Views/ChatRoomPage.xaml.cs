@@ -280,20 +280,7 @@ public partial class ChatRoomPage : ContentPage
         {
             return;
         }
-        if (_hasInitiallyScrolledToBottom && MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvTouchCheck)
-        {
-            // If the user has settled into the room and is actively dragging or flinging history, don't interrupt
-            if (rvTouchCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-            {
-                return;
-            }
-        }
 #endif
-
-        if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
-        {
-            return;
-        }
 
         _scrollToBottomCts?.Cancel();
         _scrollToBottomCts?.Dispose();
@@ -314,19 +301,7 @@ public partial class ChatRoomPage : ContentPage
             {
                 return;
             }
-            if (_hasInitiallyScrolledToBottom && MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck)
-            {
-                if (rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
-                {
-                    return;
-                }
-            }
 #endif
-            if (_hasInitiallyScrolledToBottom && !_isUserNearBottom)
-            {
-                return;
-            }
-
             if (_vm?.Messages.Count > 0)
             {
                 int lastIndex = _vm.Messages.Count - 1;
@@ -342,10 +317,7 @@ public partial class ChatRoomPage : ContentPage
                     {
                         try
                         {
-                            if (_hasInitiallyScrolledToBottom && (!_isUserNearBottom || _rvTouchListener?.IsTouching == true || rv.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle))
-                            {
-                                return;
-                            }
+                            if (_rvTouchListener?.IsTouching == true) return;
                             int currentLast = (_vm?.Messages.Count ?? 0) - 1;
                             if (currentLast >= 0)
                             {
@@ -477,10 +449,9 @@ public partial class ChatRoomPage : ContentPage
 #if ANDROID
             if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
             {
-                rvInitial.PostDelayed(() =>
-                {
-                    ScrollToBottom(animate: false);
-                }, 100);
+                rvInitial.Post(() => ScrollToBottom(animate: false));
+                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 80);
+                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 200);
             }
 #endif
         }
@@ -489,6 +460,8 @@ public partial class ChatRoomPage : ContentPage
     protected override async void OnDisappearing()
     {
         base.OnDisappearing();
+        _hasInitiallyScrolledToBottom = false;
+        _isUserNearBottom = true;
 
 #if ANDROID
         _keyboardObserver?.Detach();
