@@ -41,7 +41,12 @@ public partial class ForceUpdatePage : ContentPage
 
         try
         {
-            await Launcher.Default.OpenAsync(new Uri(downloadUrl));
+            var uriBuilder = new UriBuilder(downloadUrl);
+            var query = uriBuilder.Query.TrimStart('?');
+            var cacheBuster = $"t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+            uriBuilder.Query = string.IsNullOrEmpty(query) ? cacheBuster : $"{query}&{cacheBuster}";
+
+            await Launcher.Default.OpenAsync(uriBuilder.Uri);
         }
         catch (Exception ex)
         {

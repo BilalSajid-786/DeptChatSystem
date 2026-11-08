@@ -32,7 +32,8 @@ public class AppVersionController : ControllerBase
         var minVersion = section["MinimumRequiredVersion"] ?? "1.0.1";
         var minBuild = int.TryParse(section["MinimumRequiredBuildNumber"], out var mb) ? mb : 2;
         var forceUpdate = bool.TryParse(section["ForceUpdate"], out var fu) ? fu : false;
-        var downloadUrl = section["DownloadUrl"] ?? "https://179.197.255.148.sslip.io/api/app/download-apk";
+        var rawUrl = section["DownloadUrl"] ?? "https://179.197.255.148.sslip.io/api/app/download-apk";
+        var downloadUrl = rawUrl.Contains("?") ? $"{rawUrl}&b={latestBuild}" : $"{rawUrl}?b={latestBuild}";
         var releaseNotes = section["ReleaseNotes"] ?? "• Performance improvements and bug fixes.";
 
         return Ok(new AppVersionDto(
@@ -54,7 +55,16 @@ public class AppVersionController : ControllerBase
     [HttpGet("download-apk")]
     public IActionResult DownloadApk()
     {
-        var configuredUrl = _configuration["AppVersion:DownloadUrl"];
+        var section = _configuration.GetSection("AppVersion");
+        var latestVersion = section["LatestVersion"] ?? "1.0.5";
+        var latestBuild = section["LatestBuildNumber"] ?? "6";
+        var apkFilename = $"DeptChat-v{latestVersion}-b{latestBuild}.apk";
+
+        Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["Expires"] = "0";
+
+        var configuredUrl = section["DownloadUrl"];
 
         // If configured URL is an external link (like Google Drive), redirect directly
         if (!string.IsNullOrWhiteSpace(configuredUrl) &&
@@ -67,14 +77,14 @@ public class AppVersionController : ControllerBase
         var wwwrootApk = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "apk", "DeptChat.apk");
         if (System.IO.File.Exists(wwwrootApk))
         {
-            return PhysicalFile(Path.GetFullPath(wwwrootApk), "application/vnd.android.package-archive", "DeptChat.apk");
+            return PhysicalFile(Path.GetFullPath(wwwrootApk), "application/vnd.android.package-archive", apkFilename);
         }
 
         // Check project root DeptChat.apk (F:\Projects\DeptChatSystem\DeptChat.apk)
         var rootApk = Path.Combine(Directory.GetCurrentDirectory(), "..", "DeptChat.apk");
         if (System.IO.File.Exists(rootApk))
         {
-            return PhysicalFile(Path.GetFullPath(rootApk), "application/vnd.android.package-archive", "DeptChat.apk");
+            return PhysicalFile(Path.GetFullPath(rootApk), "application/vnd.android.package-archive", apkFilename);
         }
 
         return NotFound(new { message = "APK file not found on server." });
