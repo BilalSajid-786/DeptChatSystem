@@ -177,4 +177,46 @@ public class AuthService
 
         _ = _outboxService?.ClearAllAsync();
     }
+
+    public async Task<(bool Success, string Message)> ChangePasswordAsync(string currentPassword, string newPassword)
+    {
+        LastError = null;
+        try
+        {
+            if (string.IsNullOrEmpty(Token)) return (false, "Not authenticated.");
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, BuildUrl("api/auth/change-password"));
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+            var reqDto = new ChangePasswordRequestDto(currentPassword, newPassword);
+            req.Content = JsonContent.Create(reqDto);
+
+            var response = await _httpClient.SendAsync(req);
+            var respStr = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "Password updated successfully.");
+            }
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(respStr);
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                {
+                    var msg = msgProp.GetString() ?? "Failed to update password.";
+                    LastError = msg;
+                    return (false, msg);
+                }
+            }
+            catch { }
+
+            var fallback = string.IsNullOrWhiteSpace(respStr) ? $"Failed ({(int)response.StatusCode})" : respStr;
+            LastError = fallback;
+            return (false, fallback);
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+            return (false, ex.Message);
+        }
+    }
 }

@@ -948,6 +948,47 @@
 
 
 
+                    
+                    <!-- Change Password Section in Profile -->
+                    <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,8" Margin="0,4">
+                        <VerticalStackLayout Spacing="6">
+                            <Button Text="🔒 Change Password"
+                                    Command="{Binding ToggleChangePasswordSectionCommand}"
+                                    BackgroundColor="#E2E8F0"
+                                    TextColor="#0F172A"
+                                    FontAttributes="Bold"
+                                    FontSize="12"
+                                    CornerRadius="6"
+                                    HeightRequest="32"
+                                    Padding="10,0" />
+
+                            <VerticalStackLayout Spacing="6" IsVisible="{Binding IsChangePasswordSectionVisible}" Margin="0,4,0,0">
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordCurrent}" Placeholder="Current Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordNew}" Placeholder="New Password (min 6 chars)" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
+                                <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 6" BackgroundColor="White" Padding="8,2">
+                                    <Entry Text="{Binding ChangePasswordConfirm}" Placeholder="Confirm New Password" IsPassword="True" FontSize="12" TextColor="#0F172A" PlaceholderColor="#94A3B8" />
+                                </Border>
+
+                                <Label Text="{Binding ChangePasswordErrorMessage}" TextColor="#EF4444" FontSize="11" IsVisible="{Binding HasChangePasswordError}" />
+
+                                <Button Text="Update Password"
+                                        Command="{Binding SaveChangePasswordCommand}"
+                                        IsEnabled="{Binding CanSaveChangePassword}"
+                                        BackgroundColor="#008069"
+                                        TextColor="White"
+                                        FontAttributes="Bold"
+                                        FontSize="12"
+                                        CornerRadius="6"
+                                        HeightRequest="34" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+
                     <!-- Error Message -->
 
 
@@ -2470,29 +2511,28 @@
 
 
 
-                                    <Button Grid.Column="1"
-
-                                            Text="{Binding ActionBtnText}"
-
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=ToggleBlockManagerCommand}"
-
-                                            CommandParameter="{Binding .}"
-
-                                            BackgroundColor="{Binding ActionBtnColor}"
-
-                                            TextColor="{Binding ActionBtnTextColor}"
-
-                                            FontAttributes="Bold"
-
-                                            FontSize="12"
-
-                                            CornerRadius="6"
-
-                                            HeightRequest="32"
-
-                                            Padding="12,0"
-
-                                            VerticalOptions="Center" />
+                                    <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                                        <Button Text="🔑 Reset"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=OpenAdminResetPasswordModalCommand}"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="#E0F2FE"
+                                                TextColor="#0369A1"
+                                                FontAttributes="Bold"
+                                                FontSize="11"
+                                                CornerRadius="6"
+                                                HeightRequest="32"
+                                                Padding="8,0" />
+                                        <Button Text="{Binding ActionBtnText}"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=ToggleBlockManagerCommand}"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="{Binding ActionBtnColor}"
+                                                TextColor="{Binding ActionBtnTextColor}"
+                                                FontAttributes="Bold"
+                                                FontSize="12"
+                                                CornerRadius="6"
+                                                HeightRequest="32"
+                                                Padding="12,0" />
+                                    </HorizontalStackLayout>
 
                                 </Grid>
 
@@ -2590,29 +2630,28 @@
 
 
 
-                                        <Button Grid.Column="1"
-
-                                                Text="{Binding ActionBtnText}"
-
-                                                Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=ToggleBlockUserCommand}"
-
-                                                CommandParameter="{Binding .}"
-
-                                                BackgroundColor="{Binding ActionBtnColor}"
-
-                                                TextColor="{Binding ActionBtnTextColor}"
-
-                                                FontAttributes="Bold"
-
-                                                FontSize="12"
-
-                                                CornerRadius="6"
-
-                                                HeightRequest="32"
-
-                                                Padding="12,0"
-
-                                                VerticalOptions="Center" />
+                                        <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                                            <Button Text="🔑 Reset"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=OpenAdminResetPasswordModalCommand}"
+                                                    CommandParameter="{Binding .}"
+                                                    BackgroundColor="#E0F2FE"
+                                                    TextColor="#0369A1"
+                                                    FontAttributes="Bold"
+                                                    FontSize="11"
+                                                    CornerRadius="6"
+                                                    HeightRequest="32"
+                                                    Padding="8,0" />
+                                            <Button Text="{Binding ActionBtnText}"
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=ToggleBlockUserCommand}"
+                                                    CommandParameter="{Binding .}"
+                                                    BackgroundColor="{Binding ActionBtnColor}"
+                                                    TextColor="{Binding ActionBtnTextColor}"
+                                                    FontAttributes="Bold"
+                                                    FontSize="12"
+                                                    CornerRadius="6"
+                                                    HeightRequest="32"
+                                                    Padding="12,0" />
+                                        </HorizontalStackLayout>
 
                                     </Grid>
 
@@ -2940,6 +2979,72 @@
                            FontSize="11"
                            HorizontalOptions="Center"
                            HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+    
+        <!-- Admin Reset Password Modal Overlay -->
+        <Grid IsVisible="{Binding IsAdminResetPasswordModalVisible}"
+              BackgroundColor="#80000000"
+              HorizontalOptions="Fill"
+              VerticalOptions="Fill"
+              ZIndex="100">
+            <Border Stroke="#E2E8F0"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    BackgroundColor="White"
+                    WidthRequest="340"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="20,16">
+                <VerticalStackLayout Spacing="12">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="🔑 Reset Password" FontSize="16" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseAdminResetPasswordModalCommand}"
+                                BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" FontAttributes="Bold"
+                                WidthRequest="32" HeightRequest="32" Padding="0" />
+                    </Grid>
+
+                    <Label Text="{Binding SelectedAccountForReset.Title, StringFormat='Enter a new password for {0}:'}"
+                           FontSize="13" TextColor="#475569" />
+
+                    <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,4">
+                        <Entry Text="{Binding AdminResetNewPassword}"
+                               Placeholder="New Password (min 6 chars)"
+                               IsPassword="True"
+                               FontSize="13"
+                               TextColor="#0F172A"
+                               PlaceholderColor="#94A3B8" />
+                    </Border>
+
+                    <Label Text="{Binding AdminResetErrorMessage}"
+                           TextColor="#EF4444"
+                           FontSize="12"
+                           IsVisible="{Binding HasAdminResetError}" />
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="10" Margin="0,4,0,0">
+                        <Button Grid.Column="0"
+                                Text="Cancel"
+                                Command="{Binding CloseAdminResetPasswordModalCommand}"
+                                BackgroundColor="#F1F5F9"
+                                TextColor="#475569"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="38" />
+
+                        <Button Grid.Column="1"
+                                Text="Reset"
+                                Command="{Binding ConfirmAdminResetPasswordCommand}"
+                                IsEnabled="{Binding CanSaveAdminReset}"
+                                BackgroundColor="#0284C7"
+                                TextColor="White"
+                                FontAttributes="Bold"
+                                FontSize="13"
+                                CornerRadius="8"
+                                HeightRequest="38" />
+                    </Grid>
                 </VerticalStackLayout>
             </Border>
         </Grid>

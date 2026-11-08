@@ -257,4 +257,40 @@ public class UsersController : ControllerBase
 
         return Ok(managers);
     }
+
+    /// <summary>
+    /// Admin-only: Resets the password of any Manager or User (Customer) in their organization.
+    /// </summary>
+    [HttpPost("{id}/reset-password")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ResetPassword(Guid id, [FromBody] AdminResetPasswordRequestDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.NewPassword))
+        {
+            return BadRequest(new { message = "New password is required." });
+        }
+
+        if (dto.NewPassword.Length < 6)
+        {
+            return BadRequest(new { message = "New password must be at least 6 characters long." });
+        }
+
+        var clientId = GetClientId();
+        var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == id && u.ClientId == clientId);
+        if (targetUser == null)
+        {
+            return NotFound(new { message = "User not found in your organization." });
+        }
+
+        // Admins cannot reset passwords of other Admins through this endpoint
+        if (targetUser.Role == UserRole.Admin)
+        {
+            return BadRequest(new { message = "Cannot reset the password of an administrator account." });
+        }
+
+        targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset successfully." });
+    }
 }

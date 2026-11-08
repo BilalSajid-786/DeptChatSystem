@@ -86,3 +86,12 @@ public record ClientSummaryDto(
     bool IsBlocked,
     DateTime CreatedAt
 );
+
+public record ChangePasswordRequestDto(
+    string CurrentPassword,
+    string NewPassword
+);
+
+public record AdminResetPasswordRequestDto(
+    string NewPassword
+);

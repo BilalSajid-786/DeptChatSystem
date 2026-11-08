@@ -411,4 +411,66 @@ public class ChatApiService
             return false;
         }
     }
+
+    public async Task<(bool Success, string? Message)> ChangePasswordAsync(string currentPassword, string newPassword)
+    {
+        try
+        {
+            AttachBearerToken();
+            var payload = new ChangePasswordRequestDto(currentPassword, newPassword);
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(BuildUrl("api/auth/change-password"), content);
+            var respStr = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "Password updated successfully.");
+            }
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(respStr);
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                {
+                    return (false, msgProp.GetString() ?? "Failed to update password.");
+                }
+            }
+            catch { }
+            return (false, string.IsNullOrWhiteSpace(respStr) ? "Failed to update password." : respStr);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Success, string? Message)> AdminResetPasswordAsync(Guid userId, string newPassword)
+    {
+        try
+        {
+            AttachBearerToken();
+            var payload = new AdminResetPasswordRequestDto(newPassword);
+            var json = JsonSerializer.Serialize(payload, JsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(BuildUrl($"api/users/{userId}/reset-password"), content);
+            var respStr = await response.Content.ReadAsStringAsync();
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "Password reset successfully.");
+            }
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(respStr);
+                if (doc.RootElement.TryGetProperty("message", out var msgProp))
+                {
+                    return (false, msgProp.GetString() ?? "Failed to reset password.");
+                }
+            }
+            catch { }
+            return (false, string.IsNullOrWhiteSpace(respStr) ? "Failed to reset password." : respStr);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
 }

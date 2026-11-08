@@ -265,6 +265,53 @@ public partial class DepartmentsViewModel : ObservableObject
 
     public bool HasProfileError => !string.IsNullOrWhiteSpace(ProfileErrorMessage);
 
+    // --- Self-Service Change Password Properties ---
+    [ObservableProperty]
+    private string _changePasswordCurrent = string.Empty;
+
+    [ObservableProperty]
+    private string _changePasswordNew = string.Empty;
+
+    [ObservableProperty]
+    private string _changePasswordConfirm = string.Empty;
+
+    [ObservableProperty]
+    private bool _isChangePasswordSectionVisible;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasChangePasswordError))]
+    private string _changePasswordErrorMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveChangePassword))]
+    private bool _isChangePasswordSaving;
+
+    public bool HasChangePasswordError => !string.IsNullOrWhiteSpace(ChangePasswordErrorMessage);
+    public bool CanSaveChangePassword => !IsChangePasswordSaving;
+
+    // --- Admin Reset Password Properties ---
+    [ObservableProperty]
+    private bool _isAdminResetPasswordModalVisible;
+
+    [ObservableProperty]
+    private ManagedAccountItem? _selectedAccountForReset;
+
+    [ObservableProperty]
+    private string _adminResetNewPassword = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasAdminResetError))]
+    private string _adminResetErrorMessage = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveAdminReset))]
+    private bool _isAdminResetSaving;
+
+    public bool HasAdminResetError => !string.IsNullOrWhiteSpace(AdminResetErrorMessage);
+    public bool CanSaveAdminReset => !IsAdminResetSaving;
+
+
+
 
 
     [ObservableProperty]
@@ -2162,6 +2209,135 @@ public partial class DepartmentsViewModel : ObservableObject
 
         return "📁";
 
+    }
+
+
+
+    [RelayCommand]
+    private void ToggleChangePasswordSection()
+    {
+        IsChangePasswordSectionVisible = !IsChangePasswordSectionVisible;
+        ChangePasswordCurrent = string.Empty;
+        ChangePasswordNew = string.Empty;
+        ChangePasswordConfirm = string.Empty;
+        ChangePasswordErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task SaveChangePasswordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ChangePasswordCurrent))
+        {
+            ChangePasswordErrorMessage = "Current password is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(ChangePasswordNew) || ChangePasswordNew.Length < 6)
+        {
+            ChangePasswordErrorMessage = "New password must be at least 6 characters long.";
+            return;
+        }
+        if (ChangePasswordNew != ChangePasswordConfirm)
+        {
+            ChangePasswordErrorMessage = "New password and confirmation do not match.";
+            return;
+        }
+        if (ChangePasswordCurrent == ChangePasswordNew)
+        {
+            ChangePasswordErrorMessage = "New password cannot be the same as your current password.";
+            return;
+        }
+        if (_authService == null) return;
+
+        try
+        {
+            IsChangePasswordSaving = true;
+            ChangePasswordErrorMessage = string.Empty;
+            var (success, msg) = await _authService.ChangePasswordAsync(ChangePasswordCurrent, ChangePasswordNew);
+            if (success)
+            {
+                ChangePasswordCurrent = string.Empty;
+                ChangePasswordNew = string.Empty;
+                ChangePasswordConfirm = string.Empty;
+                IsChangePasswordSectionVisible = false;
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Password Updated", "Your password has been changed successfully.", "OK");
+                }
+            }
+            else
+            {
+                ChangePasswordErrorMessage = msg ?? "Failed to change password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ChangePasswordErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsChangePasswordSaving = false;
+        }
+    }
+
+    [RelayCommand]
+    private void OpenAdminResetPasswordModal(ManagedAccountItem? item)
+    {
+        if (item == null) return;
+        SelectedAccountForReset = item;
+        AdminResetNewPassword = string.Empty;
+        AdminResetErrorMessage = string.Empty;
+        IsAdminResetSaving = false;
+        IsAdminResetPasswordModalVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseAdminResetPasswordModal()
+    {
+        IsAdminResetPasswordModalVisible = false;
+        SelectedAccountForReset = null;
+        AdminResetNewPassword = string.Empty;
+        AdminResetErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task ConfirmAdminResetPasswordAsync()
+    {
+        if (SelectedAccountForReset == null || _apiService == null) return;
+        if (string.IsNullOrWhiteSpace(AdminResetNewPassword) || AdminResetNewPassword.Length < 6)
+        {
+            AdminResetErrorMessage = "New password must be at least 6 characters long.";
+            return;
+        }
+
+        try
+        {
+            IsAdminResetSaving = true;
+            AdminResetErrorMessage = string.Empty;
+            var (success, msg) = await _apiService.AdminResetPasswordAsync(SelectedAccountForReset.Id, AdminResetNewPassword);
+            if (success)
+            {
+                var title = SelectedAccountForReset.Title;
+                IsAdminResetPasswordModalVisible = false;
+                SelectedAccountForReset = null;
+                AdminResetNewPassword = string.Empty;
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Password Reset", $"Password for {title} has been reset successfully.", "OK");
+                }
+            }
+            else
+            {
+                AdminResetErrorMessage = msg ?? "Failed to reset password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            AdminResetErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsAdminResetSaving = false;
+        }
     }
 
 }

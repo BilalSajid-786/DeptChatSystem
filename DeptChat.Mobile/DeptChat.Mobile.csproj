@@ -17,8 +17,8 @@
 		<ApplicationIdGuid>0fb76a7c-18a6-45a4-a136-a0562067589d</ApplicationIdGuid>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0.8</ApplicationDisplayVersion>
-		<ApplicationVersion>9</ApplicationVersion>
+		<ApplicationDisplayVersion>1.0.9</ApplicationDisplayVersion>
+		<ApplicationVersion>10</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
 		<RuntimeIdentifiers Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">android-arm;android-arm64;android-x64</RuntimeIdentifiers>
@@ -95,5 +95,15 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime" Version="2.11.0.1" />
     <GoogleServicesJson Include="Platforms\Android\google-services.json" />
 </ItemGroup>
+
+
+	<!-- Production Release Signing with Dedicated Keystore -->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' and $(TargetFramework.StartsWith('net10.0-android'))">
+		<AndroidKeyStore>True</AndroidKeyStore>
+		<AndroidSigningKeyStore>deptchat.keystore</AndroidSigningKeyStore>
+		<AndroidSigningKeyAlias>deptchat</AndroidSigningKeyAlias>
+		<AndroidSigningKeyPass>DeptChat@2026Release!</AndroidSigningKeyPass>
+		<AndroidSigningStorePass>DeptChat@2026Release!</AndroidSigningStorePass>
+	</PropertyGroup>
 
 </Project>

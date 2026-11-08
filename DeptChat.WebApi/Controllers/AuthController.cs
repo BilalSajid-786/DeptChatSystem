@@ -724,6 +724,51 @@ public class AuthController : ControllerBase
 
     }
 
+
+    /// <summary>
+    /// Self-service password change for all authenticated users (Admin, Manager, User).
+    /// </summary>
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequestDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.CurrentPassword) || string.IsNullOrWhiteSpace(dto.NewPassword))
+        {
+            return BadRequest(new { message = "Both current password and new password are required." });
+        }
+
+        if (dto.NewPassword.Length < 6)
+        {
+            return BadRequest(new { message = "New password must be at least 6 characters long." });
+        }
+
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var user = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user == null)
+        {
+            return NotFound(new { message = "User not found." });
+        }
+
+        if (!_passwordHasher.VerifyPassword(dto.CurrentPassword, user.PasswordHash))
+        {
+            return BadRequest(new { message = "Incorrect current password." });
+        }
+
+        if (dto.CurrentPassword == dto.NewPassword)
+        {
+            return BadRequest(new { message = "New password cannot be the same as your current password." });
+        }
+
+        user.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { message = "Password updated successfully." });
+    }
 }
 
 
