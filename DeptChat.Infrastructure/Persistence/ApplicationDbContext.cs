@@ -17,6 +17,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -124,7 +125,25 @@ public class ApplicationDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         // =====================================================================
-        // 4. SEED DATA (Default Client, Admin, Manager, and Default Departments)
+        // 4. UserSession Configuration (Active Device Session Management)
+        // =====================================================================
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.HasOne(s => s.User)
+                .WithMany(u => u.Sessions)
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(s => s.UserId);
+            entity.HasIndex(s => new { s.UserId, s.IsActive });
+            entity.Property(s => s.DeviceName).HasMaxLength(150);
+            entity.Property(s => s.DevicePlatform).HasMaxLength(50);
+            entity.Property(s => s.DeviceId).HasMaxLength(150);
+            entity.Property(s => s.IpAddress).HasMaxLength(100);
+        });
+
+        // =====================================================================
+        // 5. SEED DATA (Default Client, Admin, Manager, and Default Departments)
         // =====================================================================
         var defaultClientId = Guid.Parse("00000000-0000-0000-0000-000000000001");
         var adminId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -158,6 +177,7 @@ public class ApplicationDbContext : DbContext
                 Email = "admin@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:U/DqBR8Pec8uVGI+nbX02p0SRXsy8UjaWvogXMTsRd4=", // Password: Admin123!
                 Role = UserRole.Admin,
+                SecurityStamp = "00000000-0000-0000-0000-000000000001",
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             },
             new User
@@ -169,6 +189,7 @@ public class ApplicationDbContext : DbContext
                 Email = "manager@deptchat.com",
                 PasswordHash = "HBFHCe+c2/4A7nyGOlPqeQ==:BfR+wSV3hUcPqCjeqhx9dCRNyQv+DVJF+EufQ/AMMI8=", // Password: Manager123!
                 Role = UserRole.Manager,
+                SecurityStamp = "00000000-0000-0000-0000-000000000002",
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             }
         );

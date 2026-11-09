@@ -13,53 +13,38 @@ using DeptChat.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 
 using Microsoft.AspNetCore.Mvc;
-
 using Microsoft.EntityFrameworkCore;
-
-
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
+using DeptChat.WebApi.Hubs;
 
 namespace DeptChat.WebApi.Controllers;
 
-
-
 [ApiController]
-
 [Route("api/auth")]
-
 public class AuthController : ControllerBase
-
 {
-
     private readonly ApplicationDbContext _dbContext;
-
     private readonly IPasswordHasher _passwordHasher;
-
     private readonly IJwtTokenService _jwtTokenService;
-
     private readonly IPushNotificationService _pushNotificationService;
-
-
+    private readonly IHubContext<ChatHub> _hubContext;
+    private readonly IMemoryCache _memoryCache;
 
     public AuthController(
-
         ApplicationDbContext dbContext,
-
         IPasswordHasher passwordHasher,
-
         IJwtTokenService jwtTokenService,
-
-        IPushNotificationService pushNotificationService)
-
+        IPushNotificationService pushNotificationService,
+        IHubContext<ChatHub> hubContext,
+        IMemoryCache memoryCache)
     {
-
         _dbContext = dbContext;
-
         _passwordHasher = passwordHasher;
-
         _jwtTokenService = jwtTokenService;
-
         _pushNotificationService = pushNotificationService;
-
+        _hubContext = hubContext;
+        _memoryCache = memoryCache;
     }
 
 
@@ -333,45 +318,55 @@ public class AuthController : ControllerBase
 
 
         var clientName = user.Client?.Name ?? "Main Organization";
-
         var clientId = user.ClientId;
-
         var departmentIds = user.DepartmentAssignments.Select(da => da.DepartmentId).ToList();
 
+        if (string.IsNullOrEmpty(user.SecurityStamp))
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+        }
 
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var deviceName = !string.IsNullOrWhiteSpace(dto.DeviceName) ? dto.DeviceName.Trim() : "Mobile App";
+        var devicePlatform = !string.IsNullOrWhiteSpace(dto.DevicePlatform) ? dto.DevicePlatform.Trim() : "Android";
+        var deviceId = !string.IsNullOrWhiteSpace(dto.DeviceId) ? dto.DeviceId.Trim() : null;
 
-        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, clientId, clientName, departmentIds);
+        var session = new UserSession
+        {
+            UserId = user.Id,
+            DeviceName = deviceName,
+            DevicePlatform = devicePlatform,
+            DeviceId = deviceId,
+            IpAddress = ipAddress,
+            CreatedAt = DateTime.UtcNow,
+            LastActiveAt = DateTime.UtcNow,
+            IsActive = true
+        };
 
+        _dbContext.UserSessions.Add(session);
+        await _dbContext.SaveChangesAsync();
 
+        _memoryCache.Set($"user_security_stamp_{user.Id}", user.SecurityStamp, TimeSpan.FromMinutes(10));
+        _memoryCache.Set($"user_session_active_{session.Id}", true, TimeSpan.FromMinutes(5));
+
+        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, clientId, clientName, departmentIds, user.SecurityStamp, session.Id);
 
         var response = new AuthResponseDto(
-
             UserId: user.Id,
-
             FullName: user.FullName,
-
             Email: user.Email,
-
             Role: user.Role,
-
             Token: token,
-
             DepartmentIds: departmentIds,
-
             ClientId: clientId,
-
             ClientName: clientName,
-
             PhoneNumber: user.PhoneNumber,
-
-            Address: user.Address
-
+            Address: user.Address,
+            Username: user.Username,
+            SessionId: session.Id
         );
 
-
-
         return Ok(response);
-
     }
 
 
@@ -765,9 +760,138 @@ public class AuthController : ControllerBase
         }
 
         user.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+
+        // Revoke all active sessions for this user
+        var activeSessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == userId && s.IsActive)
+            .ToListAsync();
+
+        foreach (var s in activeSessions)
+        {
+            s.IsActive = false;
+            s.RevokedAt = DateTime.UtcNow;
+            s.RevokedReason = "Password Changed";
+            _memoryCache.Remove($"user_session_active_{s.Id}");
+        }
+
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new { message = "Password updated successfully." });
+        // Evict security stamp from memory cache
+        _memoryCache.Remove($"user_security_stamp_{userId}");
+
+        // Broadcast real-time ForceLogout to all connected devices for this user
+        try
+        {
+            await _hubContext.Clients.Group($"User_{userId}").SendAsync("ForceLogout", "Your password has been changed. Please log in again with your new password.");
+        }
+        catch { }
+
+        return Ok(new { message = "Password updated successfully. All devices have been logged out." });
+    }
+
+    /// <summary>
+    /// Returns all active device sessions for the authenticated user.
+    /// </summary>
+    [HttpGet("sessions")]
+    [Authorize]
+    public async Task<IActionResult> GetActiveSessions()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var currentSessionIdClaim = User.FindFirst("session_id")?.Value;
+
+        var sessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == userId && s.IsActive)
+            .OrderByDescending(s => s.LastActiveAt)
+            .Select(s => new UserSessionDto(
+                s.Id,
+                s.DeviceName,
+                s.DevicePlatform,
+                s.IpAddress,
+                s.CreatedAt,
+                s.LastActiveAt,
+                s.Id.ToString() == currentSessionIdClaim
+            ))
+            .ToListAsync();
+
+        return Ok(sessions);
+    }
+
+    /// <summary>
+    /// Revokes a specific active session.
+    /// </summary>
+    [HttpPost("sessions/{id}/revoke")]
+    [Authorize]
+    public async Task<IActionResult> RevokeSession(Guid id)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var session = await _dbContext.UserSessions.FirstOrDefaultAsync(s => s.Id == id && s.UserId == userId && s.IsActive);
+        if (session == null)
+        {
+            return NotFound(new { message = "Active session not found." });
+        }
+
+        session.IsActive = false;
+        session.RevokedAt = DateTime.UtcNow;
+        session.RevokedReason = "User Revoked";
+        _memoryCache.Remove($"user_session_active_{session.Id}");
+
+        await _dbContext.SaveChangesAsync();
+
+        var currentSessionIdClaim = User.FindFirst("session_id")?.Value;
+        if (session.Id.ToString() == currentSessionIdClaim)
+        {
+            try
+            {
+                await _hubContext.Clients.Group($"User_{userId}").SendAsync("ForceLogout", "Your session was logged out.");
+            }
+            catch { }
+        }
+
+        return Ok(new { message = "Device session logged out successfully." });
+    }
+
+    /// <summary>
+    /// Revokes all active sessions for the authenticated user except the current one.
+    /// </summary>
+    [HttpPost("sessions/revoke-others")]
+    [Authorize]
+    public async Task<IActionResult> RevokeOtherSessions()
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        var currentSessionIdClaim = User.FindFirst("session_id")?.Value;
+        Guid.TryParse(currentSessionIdClaim, out var currentSessionId);
+
+        var otherSessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == userId && s.IsActive && s.Id != currentSessionId)
+            .ToListAsync();
+
+        foreach (var s in otherSessions)
+        {
+            s.IsActive = false;
+            s.RevokedAt = DateTime.UtcNow;
+            s.RevokedReason = "Logged out from another device";
+            _memoryCache.Remove($"user_session_active_{s.Id}");
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new { message = $"Logged out from {otherSessions.Count} other device(s)." });
     }
 }
 

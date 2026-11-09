@@ -14,7 +14,10 @@ public record RegisterRequestDto(
 
 public record LoginRequestDto(
     string Email, // Can be Username, Email address, or Phone number
-    string Password
+    string Password,
+    string? DeviceName = null,
+    string? DevicePlatform = null,
+    string? DeviceId = null
 );
 
 public record AuthResponseDto(
@@ -28,8 +31,25 @@ public record AuthResponseDto(
     string ClientName,
     string? PhoneNumber = null,
     string? Address = null,
-    string? Username = null
+    string? Username = null,
+    Guid? SessionId = null
 );
+
+public record UserSessionDto(
+    Guid Id,
+    string DeviceName,
+    string DevicePlatform,
+    string? IpAddress,
+    DateTime CreatedAt,
+    DateTime LastActiveAt,
+    bool IsCurrentSession
+)
+{
+    public bool CanRevoke => !IsCurrentSession;
+    public string FormattedLoginTime => CreatedAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt");
+    public string FormattedLastActive => LastActiveAt.ToLocalTime().ToString("MMM dd, yyyy h:mm tt");
+    public string PlatformBadge => !string.IsNullOrWhiteSpace(DevicePlatform) ? DevicePlatform : "Mobile";
+};
 
 public record UserProfileDto(
     Guid UserId,

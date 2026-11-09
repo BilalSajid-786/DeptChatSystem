@@ -1,464 +1,220 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
-
-
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-
-
-
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-
-
-
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
-
-
-
+             xmlns:dto="clr-namespace:DeptChat.Shared.DTOs;assembly=DeptChat.Shared"
              x:Class="DeptChat.Mobile.Views.DepartmentsPage"
-
-
 
              Title="Departments"
 
-
-
              Shell.NavBarIsVisible="False"
-
-
 
              BackgroundColor="#F0F2F5">
 
-
-
-
-
-
-
     <Grid RowDefinitions="Auto, *">
-
-
 
         <!-- WhatsApp Header Banner with User Info, Add Dept Button & Exit Button -->
 
-
-
         <Border Grid.Row="0" BackgroundColor="#008069" Padding="18,14" StrokeThickness="0">
-
-
 
             <VerticalStackLayout Spacing="10">
 
-
-
                 <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
-
-
 
                     <VerticalStackLayout Grid.Column="0" Spacing="2">
 
-
-
                         <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
-
-
 
                             <Label Text="🏢" FontSize="15" VerticalOptions="Center" />
 
-
-
                             <Label Text="{Binding ClientDisplayName}" TextColor="#A7F3D0" FontSize="13" FontAttributes="Bold" VerticalOptions="Center" />
-
-
 
                         </HorizontalStackLayout>
 
-
-
                         <Label Text="Support Channels" TextColor="White" FontSize="20" FontAttributes="Bold" />
-
-
 
                         <Label Text="Select a department to start chatting directly" TextColor="#D1FAE5" FontSize="12" />
 
-
-
                     </VerticalStackLayout>
-
-
-
-
-
-
 
                     <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
 
-
-
                         <!-- Profile Button -->
-
-
 
                         <Button Text="👤 Profile"
 
-
-
                                 Command="{Binding OpenProfileModalCommand}"
-
-
 
                                 BackgroundColor="#005C4B"
 
-
-
                                 BorderColor="#00A884"
-
-
 
                                 BorderWidth="1"
 
-
-
                                 TextColor="White"
-
-
 
                                 FontAttributes="Bold"
 
-
-
                                 FontSize="12"
-
-
 
                                 CornerRadius="8"
 
-
-
                                 HeightRequest="36"
-
-
 
                                 Padding="10,0"
 
-
-
                                 VerticalOptions="Center" />
-
-
-
-
-
-
 
                         <!-- WhatsApp Styled Exit Button -->
 
-
-
                         <Button Text="🚪 Logout"
-
-
 
                                 Command="{Binding LogoutCommand}"
 
-
-
                                 BackgroundColor="#005C4B"
-
-
 
                                 BorderColor="#00A884"
 
-
-
                                 BorderWidth="1"
-
-
 
                                 TextColor="White"
 
-
-
                                 FontAttributes="Bold"
-
-
 
                                 FontSize="12"
 
-
-
                                 CornerRadius="8"
-
-
 
                                 HeightRequest="36"
 
-
-
                                 Padding="10,0"
-
-
 
                                 VerticalOptions="Center" />
 
-
-
                     </HorizontalStackLayout>
-
-
 
                 </Grid>
 
-
-
-
-
-
-
                 <!-- Current User Details Badge -->
-
-
 
                 <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
 
-
-
                     <Border BackgroundColor="#005C4B" Stroke="#00A884" StrokeShape="RoundRectangle 6" Padding="8,4" StrokeThickness="1">
-
-
 
                         <Border.GestureRecognizers>
 
-
-
                             <TapGestureRecognizer Command="{Binding OpenProfileModalCommand}" />
-
-
 
                         </Border.GestureRecognizers>
 
-
-
                         <Label Text="{Binding UserBadge}" TextColor="#72E5BE" FontSize="11" FontAttributes="Bold" />
-
-
 
                     </Border>
 
-
-
                     <Label Text="{Binding CurrentUserEmail}" TextColor="#D1FAE5" FontSize="11" VerticalOptions="Center" />
-
-
 
                 </HorizontalStackLayout>
 
-
-
             </VerticalStackLayout>
-
-
 
         </Border>
 
-
-
-
-
-
-
         <!-- Main Content Area: WhatsApp Action Card + Department List -->
-
-
 
         <Grid Grid.Row="1" RowDefinitions="Auto, *">
 
             <!-- Admin Quick Actions: Add Department, Add User & Manage Accounts (WhatsApp Cards) -->
 
-
-
             <Grid Grid.Row="0"
-
-
 
                   IsVisible="{Binding IsAdmin}"
 
-
-
                   ColumnDefinitions="*, *, *"
-
-
 
                   ColumnSpacing="8"
 
-
-
                   Margin="16,12,16,4">
-
-
 
                 
 
-
-
                 <!-- Add Department Card -->
-
-
 
                 <Border Grid.Column="0"
 
-
-
                         BackgroundColor="White"
-
-
 
                         Stroke="#C8E6C9"
 
-
-
                         StrokeThickness="1"
-
-
 
                         StrokeShape="RoundRectangle 12"
 
-
-
                         Padding="12,10">
 
-
-
                     <Border.GestureRecognizers>
-
-
 
                         <TapGestureRecognizer Command="{Binding OpenAddDepartmentModalCommand}" />
 
-
-
                     </Border.GestureRecognizers>
 
-
-
                     <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
-
-
 
                         <Border BackgroundColor="#25D366" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
 
-
-
                             <Label Text="➕" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
-
-
 
                         </Border>
 
-
-
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-
-
 
                             <Label Text="Department" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
 
-
-
                             <Label Text="Add channel" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
-
-
 
                         </VerticalStackLayout>
 
-
-
                     </Grid>
-
-
 
                 </Border>
 
-
-
-
-
-
-
                 <!-- Add User Card -->
-
-
 
                 <Border Grid.Column="1"
 
-
-
                         BackgroundColor="White"
-
-
 
                         Stroke="#C8E6C9"
 
-
-
                         StrokeThickness="1"
-
-
 
                         StrokeShape="RoundRectangle 12"
 
-
-
                         Padding="12,10">
-
-
 
                     <Border.GestureRecognizers>
 
-
-
                         <TapGestureRecognizer Command="{Binding OpenAddUserModalCommand}" />
-
-
 
                     </Border.GestureRecognizers>
 
-
-
                     <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
-
-
 
                         <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
 
-
-
                             <Label Text="👤⁺" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
-
-
 
                         </Border>
 
-
-
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-
-
 
                             <Label Text="Add User" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
 
-
-
                             <Label Text="Staff / Manager" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
-
-
 
                         </VerticalStackLayout>
 
-
-
                     </Grid>
-
-
 
                 </Border>
 
@@ -527,75 +283,33 @@
                 </Border>
             </Grid>
 
-
-
-
-
-
-
             <!-- Department Cards List -->
-
-
 
             <CollectionView Grid.Row="1" ItemsSource="{Binding Departments}" Margin="16,8">
 
-
-
                 <CollectionView.ItemTemplate>
-
-
 
                     <DataTemplate x:DataType="vm:DepartmentItem">
 
-
-
                         <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,5" Padding="14,12">
-
-
 
                             <Border.GestureRecognizers>
 
-
-
                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=SelectDepartmentCommand}" 
-
-
 
                                                       CommandParameter="{Binding .}" />
 
-
-
                             </Border.GestureRecognizers>
-
-
-
-
-
-
 
                             <Grid ColumnDefinitions="46, *, Auto, Auto" ColumnSpacing="12" VerticalOptions="Center">
 
-
-
                                 <!-- Department Icon Avatar (WhatsApp Green Pastel Circle) -->
-
-
 
                                 <Border Grid.Column="0" BackgroundColor="#E7F8F0" StrokeShape="RoundRectangle 23" WidthRequest="46" HeightRequest="46" HorizontalOptions="Center" VerticalOptions="Center">
 
-
-
                                     <Label Text="{Binding Icon}" FontSize="22" HorizontalOptions="Center" VerticalOptions="Center" />
 
-
-
                                 </Border>
-
-
-
-
-
-
 
                                                                 <!-- Name & WhatsApp Subtitle (Sender + Preview or Description) -->
 
@@ -612,8 +326,6 @@
                                     <Label Text="{Binding SubtitleText}" FontSize="12.5" TextColor="{Binding SubtitleTextColor}" FontAttributes="{Binding SubtitleFontAttributes}" LineBreakMode="TailTruncation" MaxLines="1" />
 
                                 </VerticalStackLayout>
-
-
 
                                 <!-- WhatsApp Emerald Green Unread Badge Counter -->
 
@@ -633,335 +345,157 @@
 
                                 </Border>
 
-
-
-
-
-
-
                                 <!-- Admin Delete Department Button -->
-
-
 
                                 <Button Grid.Column="3"
 
-
-
                                         Text="🗑️"
-
-
 
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=DeleteDepartmentCommand}"
 
-
-
                                         CommandParameter="{Binding .}"
-
-
 
                                         IsVisible="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=IsAdmin}"
 
-
-
                                         BackgroundColor="Transparent"
-
-
 
                                         TextColor="#94A3B8"
 
-
-
                                         FontSize="16"
-
-
 
                                         WidthRequest="36"
 
-
-
                                         HeightRequest="36"
-
-
 
                                         Padding="0"
 
-
-
                                         VerticalOptions="Center" />
-
-
 
                             </Grid>
 
-
-
                         </Border>
-
-
 
                     </DataTemplate>
 
-
-
                 </CollectionView.ItemTemplate>
-
-
 
             </CollectionView>
 
-
-
-
-
-
-
             <!-- Loading Indicator Overlay -->
-
-
 
             <ActivityIndicator Grid.Row="1"
 
-
-
                                IsRunning="{Binding IsBusy}"
-
-
 
                                IsVisible="{Binding IsBusy}"
 
-
-
                                Color="#008069"
-
-
 
                                WidthRequest="40"
 
-
-
                                HeightRequest="40"
-
-
 
                                HorizontalOptions="Center"
 
-
-
                                VerticalOptions="Center" />
-
-
 
         </Grid>
 
-
-
-
-
-
-
         <!-- Add Department Modal Overlay (Admin Only) -->
-
-
 
         <Grid Grid.RowSpan="2"
 
-
-
               IsVisible="{Binding IsAddDepartmentModalVisible}"
-
-
 
               BackgroundColor="#99000000"
 
-
-
               HorizontalOptions="FillAndExpand"
-
-
 
               VerticalOptions="FillAndExpand"
 
-
-
               ZIndex="999">
-
-
 
             <Border BackgroundColor="White"
 
-
-
                     Stroke="#CBD5E1"
-
-
 
                     StrokeThickness="1"
 
-
-
                     StrokeShape="RoundRectangle 16"
-
-
 
                     WidthRequest="340"
 
-
-
                     HorizontalOptions="Center"
-
-
 
                     VerticalOptions="Center"
 
-
-
                     Padding="24"
-
-
 
                     Margin="20">
 
-
-
                 <VerticalStackLayout Spacing="16">
-
-
 
                     <!-- Title & Close Button -->
 
-
-
                     <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
-
-
 
                         <Label Text="➕ New Department" FontSize="18" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
 
-
-
                         <Button Grid.Column="1" Text="✕" Command="{Binding CloseAddDepartmentModalCommand}"
-
-
 
                                 BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
 
-
-
                     </Grid>
-
-
-
-
-
-
 
                     <Label Text="Add a new department channel. By default, it will be visible to all users and managers."
 
-
-
                            FontSize="12" TextColor="#64748B" />
-
-
-
-
-
-
 
                     <!-- Department Name Input -->
 
-
-
                     <VerticalStackLayout Spacing="6">
-
-
 
                         <Label Text="Department Name *" FontSize="12" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                         <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                             <Entry Text="{Binding NewDepartmentName}"
 
-
-
                                    Placeholder="e.g. Logistics, Sales, HR"
-
-
 
                                    PlaceholderColor="#94A3B8"
 
-
-
                                    TextColor="#0F172A"
-
-
 
                                    FontSize="14" />
 
-
-
                         </Border>
-
-
 
                     </VerticalStackLayout>
 
-
-
-
-
-
-
                     <!-- Department Description Input -->
-
-
 
                     <VerticalStackLayout Spacing="6">
 
-
-
                         <Label Text="Description" FontSize="12" FontAttributes="Bold" TextColor="#334155" />
-
-
 
                         <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
 
-
-
                             <Editor Text="{Binding NewDepartmentDescription}"
-
-
 
                                     Placeholder="Describe the department channel..."
 
-
-
                                     PlaceholderColor="#94A3B8"
-
-
 
                                     TextColor="#0F172A"
 
-
-
                                     FontSize="14"
-
-
 
                                     HeightRequest="75"
 
-
-
                                     AutoSize="Disabled" />
 
-
-
                         </Border>
-
-
 
                     </VerticalStackLayout>
 
@@ -969,435 +503,195 @@
 
                     <Label Text="{Binding AddDepartmentErrorMessage}"
 
-
-
                            TextColor="#EF4444"
-
-
 
                            FontSize="12"
 
-
-
                            IsVisible="{Binding HasAddDepartmentError}" />
-
-
-
-
-
-
 
                     <!-- Action Buttons -->
 
-
-
                     <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,6,0,0">
-
-
 
                         <Button Grid.Column="0"
 
-
-
                                 Text="Cancel"
-
-
 
                                 Command="{Binding CloseAddDepartmentModalCommand}"
 
-
-
                                 BackgroundColor="#F1F5F9"
-
-
 
                                 TextColor="#475569"
 
-
-
                                 FontAttributes="Bold"
-
-
 
                                 FontSize="13"
 
-
-
                                 CornerRadius="8"
 
-
-
                                 HeightRequest="42" />
-
-
 
                         <Button Grid.Column="1"
 
-
-
                                 Text="Create"
-
-
 
                                 Command="{Binding CreateDepartmentCommand}"
 
-
-
                                 IsEnabled="{Binding CanSaveDepartment}"
-
-
 
                                 BackgroundColor="#008069"
 
-
-
                                 TextColor="White"
-
-
 
                                 FontAttributes="Bold"
 
-
-
                                 FontSize="13"
-
-
 
                                 CornerRadius="8"
 
-
-
                                 HeightRequest="42" />
 
-
-
                     </Grid>
-
-
 
                 </VerticalStackLayout>
 
-
-
             </Border>
-
-
 
         </Grid>
 
-
-
-
-
-
-
         <!-- User Profile Modal Overlay -->
-
-
 
         <Grid Grid.RowSpan="2"
 
-
-
               IsVisible="{Binding IsProfileModalVisible}"
-
-
 
               BackgroundColor="#99000000"
 
-
-
               HorizontalOptions="FillAndExpand"
-
-
 
               VerticalOptions="FillAndExpand"
 
-
-
               ZIndex="1000">
 
-
-
             <Border BackgroundColor="White"
-
-
-
                     Stroke="#CBD5E1"
-
-
-
                     StrokeThickness="1"
-
-
-
                     StrokeShape="RoundRectangle 16"
-
-
-
-                    WidthRequest="340"
-
-
-
+                    WidthRequest="350"
+                    MaximumHeightRequest="580"
                     HorizontalOptions="Center"
-
-
-
                     VerticalOptions="Center"
-
-
-
-                    Padding="22"
-
-
-
-                    Margin="20">
-
-
-
-                <VerticalStackLayout Spacing="14">
-
-
-
+                    Padding="0"
+                    Margin="16">
+                <Grid RowDefinitions="Auto, *, Auto">
                     <!-- Title & Close Button -->
-
-
-
-                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
-
-
-
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Padding="20,16,20,8">
                         <Label Text="👤 My Profile" FontSize="18" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
-
-
-
                         <Button Grid.Column="1" Text="✕" Command="{Binding CloseProfileModalCommand}"
-
-
-
                                 BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
-
-
-
                     </Grid>
 
-
-
-
-
-
+                    <!-- Scrollable Form Fields -->
+                    <ScrollView Grid.Row="1" Padding="20,0,20,8">
+                        <VerticalStackLayout Spacing="12">
 
                     <!-- Organization Info Banner -->
 
-
-
                     <Border BackgroundColor="#E8F5E9" Stroke="#A5D6A7" StrokeShape="RoundRectangle 8" Padding="10,6">
-
-
 
                         <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
 
-
-
                             <Label Text="🏢" FontSize="14" VerticalOptions="Center" />
-
-
 
                             <Label Text="{Binding ClientDisplayName}" FontSize="12" FontAttributes="Bold" TextColor="#1B5E20" VerticalOptions="Center" />
 
-
-
                             <Label Text="•" FontSize="12" TextColor="#66BB6A" VerticalOptions="Center" />
-
-
 
                             <Label Text="{Binding CurrentUserRole}" FontSize="12" TextColor="#2E7D32" VerticalOptions="Center" />
 
-
-
                         </HorizontalStackLayout>
-
-
 
                     </Border>
 
-
-
-
-
-
-
                     <!-- Email (Read Only) -->
 
-
-
                     <VerticalStackLayout Spacing="4">
-
-
 
                         <Label Text="Email Address" FontSize="11" FontAttributes="Bold" TextColor="#64748B" />
 
-
-
                         <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F1F5F9" Padding="12,4">
-
-
 
                             <Label Text="{Binding CurrentUserEmail}" TextColor="#64748B" FontSize="13" VerticalOptions="Center" />
 
-
-
                         </Border>
 
-
-
                     </VerticalStackLayout>
-
-
-
-
-
-
 
                     <!-- Full Name (Editable) -->
 
-
-
                     <VerticalStackLayout Spacing="4">
-
-
 
                         <Label Text="Full Name *" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                         <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                             <Entry Text="{Binding EditFullName}"
 
-
-
                                    Placeholder="Full Name"
-
-
 
                                    PlaceholderColor="#94A3B8"
 
-
-
                                    TextColor="#0F172A"
-
-
 
                                    FontSize="13" />
 
-
-
                         </Border>
 
-
-
                     </VerticalStackLayout>
-
-
-
-
-
-
 
                     <!-- Phone Number (Editable) -->
 
-
-
                     <VerticalStackLayout Spacing="4">
-
-
 
                         <Label Text="Phone Number" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                         <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                             <Entry Text="{Binding EditPhoneNumber}"
 
-
-
                                    Placeholder="+1 (555) 000-0000"
 
-
-
                                    PlaceholderColor="#94A3B8"
-
-
 
                                    Keyboard="Telephone"
 
-
-
                                    TextColor="#0F172A"
-
-
 
                                    FontSize="13" />
 
-
-
                         </Border>
-
-
 
                     </VerticalStackLayout>
 
-
-
-
-
-
-
                     <!-- Address (Editable) -->
-
-
 
                     <VerticalStackLayout Spacing="4">
 
-
-
                         <Label Text="Address" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
-
-
 
                         <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
 
-
-
                             <Entry Text="{Binding EditAddress}"
-
-
 
                                    Placeholder="Street, City, Country"
 
-
-
                                    PlaceholderColor="#94A3B8"
-
-
 
                                    TextColor="#0F172A"
 
-
-
                                    FontSize="13" />
 
-
-
                         </Border>
-
-
 
                     </VerticalStackLayout>
 
@@ -1440,243 +734,145 @@
                         </VerticalStackLayout>
                     </Border>
 
+                    <!-- Active Devices & Sessions Section -->
+                    <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,10" Margin="0,4">
+                        <Grid ColumnDefinitions="Auto, *, Auto">
+                            <Label Grid.Column="0" Text="📱" FontSize="18" VerticalOptions="Center" Margin="0,0,10,0" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                <Label Text="Active Devices &amp; Sessions" FontSize="13" FontAttributes="Bold" TextColor="#0F172A" />
+                                <Label Text="Manage logged-in devices &amp; security" FontSize="11" TextColor="#64748B" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="2"
+                                    Text="Manage"
+                                    Command="{Binding OpenActiveSessionsModalCommand}"
+                                    BackgroundColor="#008069"
+                                    TextColor="White"
+                                    FontAttributes="Bold"
+                                    FontSize="11"
+                                    CornerRadius="6"
+                                    HeightRequest="30"
+                                    Padding="12,0"
+                                    VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+
                     <!-- Error Message -->
 
                     <Label Text="{Binding ProfileErrorMessage}"
 
-
-
                            TextColor="#EF4444"
-
-
 
                            FontSize="12"
 
-
-
                            IsVisible="{Binding HasProfileError}" />
 
+                        </VerticalStackLayout>
+                    </ScrollView>
 
-
-
-
-
-
-                    <!-- Action Buttons -->
-
-
-
-                    <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,4,0,0">
-
-
+                    <!-- Fixed Action Buttons at bottom -->
+                    <Grid Grid.Row="2" ColumnDefinitions="*, *" ColumnSpacing="12" Padding="20,8,20,16" BackgroundColor="White">
 
                         <Button Grid.Column="0"
 
-
-
                                 Text="Cancel"
-
-
 
                                 Command="{Binding CloseProfileModalCommand}"
 
-
-
                                 BackgroundColor="#F1F5F9"
-
-
 
                                 TextColor="#475569"
 
-
-
                                 FontAttributes="Bold"
-
-
 
                                 FontSize="13"
 
-
-
                                 CornerRadius="8"
 
-
-
                                 HeightRequest="40" />
-
-
 
                         <Button Grid.Column="1"
 
-
-
                                 Text="Save"
-
-
 
                                 Command="{Binding SaveProfileCommand}"
 
-
-
                                 IsEnabled="{Binding CanSaveProfile}"
-
-
 
                                 BackgroundColor="#008069"
 
-
-
                                 TextColor="White"
-
-
 
                                 FontAttributes="Bold"
 
-
-
                                 FontSize="13"
-
-
 
                                 CornerRadius="8"
 
-
-
                                 HeightRequest="40" />
-
-
 
                     </Grid>
 
-
-
-                </VerticalStackLayout>
-
-
+                </Grid>
 
             </Border>
 
-
-
         </Grid>
-
-
 
             <!-- Admin Add User Modal Overlay -->
 
-
-
         <Grid Grid.RowSpan="2"
-
-
 
               IsVisible="{Binding IsAddUserModalVisible}"
 
-
-
               BackgroundColor="#99000000"
-
-
 
               HorizontalOptions="FillAndExpand"
 
-
-
               VerticalOptions="FillAndExpand"
-
-
 
               ZIndex="1000">
 
-
-
             <Border BackgroundColor="White"
-
-
 
                     Stroke="#CBD5E1"
 
-
-
                     StrokeThickness="1"
-
-
 
                     StrokeShape="RoundRectangle 16"
 
-
-
                     WidthRequest="340"
-
-
 
                     MaximumHeightRequest="580"
 
-
-
                     HorizontalOptions="Center"
-
-
 
                     VerticalOptions="Center"
 
-
-
                     Padding="20"
-
-
 
                     Margin="16">
 
-
-
                 <ScrollView>
-
-
 
                     <VerticalStackLayout Spacing="12">
 
-
-
                         <!-- Title & Close Button -->
-
-
 
                         <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
 
-
-
                             <VerticalStackLayout Grid.Column="0" Spacing="2">
-
-
 
                                 <Label Text="👤 Add New User" FontSize="17" FontAttributes="Bold" TextColor="#111B21" />
 
-
-
                                 <Label Text="{Binding ClientDisplayName}" FontSize="11" TextColor="#008069" FontAttributes="Bold" />
-
-
 
                             </VerticalStackLayout>
 
-
-
                             <Button Grid.Column="1" Text="✕" Command="{Binding CloseAddUserModalCommand}"
-
-
 
                                     BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
 
-
-
                         </Grid>
-
-
-
-
-
-
 
                         <!-- Role Selector Segment / Chips -->
                         <VerticalStackLayout Spacing="4" IsVisible="{Binding CanSelectRole}">
@@ -1736,59 +932,27 @@
                             </HorizontalStackLayout>
                         </Border>
 
-
-
-
-
-
-
                         <!-- Full Name -->
-
-
 
                         <VerticalStackLayout Spacing="4">
 
-
-
                             <Label Text="Full Name *" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
-
-
 
                             <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
 
-
-
                                 <Entry Text="{Binding NewUserName}"
-
-
 
                                        Placeholder="e.g. Sarah Connor"
 
-
-
                                        PlaceholderColor="#94A3B8"
-
-
 
                                        TextColor="#0F172A"
 
-
-
                                        FontSize="13" />
-
-
 
                             </Border>
 
-
-
                         </VerticalStackLayout>
-
-
-
-
-
-
 
                         <!-- Username -->
 
@@ -1812,397 +976,189 @@
 
                         </VerticalStackLayout>
 
-
-
                         <!-- Email Address -->
 
-
-
                         <VerticalStackLayout Spacing="4">
-
-
 
                             <Label Text="Email Address (Optional if username or phone entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                             <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                                 <Entry Text="{Binding NewUserEmail}"
 
-
-
                                        Placeholder="sarah@example.com"
 
-
-
                                        PlaceholderColor="#94A3B8"
-
-
 
                                        Keyboard="Email"
 
-
-
                                        TextColor="#0F172A"
-
-
 
                                        FontSize="13" />
 
-
-
                             </Border>
 
-
-
                         </VerticalStackLayout>
-
-
-
-
-
-
 
                         <!-- Phone Number -->
 
-
-
                         <VerticalStackLayout Spacing="4">
-
-
 
                             <Label Text="Phone Number (Optional if username or email entered)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                             <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                                 <Entry Text="{Binding NewUserPhone}"
 
-
-
                                        Placeholder="+1 (555) 000-0000"
 
-
-
                                        PlaceholderColor="#94A3B8"
-
-
 
                                        Keyboard="Telephone"
 
-
-
                                        TextColor="#0F172A"
-
-
 
                                        FontSize="13" />
 
-
-
                             </Border>
 
-
-
                         </VerticalStackLayout>
-
-
-
-
-
-
 
                         <!-- Password -->
 
-
-
                         <VerticalStackLayout Spacing="4">
-
-
 
                             <Label Text="Initial Password *" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                             <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                                 <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
 
-
-
                                     <Entry Grid.Column="0"
-
-
 
                                            Text="{Binding NewUserPassword}"
 
-
-
                                            Placeholder="Min 6 characters"
-
-
 
                                            PlaceholderColor="#94A3B8"
 
-
-
                                            IsPassword="{Binding IsNewUserPasswordHidden}"
-
-
 
                                            TextColor="#0F172A"
 
-
-
                                            FontSize="13"
-
-
 
                                            VerticalOptions="Center" />
 
-
-
                                     <Button Grid.Column="1"
-
-
 
                                             Text="{Binding NewUserPasswordToggleIcon}"
 
-
-
                                             Command="{Binding ToggleNewUserPasswordVisibilityCommand}"
-
-
 
                                             BackgroundColor="Transparent"
 
-
-
                                             TextColor="#64748B"
-
-
 
                                             FontSize="14"
 
-
-
                                             Padding="4,0"
-
-
 
                                             HeightRequest="36"
 
-
-
                                             WidthRequest="36"
-
-
 
                                             VerticalOptions="Center" />
 
-
-
                                 </Grid>
-
-
 
                             </Border>
 
-
-
                         </VerticalStackLayout>
-
-
-
-
-
-
 
                         <!-- Address -->
 
-
-
                         <VerticalStackLayout Spacing="4">
-
-
 
                             <Label Text="Address (Optional)" FontSize="11" FontAttributes="Bold" TextColor="#334155" />
 
-
-
                             <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="12,4">
-
-
 
                                 <Entry Text="{Binding NewUserAddress}"
 
-
-
                                        Placeholder="City, Branch or Location"
-
-
 
                                        PlaceholderColor="#94A3B8"
 
-
-
                                        TextColor="#0F172A"
-
-
 
                                        FontSize="13" />
 
-
-
                             </Border>
-
-
 
                         </VerticalStackLayout>
 
-
-
-
-
-
-
                         <!-- Error Message -->
-
-
 
                         <Label Text="{Binding AddUserErrorMessage}"
 
-
-
                                TextColor="#EF4444"
-
-
 
                                FontSize="12"
 
-
-
                                IsVisible="{Binding HasAddUserError}" />
-
-
-
-
-
-
 
                         <!-- Action Buttons -->
 
-
-
                         <Grid ColumnDefinitions="*, *" ColumnSpacing="12" Margin="0,4,0,0">
-
-
 
                             <Button Grid.Column="0"
 
-
-
                                     Text="Cancel"
-
-
 
                                     Command="{Binding CloseAddUserModalCommand}"
 
-
-
                                     BackgroundColor="#F1F5F9"
-
-
 
                                     TextColor="#475569"
 
-
-
                                     FontAttributes="Bold"
-
-
 
                                     FontSize="13"
 
-
-
                                     CornerRadius="8"
 
-
-
                                     HeightRequest="40" />
-
-
 
                             <Button Grid.Column="1"
 
-
-
                                     Text="Create User"
-
-
 
                                     Command="{Binding CreateUserCommand}"
 
-
-
                                     IsEnabled="{Binding CanSaveUser}"
-
-
 
                                     BackgroundColor="#008069"
 
-
-
                                     TextColor="White"
-
-
 
                                     FontAttributes="Bold"
 
-
-
                                     FontSize="13"
-
-
 
                                     CornerRadius="8"
 
-
-
                                     HeightRequest="40" />
-
-
 
                         </Grid>
 
-
-
                     </VerticalStackLayout>
-
-
 
                 </ScrollView>
 
-
-
             </Border>
 
-
-
         </Grid>
-
-
-
-
 
     <!-- Manage Accounts & Security Modal (Admin Only) -->
 
@@ -2290,8 +1246,6 @@
 
                 </Grid>
 
-
-
                 <!-- Tabs: Managers | Clients -->
 
                 <Grid Grid.Row="1"
@@ -2324,8 +1278,6 @@
 
                             HeightRequest="38" />
 
-
-
                     <!-- Users (Customers) Tab Button -->
 
                     <Button Grid.Column="1"
@@ -2350,8 +1302,6 @@
 
                 </Grid>
 
-
-
                 <!-- Loading Indicator -->
 
                 <ActivityIndicator Grid.Row="1"
@@ -2369,8 +1319,6 @@
                                    HorizontalOptions="Center"
 
                                    VerticalOptions="Center" />
-
-
 
                 <!-- Tab 0: Managers List -->
 
@@ -2410,8 +1358,6 @@
 
                                     </VerticalStackLayout>
 
-
-
                                     <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
                                         <Button Text="🔑 Reset"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=OpenAdminResetPasswordModalCommand}"
@@ -2444,8 +1390,6 @@
                     </CollectionView.ItemTemplate>
 
                 </CollectionView>
-
-
 
                 <!-- Tab 1: Users (Customers) List with Search -->
 
@@ -2495,8 +1439,6 @@
 
                     </Border>
 
-
-
                     <CollectionView Grid.Row="1"
 
                                     ItemsSource="{Binding ManagedUsers}"
@@ -2528,8 +1470,6 @@
                                             <Label Text="{Binding Subtitle}" FontSize="12" TextColor="#64748B" LineBreakMode="TailTruncation" />
 
                                         </VerticalStackLayout>
-
-
 
                                         <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
                                             <Button Text="🔑 Reset"
@@ -2565,8 +1505,6 @@
                     </CollectionView>
 
                 </Grid>
-
-
 
                 <!-- Close Button -->
 
@@ -2896,57 +1834,169 @@
                     StrokeShape="RoundRectangle 16"
                     BackgroundColor="White"
                     WidthRequest="340"
+                    MaximumHeightRequest="480"
                     HorizontalOptions="Center"
                     VerticalOptions="Center"
                     Padding="20,16">
-                <VerticalStackLayout Spacing="12">
-                    <Grid ColumnDefinitions="*, Auto">
-                        <Label Grid.Column="0" Text="🔑 Reset Password" FontSize="16" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
-                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseAdminResetPasswordModalCommand}"
-                                BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" FontAttributes="Bold"
-                                WidthRequest="32" HeightRequest="32" Padding="0" />
+                <ScrollView>
+                    <VerticalStackLayout Spacing="12">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="🔑 Reset Password" FontSize="16" FontAttributes="Bold" TextColor="#111B21" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="✕" Command="{Binding CloseAdminResetPasswordModalCommand}"
+                                    BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" FontAttributes="Bold"
+                                    WidthRequest="32" HeightRequest="32" Padding="0" />
+                        </Grid>
+
+                        <Label Text="{Binding SelectedAccountForReset.Title, StringFormat='Enter a new password for {0}:'}"
+                               FontSize="13" TextColor="#475569" />
+
+                        <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,4">
+                            <Entry Text="{Binding AdminResetNewPassword}"
+                                   Placeholder="New Password (min 6 chars)"
+                                   IsPassword="True"
+                                   FontSize="13"
+                                   TextColor="#0F172A"
+                                   PlaceholderColor="#94A3B8" />
+                        </Border>
+
+                        <Label Text="{Binding AdminResetErrorMessage}"
+                               TextColor="#EF4444"
+                               FontSize="12"
+                               IsVisible="{Binding HasAdminResetError}" />
+
+                        <Grid ColumnDefinitions="*, *" ColumnSpacing="10" Margin="0,4,0,0">
+                            <Button Grid.Column="0"
+                                    Text="Cancel"
+                                    Command="{Binding CloseAdminResetPasswordModalCommand}"
+                                    BackgroundColor="#F1F5F9"
+                                    TextColor="#475569"
+                                    FontAttributes="Bold"
+                                    FontSize="13"
+                                    CornerRadius="8"
+                                    HeightRequest="38" />
+
+                            <Button Grid.Column="1"
+                                    Text="Reset"
+                                    Command="{Binding ConfirmAdminResetPasswordCommand}"
+                                    IsEnabled="{Binding CanSaveAdminReset}"
+                                    BackgroundColor="#0284C7"
+                                    TextColor="White"
+                                    FontAttributes="Bold"
+                                    FontSize="13"
+                                    CornerRadius="8"
+                                    HeightRequest="38" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
+
+        <!-- Active Sessions Modal Overlay -->
+        <Grid IsVisible="{Binding IsActiveSessionsModalVisible}"
+              BackgroundColor="#80000000"
+              HorizontalOptions="Fill"
+              VerticalOptions="Fill"
+              ZIndex="1000">
+            <Border Stroke="#E2E8F0"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    BackgroundColor="White"
+                    WidthRequest="350"
+                    MaximumHeightRequest="560"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="0"
+                    Margin="16">
+                <Grid RowDefinitions="Auto, *, Auto">
+                    <!-- Modal Header -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Padding="20,16,20,12" BackgroundColor="#008069">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="📱 Active Devices &amp; Sessions" FontSize="16" FontAttributes="Bold" TextColor="White" />
+                            <Label Text="Devices currently logged into your account" FontSize="11" TextColor="#D1FAE5" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="✕" Command="{Binding CloseActiveSessionsModalCommand}"
+                                BackgroundColor="Transparent" TextColor="White" FontSize="16" FontAttributes="Bold"
+                                WidthRequest="32" HeightRequest="32" Padding="0" VerticalOptions="Center" />
                     </Grid>
 
-                    <Label Text="{Binding SelectedAccountForReset.Title, StringFormat='Enter a new password for {0}:'}"
-                           FontSize="13" TextColor="#475569" />
+                    <!-- Modal Body (Sessions List) -->
+                    <ScrollView Grid.Row="1" Padding="16,12">
+                        <VerticalStackLayout Spacing="10">
+                            <!-- Loading Indicator -->
+                            <ActivityIndicator IsRunning="{Binding IsActiveSessionsLoading}" 
+                                               IsVisible="{Binding IsActiveSessionsLoading}"
+                                               Color="#008069" WidthRequest="30" HeightRequest="30" 
+                                               HorizontalOptions="Center" Margin="0,10" />
 
-                    <Border Stroke="#CBD5E1" StrokeThickness="1" StrokeShape="RoundRectangle 8" BackgroundColor="#F8FAFC" Padding="10,4">
-                        <Entry Text="{Binding AdminResetNewPassword}"
-                               Placeholder="New Password (min 6 chars)"
-                               IsPassword="True"
-                               FontSize="13"
-                               TextColor="#0F172A"
-                               PlaceholderColor="#94A3B8" />
-                    </Border>
+                            <!-- Error Alert -->
+                            <Border Stroke="#FCA5A5" StrokeThickness="1" StrokeShape="RoundRectangle 8" 
+                                    BackgroundColor="#FEE2E2" Padding="10,8" 
+                                    IsVisible="{Binding HasActiveSessionsError}">
+                                <Label Text="{Binding ActiveSessionsErrorMessage}" TextColor="#B91C1C" FontSize="12" />
+                            </Border>
 
-                    <Label Text="{Binding AdminResetErrorMessage}"
-                           TextColor="#EF4444"
-                           FontSize="12"
-                           IsVisible="{Binding HasAdminResetError}" />
+                            <!-- Sessions Collection -->
+                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding ActiveSessions}" Spacing="10">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="dto:UserSessionDto">
+                                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" 
+                                                BackgroundColor="#F8FAFC" Padding="12,10">
+                                            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10">
+                                                <!-- Device Icon -->
+                                                <Border Grid.Column="0" WidthRequest="40" HeightRequest="40"
+                                                        StrokeShape="RoundRectangle 20" BackgroundColor="#E8F5E9"
+                                                        Stroke="#A5D6A7" VerticalOptions="Center">
+                                                    <Label Text="📱" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
+                                                </Border>
 
-                    <Grid ColumnDefinitions="*, *" ColumnSpacing="10" Margin="0,4,0,0">
-                        <Button Grid.Column="0"
-                                Text="Cancel"
-                                Command="{Binding CloseAdminResetPasswordModalCommand}"
-                                BackgroundColor="#F1F5F9"
-                                TextColor="#475569"
-                                FontAttributes="Bold"
-                                FontSize="13"
-                                CornerRadius="8"
-                                HeightRequest="38" />
+                                                <!-- Device Info -->
+                                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                                    <HorizontalStackLayout Spacing="6">
+                                                        <Label Text="{Binding DeviceName}" FontSize="13" FontAttributes="Bold" TextColor="#0F172A" />
+                                                        <!-- Current Device Tag -->
+                                                        <Border IsVisible="{Binding IsCurrentSession}" 
+                                                                BackgroundColor="#DCFCE7" Stroke="#86EFAC" StrokeShape="RoundRectangle 4" Padding="6,1">
+                                                            <Label Text="This Device" FontSize="9" FontAttributes="Bold" TextColor="#15803D" />
+                                                        </Border>
+                                                    </HorizontalStackLayout>
+                                                    <Label Text="{Binding PlatformBadge, StringFormat='Platform: {0}'}" FontSize="11" TextColor="#64748B" />
+                                                    <Label Text="{Binding FormattedLoginTime, StringFormat='Logged in: {0}'}" FontSize="10" TextColor="#94A3B8" />
+                                                </VerticalStackLayout>
 
-                        <Button Grid.Column="1"
-                                Text="Reset"
-                                Command="{Binding ConfirmAdminResetPasswordCommand}"
-                                IsEnabled="{Binding CanSaveAdminReset}"
-                                BackgroundColor="#0284C7"
+                                                <!-- Revoke Button (only for other sessions) -->
+                                                <Button Grid.Column="2"
+                                                        Text="Log Out"
+                                                        IsVisible="{Binding CanRevoke}"
+                                                        Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=RevokeSessionCommand}"
+                                                        CommandParameter="{Binding .}"
+                                                        BackgroundColor="#FEE2E2"
+                                                        TextColor="#DC2626"
+                                                        FontAttributes="Bold"
+                                                        FontSize="11"
+                                                        CornerRadius="6"
+                                                        HeightRequest="30"
+                                                        Padding="10,0"
+                                                        VerticalOptions="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </ScrollView>
+
+                    <!-- Footer Action (Log Out All Other Devices) -->
+                    <Grid Grid.Row="2" Padding="16,10" BackgroundColor="#F1F5F9">
+                        <Button Text="🚪 Log Out All Other Devices"
+                                Command="{Binding RevokeOtherSessionsCommand}"
+                                BackgroundColor="#DC2626"
                                 TextColor="White"
                                 FontAttributes="Bold"
-                                FontSize="13"
+                                FontSize="12"
                                 CornerRadius="8"
                                 HeightRequest="38" />
                     </Grid>
-                </VerticalStackLayout>
+                </Grid>
             </Border>
         </Grid>
 

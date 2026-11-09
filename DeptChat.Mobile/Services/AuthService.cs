@@ -53,12 +53,27 @@ public class AuthService
 
     public string? LastError { get; private set; }
 
+    private string GetOrCreateDeviceId()
+    {
+        var id = Preferences.Default.Get("app_device_uuid", string.Empty);
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            id = Guid.NewGuid().ToString("N");
+            Preferences.Default.Set("app_device_uuid", id);
+        }
+        return id;
+    }
+
     public async Task<bool> LoginAsync(string identifier, string password)
     {
         LastError = null;
         try
         {
-            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/login"), new LoginRequestDto(identifier, password));
+            var deviceModel = DeviceInfo.Current.Model ?? "Mobile Device";
+            var devicePlatform = DeviceInfo.Current.Platform.ToString();
+            var deviceId = GetOrCreateDeviceId();
+            var payload = new LoginRequestDto(identifier, password, deviceModel, devicePlatform, deviceId);
+            var response = await _httpClient.PostAsJsonAsync(BuildUrl("api/auth/login"), payload);
             if (!response.IsSuccessStatusCode)
             {
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || 

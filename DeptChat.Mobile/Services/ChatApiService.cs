@@ -473,4 +473,77 @@ public class ChatApiService
             return (false, ex.Message);
         }
     }
+
+    public async Task<List<UserSessionDto>> GetActiveSessionsAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/auth/sessions"));
+            response.EnsureSuccessStatusCode();
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<List<UserSessionDto>>(content, JsonOptions) ?? new();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatApiService] GetActiveSessionsAsync error: {ex.Message}");
+            return new List<UserSessionDto>();
+        }
+    }
+
+    public async Task<(bool Success, string? Message)> RevokeSessionAsync(Guid sessionId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl($"api/auth/sessions/{sessionId}/revoke"), null);
+            var content = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                try
+                {
+                    using var errorDoc = JsonDocument.Parse(content);
+                    var msg = errorDoc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Failed to log out session.";
+                    return (false, msg);
+                }
+                catch
+                {
+                    return (false, "Failed to log out session.");
+                }
+            }
+            return (true, "Session logged out successfully.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    public async Task<(bool Success, string? Message)> RevokeOtherSessionsAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl("api/auth/sessions/revoke-others"), null);
+            var content = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                try
+                {
+                    using var errorDoc = JsonDocument.Parse(content);
+                    var msg = errorDoc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Failed to log out other devices.";
+                    return (false, msg);
+                }
+                catch
+                {
+                    return (false, "Failed to log out other devices.");
+                }
+            }
+            return (true, "Logged out of all other devices successfully.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
 }

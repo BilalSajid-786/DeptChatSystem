@@ -17,7 +17,7 @@ public class JwtTokenService : IJwtTokenService
         _configuration = configuration;
     }
 
-    public string GenerateToken(Guid userId, string fullName, string? email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null)
+    public string GenerateToken(Guid userId, string fullName, string? email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null, string? securityStamp = null, Guid? sessionId = null)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
         var secret = jwtSettings["Secret"] ?? "A_VERY_LONG_SUPER_SECRET_KEY_FOR_JWT_AUTHENTICATION_1234567890";
@@ -37,6 +37,16 @@ public class JwtTokenService : IJwtTokenService
             new("client_id", clientId.ToString()),
             new("client_name", clientName)
         };
+
+        if (!string.IsNullOrEmpty(securityStamp))
+        {
+            claims.Add(new Claim("security_stamp", securityStamp));
+        }
+
+        if (sessionId.HasValue)
+        {
+            claims.Add(new Claim("session_id", sessionId.Value.ToString()));
+        }
 
         // Add department_id claims for Managers
         if (departmentIds != null)

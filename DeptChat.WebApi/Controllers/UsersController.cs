@@ -7,6 +7,9 @@ using DeptChat.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Caching.Memory;
+using DeptChat.WebApi.Hubs;
 
 namespace DeptChat.WebApi.Controllers;
 
@@ -17,11 +20,19 @@ public class UsersController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IHubContext<ChatHub> _hubContext;
+    private readonly IMemoryCache _memoryCache;
 
-    public UsersController(ApplicationDbContext dbContext, IPasswordHasher passwordHasher)
+    public UsersController(
+        ApplicationDbContext dbContext,
+        IPasswordHasher passwordHasher,
+        IHubContext<ChatHub> hubContext,
+        IMemoryCache memoryCache)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
+        _hubContext = hubContext;
+        _memoryCache = memoryCache;
     }
 
     private Guid GetClientId()
@@ -295,8 +306,33 @@ public class UsersController : ControllerBase
         }
 
         targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
+        targetUser.SecurityStamp = Guid.NewGuid().ToString("N");
+
+        // Revoke all active sessions for this target user
+        var activeSessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == targetUser.Id && s.IsActive)
+            .ToListAsync();
+
+        foreach (var s in activeSessions)
+        {
+            s.IsActive = false;
+            s.RevokedAt = DateTime.UtcNow;
+            s.RevokedReason = "Admin Reset Password";
+            _memoryCache.Remove($"user_session_active_{s.Id}");
+        }
+
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset successfully." });
+        // Evict security stamp from memory cache
+        _memoryCache.Remove($"user_security_stamp_{targetUser.Id}");
+
+        // Broadcast real-time ForceLogout to all connected devices for this target user
+        try
+        {
+            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", "An administrator has reset your password. Please log in again with your new password.");
+        }
+        catch { }
+
+        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset successfully. All their active sessions have been logged out." });
     }
 }

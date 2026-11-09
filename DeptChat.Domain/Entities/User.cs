@@ -22,7 +22,10 @@ public class User
     public DateTime? BlockedAt { get; set; }
     public Guid? BlockedByUserId { get; set; }
 
+    public string SecurityStamp { get; set; } = Guid.NewGuid().ToString("N");
+
     public ICollection<DepartmentManager> DepartmentAssignments { get; set; } = new List<DepartmentManager>();
     public ICollection<Conversation> CreatedConversations { get; set; } = new List<Conversation>();
     public ICollection<DeviceToken> DeviceTokens { get; set; } = new List<DeviceToken>();
+    public ICollection<UserSession> Sessions { get; set; } = new List<UserSession>();
 }

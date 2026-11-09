@@ -43,6 +43,7 @@ public class SignalRService
     public event Action<Guid, Guid>? OnMessageDeleted;
     public event Action<Guid, Guid, Guid>? OnMessageForwarded;
     public event Action<string>? OnErrorMessage;
+    public event Action<string>? OnForceLogout;
 
     public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
@@ -176,6 +177,11 @@ public class SignalRService
         _hubConnection.On<Guid, Guid, bool>("DepartmentPresenceState", (convId, deptId, isOnline) =>
         {
             OnDepartmentPresenceState?.Invoke(convId, deptId, isOnline);
+        });
+
+        _hubConnection.On<string>("ForceLogout", (reason) =>
+        {
+            OnForceLogout?.Invoke(reason);
         });
 
         try

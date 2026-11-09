@@ -321,6 +321,23 @@ public partial class DepartmentsViewModel : ObservableObject
     public bool HasAdminResetError => !string.IsNullOrWhiteSpace(AdminResetErrorMessage);
     public bool CanSaveAdminReset => !IsAdminResetSaving;
 
+    // --- Active Sessions Management Properties ---
+    [ObservableProperty]
+    private bool _isActiveSessionsModalVisible;
+
+    [ObservableProperty]
+    private bool _isActiveSessionsLoading;
+
+    [ObservableProperty]
+    private ObservableCollection<UserSessionDto> _activeSessions = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSessionsError))]
+    private string _activeSessionsErrorMessage = string.Empty;
+
+    public bool HasActiveSessionsError => !string.IsNullOrWhiteSpace(ActiveSessionsErrorMessage);
+    public int ActiveSessionsCount => ActiveSessions.Count;
+
 
 
 
@@ -965,6 +982,8 @@ public partial class DepartmentsViewModel : ObservableObject
                 MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
 
             };
+
+            _signalRService.OnForceLogout += HandleForceLogout;
 
         }
 
@@ -2327,6 +2346,157 @@ public partial class DepartmentsViewModel : ObservableObject
         finally
         {
             IsAdminResetSaving = false;
+        }
+    }
+
+    private void HandleForceLogout(string reason)
+    {
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                _authService?.Logout();
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Session Expired", reason, "OK");
+                }
+                if (Shell.Current != null)
+                {
+                    await Shell.Current.GoToAsync("//LoginPage");
+                }
+            }
+            catch { }
+        });
+    }
+
+    // --- Active Sessions Commands ---
+
+    [RelayCommand]
+    private async Task OpenActiveSessionsModalAsync()
+    {
+        IsActiveSessionsModalVisible = true;
+        await LoadActiveSessionsAsync();
+    }
+
+    [RelayCommand]
+    private void CloseActiveSessionsModal()
+    {
+        IsActiveSessionsModalVisible = false;
+        ActiveSessionsErrorMessage = string.Empty;
+    }
+
+    [RelayCommand]
+    private async Task LoadActiveSessionsAsync()
+    {
+        if (_apiService == null) return;
+        IsActiveSessionsLoading = true;
+        ActiveSessionsErrorMessage = string.Empty;
+        try
+        {
+            var sessions = await _apiService.GetActiveSessionsAsync();
+            ActiveSessions = new ObservableCollection<UserSessionDto>(sessions);
+            OnPropertyChanged(nameof(ActiveSessionsCount));
+        }
+        catch (Exception ex)
+        {
+            ActiveSessionsErrorMessage = $"Failed to load active sessions: {ex.Message}";
+        }
+        finally
+        {
+            IsActiveSessionsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RevokeSessionAsync(UserSessionDto? session)
+    {
+        if (session == null || _apiService == null) return;
+
+        bool confirm = true;
+        if (Application.Current?.MainPage != null)
+        {
+            confirm = await Application.Current.MainPage.DisplayAlertAsync(
+                "Log Out Device", 
+                $"Are you sure you want to log out {session.DeviceName} ({session.DevicePlatform})?", 
+                "Log Out", 
+                "Cancel");
+        }
+        if (!confirm) return;
+
+        IsActiveSessionsLoading = true;
+        try
+        {
+            var (success, msg) = await _apiService.RevokeSessionAsync(session.Id);
+            if (success)
+            {
+                if (session.IsCurrentSession)
+                {
+                    _authService?.Logout();
+                    if (Shell.Current != null)
+                    {
+                        await Shell.Current.GoToAsync("//LoginPage");
+                    }
+                }
+                else
+                {
+                    await LoadActiveSessionsAsync();
+                }
+            }
+            else
+            {
+                ActiveSessionsErrorMessage = msg ?? "Failed to log out device.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ActiveSessionsErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsActiveSessionsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RevokeOtherSessionsAsync()
+    {
+        if (_apiService == null) return;
+
+        bool confirm = true;
+        if (Application.Current?.MainPage != null)
+        {
+            confirm = await Application.Current.MainPage.DisplayAlertAsync(
+                "Log Out All Other Devices", 
+                "Are you sure you want to log out of all other devices? Any other phones or computers logged in with your account will be signed out immediately.", 
+                "Log Out Others", 
+                "Cancel");
+        }
+        if (!confirm) return;
+
+        IsActiveSessionsLoading = true;
+        try
+        {
+            var (success, msg) = await _apiService.RevokeOtherSessionsAsync();
+            if (success)
+            {
+                await LoadActiveSessionsAsync();
+                if (Application.Current?.MainPage != null)
+                {
+                    await Application.Current.MainPage.DisplayAlertAsync("Success", msg ?? "Logged out of all other devices.", "OK");
+                }
+            }
+            else
+            {
+                ActiveSessionsErrorMessage = msg ?? "Failed to log out other devices.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ActiveSessionsErrorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            IsActiveSessionsLoading = false;
         }
     }
 
