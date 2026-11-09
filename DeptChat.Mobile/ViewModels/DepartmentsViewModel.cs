@@ -214,8 +214,19 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
     [ObservableProperty]
-
+    [NotifyPropertyChangedFor(nameof(CanAddUsers))]
+    [NotifyPropertyChangedFor(nameof(CanSelectRole))]
+    [NotifyPropertyChangedFor(nameof(IsManagerOnly))]
     private bool _isAdmin;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAddUsers))]
+    [NotifyPropertyChangedFor(nameof(IsManagerOnly))]
+    private bool _isManager;
+
+    public bool CanAddUsers => IsAdmin || IsManager;
+    public bool CanSelectRole => IsAdmin;
+    public bool IsManagerOnly => !IsAdmin && IsManager;
 
 
 
@@ -983,33 +994,24 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
     public void RefreshUserInfo()
-
     {
-
         IsAdmin = _authService?.Role == DeptChat.Shared.Enums.UserRole.Admin 
-
             || string.Equals(_authService?.CurrentUser?.Email, "admin@deptchat.com", StringComparison.OrdinalIgnoreCase);
 
+        IsManager = !IsAdmin && _authService?.Role == DeptChat.Shared.Enums.UserRole.Manager;
 
-
-        Console.WriteLine($"DEBUG_DEPT: RefreshUserInfo. Email='{_authService?.CurrentUser?.Email}', Role='{_authService?.Role}', IsAdmin={IsAdmin}");
-
-
+        Console.WriteLine($"DEBUG_DEPT: RefreshUserInfo. Email='{_authService?.CurrentUser?.Email}', Role='{_authService?.Role}', IsAdmin={IsAdmin}, IsManager={IsManager}");
 
         OnPropertyChanged(nameof(CurrentUserName));
-
         OnPropertyChanged(nameof(CurrentUserRole));
-
         OnPropertyChanged(nameof(CurrentUserEmail));
-
         OnPropertyChanged(nameof(ClientDisplayName));
-
         OnPropertyChanged(nameof(CurrentUserPhone));
-
         OnPropertyChanged(nameof(CurrentUserAddress));
-
         OnPropertyChanged(nameof(UserBadge));
-
+        OnPropertyChanged(nameof(CanAddUsers));
+        OnPropertyChanged(nameof(CanSelectRole));
+        OnPropertyChanged(nameof(IsManagerOnly));
     }
 
 
@@ -1978,44 +1980,32 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
     [RelayCommand]
-
     private void SelectUserRole(string roleName)
-
     {
+        if (!CanSelectRole) return;
 
         if (Enum.TryParse<UserRole>(roleName, out var role))
-
         {
-
             SelectedUserRole = role;
-
         }
-
     }
 
-
-
     [RelayCommand]
-
     private void ToggleNewUserPasswordVisibility()
-
     {
-
         IsNewUserPasswordHidden = !IsNewUserPasswordHidden;
-
         OnPropertyChanged(nameof(NewUserPasswordToggleIcon));
-
     }
 
-
-
     [RelayCommand]
-
     private async Task CreateUserAsync()
-
     {
+        if (_apiService == null || !CanAddUsers) return;
 
-        if (_apiService == null || !IsAdmin) return;
+        if (!CanSelectRole)
+        {
+            SelectedUserRole = UserRole.User;
+        }
 
 
 

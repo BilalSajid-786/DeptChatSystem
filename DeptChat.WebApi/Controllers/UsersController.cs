@@ -35,12 +35,18 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Admin-only: Creates a new user (Employee, Manager, or Admin) inside the Admin's client organization.
+    /// Creates a new user inside the caller's client organization.
+    /// Admins can create User, Manager, or Admin. Managers can only create standard User.
     /// </summary>
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto dto)
     {
+        if (User.IsInRole("Manager") && dto.Role != UserRole.User)
+        {
+            return BadRequest(new { message = "Managers are only permitted to create standard users." });
+        }
+
         if (string.IsNullOrWhiteSpace(dto.FullName))
         {
             return BadRequest(new { message = "Full name is required." });

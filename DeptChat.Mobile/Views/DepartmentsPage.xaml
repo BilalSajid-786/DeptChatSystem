@@ -499,9 +499,32 @@
                         </VerticalStackLayout>
 
                     </Grid>
-
                 </Border>
+            </Grid>
 
+            <!-- Manager Quick Actions: Add User Only -->
+            <Grid Grid.Row="0"
+                  IsVisible="{Binding IsManagerOnly}"
+                  Margin="16,12,16,4">
+                <Border BackgroundColor="White"
+                        Stroke="#C8E6C9"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,10">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenAddUserModalCommand}" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                        <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                            <Label Text="👤⁺" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Add New User" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+                            <Label Text="Create standard user account in your organization" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
+                    </Grid>
+                </Border>
             </Grid>
 
 
@@ -1656,166 +1679,62 @@
 
 
                         <!-- Role Selector Segment / Chips -->
-
-
-
-                        <VerticalStackLayout Spacing="4">
-
-
-
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding CanSelectRole}">
                             <Label Text="Role / Account Type *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-
-
-
                             <Grid ColumnDefinitions="*, *, *" ColumnSpacing="6">
-
-
-
                                 <Button Grid.Column="0"
-
-
-
                                         Text="👤 User"
-
-
-
                                         Command="{Binding SelectUserRoleCommand}"
-
-
-
                                         CommandParameter="User"
-
-
-
                                         BackgroundColor="{Binding RoleEmployeeBgColor}"
-
-
-
                                         TextColor="{Binding RoleEmployeeTextColor}"
-
-
-
                                         FontAttributes="Bold"
-
-
-
                                         FontSize="11"
-
-
-
                                         CornerRadius="8"
-
-
-
                                         Padding="0"
-
-
-
                                         HeightRequest="36" />
-
-
-
-
-
-
 
                                 <Button Grid.Column="1"
-
-
-
                                         Text="👔 Manager"
-
-
-
                                         Command="{Binding SelectUserRoleCommand}"
-
-
-
                                         CommandParameter="Manager"
-
-
-
                                         BackgroundColor="{Binding RoleManagerBgColor}"
-
-
-
                                         TextColor="{Binding RoleManagerTextColor}"
-
-
-
                                         FontAttributes="Bold"
-
-
-
                                         FontSize="11"
-
-
-
                                         CornerRadius="8"
-
-
-
                                         Padding="0"
-
-
-
                                         HeightRequest="36" />
-
-
-
-
-
-
 
                                 <Button Grid.Column="2"
-
-
-
                                         Text="👑 Admin"
-
-
-
                                         Command="{Binding SelectUserRoleCommand}"
-
-
-
                                         CommandParameter="Admin"
-
-
-
                                         BackgroundColor="{Binding RoleAdminBgColor}"
-
-
-
                                         TextColor="{Binding RoleAdminTextColor}"
-
-
-
                                         FontAttributes="Bold"
-
-
-
                                         FontSize="11"
-
-
-
                                         CornerRadius="8"
-
-
-
                                         Padding="0"
-
-
-
                                         HeightRequest="36" />
-
-
-
                             </Grid>
-
-
-
                         </VerticalStackLayout>
+
+                        <!-- Role Fixed Badge for Managers -->
+                        <Border IsVisible="{Binding IsManagerOnly}"
+                                BackgroundColor="#E8F5E9"
+                                Stroke="#C8E6C9"
+                                StrokeThickness="1"
+                                StrokeShape="RoundRectangle 8"
+                                Padding="12,10">
+                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                <Label Text="👤" FontSize="16" VerticalOptions="Center" />
+                                <VerticalStackLayout Spacing="1">
+                                    <Label Text="Account Role: Standard User" FontSize="12" FontAttributes="Bold" TextColor="#008069" />
+                                    <Label Text="Managers can add standard client users to this organization" FontSize="10" TextColor="#2E7D32" />
+                                </VerticalStackLayout>
+                            </HorizontalStackLayout>
+                        </Border>
 
 
 
