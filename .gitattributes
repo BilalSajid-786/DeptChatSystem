@@ -1,0 +1,3 @@
+# Android environment file: keep LF line endings so values such as nursery-size=16m
+# do not get a hidden trailing carriage return on Windows checkouts.
+DeptChat.Mobile/Platforms/Android/environment.txt text eol=lf

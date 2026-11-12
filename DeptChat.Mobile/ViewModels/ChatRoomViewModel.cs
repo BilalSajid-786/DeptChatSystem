@@ -9,6 +9,14 @@ namespace DeptChat.Mobile.ViewModels;
 
 public partial class ChatMessageItem : ObservableObject
 {
+    // Shared colour objects. These used to be created (and parsed from text) every time a row
+    // was shown while scrolling; reusing them means less memory churn and fewer GC pauses.
+    public static readonly Color OutgoingBubbleColor = Color.FromArgb("#E7FFDB");
+    public static readonly Color PlayButtonOutgoingColor = Color.FromArgb("#059669");
+    public static readonly Color PlayButtonIncomingColor = Color.FromArgb("#0284C7");
+    public static readonly Color StatusSentColor = Color.FromArgb("#94A3B8");
+    public static readonly Color StatusReadColor = Color.FromArgb("#34B7F1");
+
     public static Action<ChatMessageItem>? OnOpenImage;
     public static Action<ChatMessageItem>? OnOpenDocument;
     public static Action<ChatMessageItem>? OnTogglePlayVoice;
@@ -84,6 +92,7 @@ public partial class ChatMessageItem : ObservableObject
             {
                 OnPropertyChanged(nameof(IsTextMessage));
                 OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(TextContent));
                 OnPropertyChanged(nameof(IsVoiceVisible));
                 OnPropertyChanged(nameof(IsMediaMessage));
             }
@@ -105,6 +114,7 @@ public partial class ChatMessageItem : ObservableObject
             {
                 OnPropertyChanged(nameof(IsTextMessage));
                 OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(TextContent));
                 OnPropertyChanged(nameof(IsImageVisible));
                 OnPropertyChanged(nameof(IsMediaMessage));
             }
@@ -114,7 +124,67 @@ public partial class ChatMessageItem : ObservableObject
     public string? ImageUrl
     {
         get => _imageUrl;
-        set => SetProperty(ref _imageUrl, value);
+        set
+        {
+            if (SetProperty(ref _imageUrl, value)) OnPropertyChanged(nameof(ImageDisplaySource));
+        }
+    }
+
+    // Picture shown in the chat list: a small copy made on the phone (see ChatImageThumbnails).
+    // ImageUrl (full size) is still what opens when the picture is tapped.
+    private ImageSource? _imageDisplaySource;
+    private string? _imageDisplayFor;
+    private bool _thumbnailRequested;
+
+    public ImageSource? ImageDisplaySource
+    {
+        get
+        {
+            var url = _imageUrl;
+            if (string.IsNullOrWhiteSpace(url)) return null;
+
+            if (_imageDisplayFor != url)
+            {
+                _imageDisplayFor = url;
+                _imageDisplaySource = null;
+                _thumbnailRequested = false;
+            }
+
+            if (_imageDisplaySource != null) return _imageDisplaySource;
+
+            // Local file (e.g. a picture still being sent): show it directly, as before.
+            if (!ChatImageThumbnails.IsRemote(url))
+            {
+                _imageDisplaySource = ImageSource.FromFile(url);
+                return _imageDisplaySource;
+            }
+
+            var cached = ChatImageThumbnails.TryGetCached(url);
+            if (cached != null)
+            {
+                _imageDisplaySource = ImageSource.FromFile(cached);
+                return _imageDisplaySource;
+            }
+
+            if (!_thumbnailRequested)
+            {
+                _thumbnailRequested = true;
+                _ = LoadThumbnailAsync(url);
+            }
+            return null; // dark placeholder until the small copy is ready
+        }
+    }
+
+    private async Task LoadThumbnailAsync(string url)
+    {
+        var path = await ChatImageThumbnails.GetOrCreateAsync(url).ConfigureAwait(false);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_imageDisplayFor != url) return;
+            // Fall back to the original picture (previous behaviour) if shrinking failed.
+            _imageDisplaySource = path != null ? ImageSource.FromFile(path) : ImageSource.FromUri(new Uri(url));
+            OnPropertyChanged(nameof(ImageDisplaySource));
+        });
     }
     public string? ImageCaption { get; set; }
     public bool HasCaption => !string.IsNullOrWhiteSpace(ImageCaption);
@@ -129,6 +199,7 @@ public partial class ChatMessageItem : ObservableObject
             {
                 OnPropertyChanged(nameof(IsTextMessage));
                 OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(TextContent));
                 OnPropertyChanged(nameof(IsDocumentVisible));
                 OnPropertyChanged(nameof(IsMediaMessage));
             }
@@ -151,6 +222,7 @@ public partial class ChatMessageItem : ObservableObject
                 OnPropertyChanged(nameof(IsStatusVisible));
                 OnPropertyChanged(nameof(DisplayText));
                 OnPropertyChanged(nameof(IsTextVisible));
+                OnPropertyChanged(nameof(TextContent));
                 OnPropertyChanged(nameof(IsImageVisible));
                 OnPropertyChanged(nameof(IsDocumentVisible));
                 OnPropertyChanged(nameof(IsVoiceVisible));
@@ -178,6 +250,12 @@ public partial class ChatMessageItem : ObservableObject
     public bool IsTextMessage => !IsVoiceMessage && !IsImageMessage && !IsDocumentMessage;
 
     public bool IsTextVisible => !IsDeleted && IsTextMessage;
+
+    /// <summary>
+    /// Text for the message label: the content only for real text messages. Voice notes keep their
+    /// (very large) base64 audio in Content; giving that to a hidden label made scrolling stutter.
+    /// </summary>
+    public string TextContent => IsTextVisible ? Content : string.Empty;
     public bool IsImageVisible => !IsDeleted && IsImageMessage;
     public bool IsDocumentVisible => !IsDeleted && IsDocumentMessage;
     public bool IsVoiceVisible => !IsDeleted && IsVoiceMessage;
@@ -209,7 +287,7 @@ public partial class ChatMessageItem : ObservableObject
     }
 
     public string PlayButtonIcon => IsPlaying ? "⏸" : "▶";
-    public Color PlayButtonColor => IsOutgoing ? Color.FromArgb("#059669") : Color.FromArgb("#0284C7");
+    public Color PlayButtonColor => IsOutgoing ? PlayButtonOutgoingColor : PlayButtonIncomingColor;
 
     public MessageDeliveryStatus Status { get; set; } = MessageDeliveryStatus.Pending;
 
@@ -220,7 +298,7 @@ public partial class ChatMessageItem : ObservableObject
         set => SetProperty(ref _statusIcon, value);
     }
 
-    private Color _statusColor = Color.FromArgb("#94A3B8");
+    private Color _statusColor = StatusSentColor;
     public Color StatusColor
     {
         get => _statusColor;
@@ -228,7 +306,7 @@ public partial class ChatMessageItem : ObservableObject
     }
 
     public LayoutOptions Alignment => IsOutgoing ? LayoutOptions.End : LayoutOptions.Start;
-    public Color BubbleColor => IsOutgoing ? Color.FromArgb("#E7FFDB") : Colors.White;
+    public Color BubbleColor => IsOutgoing ? OutgoingBubbleColor : Colors.White;
 
     private Microsoft.Maui.Graphics.IShape? _bubbleShape;
     public Microsoft.Maui.Graphics.IShape BubbleShape =>
@@ -739,7 +817,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         IsLoadingOlderMessages = true;
         try
         {
-            var paged = await _apiService.GetMessagesAsync(_conversationId, beforeSequenceNumber: _earliestLoadedSequenceNumber, pageSize: 25);
+            // Downloaded and parsed off the UI thread (older pages can be large because of voice notes).
+            var paged = await _apiService.GetMessagesInBackgroundAsync(_conversationId, beforeSequenceNumber: _earliestLoadedSequenceNumber, pageSize: 25);
             if (paged != null)
             {
                 HasMoreOlderMessages = paged.HasMore;
@@ -1958,7 +2037,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             TimeFormatted = DateTime.Now.ToString("h:mm tt"),
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
-            StatusColor = Color.FromArgb("#94A3B8"),
+            StatusColor = ChatMessageItem.StatusSentColor,
             IsVoiceMessage = isVoice,
             VoiceDurationSeconds = duration > 0 ? duration : 5,
             VoiceDurationText = isVoice ? $"0:{duration:D2}" : string.Empty,
@@ -2334,7 +2413,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             TimeFormatted = timeFormatted,
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
-            StatusColor = Color.FromArgb("#94A3B8"),
+            StatusColor = ChatMessageItem.StatusSentColor,
             IsImageMessage = true,
             ImageUrl = compressedPath,
             ImageCaption = caption ?? string.Empty
@@ -2412,7 +2491,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             TimeFormatted = timeFormatted,
             Status = MessageDeliveryStatus.Pending,
             StatusIcon = "🕒",
-            StatusColor = Color.FromArgb("#94A3B8"),
+            StatusColor = ChatMessageItem.StatusSentColor,
             IsDocumentMessage = true,
             DocumentFileName = originalFileName,
             DocumentFileSizeText = FormatFileSize(sizeBytes),
@@ -2707,11 +2786,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             item.IsVoiceMessage = true;
             try
             {
-                var inner = content.Substring(7, content.Length - 8);
-                var lastColon = inner.LastIndexOf(':');
-                if (lastColon > 0)
+                // Format: [voice:<base64 audio>:<seconds>]. Read only the duration at the end,
+                // without copying the (often very large) audio data.
+                var end = content.EndsWith("]") ? content.Length - 1 : content.Length;
+                var lastColon = content.LastIndexOf(':', end - 1);
+                if (lastColon > 6)
                 {
-                    var dur = inner.Substring(lastColon + 1);
+                    var dur = content.Substring(lastColon + 1, end - lastColon - 1);
                     if (int.TryParse(dur, out var s))
                     {
                         var m = s / 60;
@@ -2934,7 +3015,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             case MessageDeliveryStatus.Pending:
                 item.StatusIcon = "🕒";
-                item.StatusColor = Color.FromArgb("#94A3B8");
+                item.StatusColor = ChatMessageItem.StatusSentColor;
                 break;
             case MessageDeliveryStatus.Sent:
                 item.StatusIcon = "✓";
@@ -2946,7 +3027,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 break;
             case MessageDeliveryStatus.Read:
                 item.StatusIcon = "✓✓";
-                item.StatusColor = Color.FromArgb("#34B7F1"); // WhatsApp read blue tick
+                item.StatusColor = ChatMessageItem.StatusReadColor; // WhatsApp read blue tick
                 break;
         }
     }

@@ -926,6 +926,42 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
 
+    // Background reloads from real-time events run only while the department screen is on screen.
+    // When it is hidden (customer list or chat open on top), DepartmentsPage.OnAppearing reloads
+    // anyway on return, so skipped events lose nothing. Bursts of events collapse into one reload.
+    public bool IsPageVisible { get; set; } = true;
+
+    private Guid? _departmentsLoadedForUserId;
+
+    /// <summary>True when the list on screen was loaded for the user who is signed in now.</summary>
+    public bool HasListForCurrentUser =>
+        Departments.Count > 0 && _departmentsLoadedForUserId != null && _departmentsLoadedForUserId == _authService?.UserId;
+    private CancellationTokenSource? _departmentsReloadCts;
+
+    private void RequestDepartmentsReload()
+    {
+        if (!IsPageVisible) return;
+
+        _departmentsReloadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _departmentsReloadCts = cts;
+
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await Task.Delay(300, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            if (cts.IsCancellationRequested || !IsPageVisible) return;
+            await LoadDepartmentsAsync();
+        });
+    }
+
     public DepartmentsViewModel(ChatApiService apiService, AuthService authService, SignalRService signalRService, LocalOutboxService? outboxService = null)
 
     {
@@ -947,7 +983,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
             {
 
-                MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
+                RequestDepartmentsReload();
 
             };
 
@@ -955,7 +991,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
             {
 
-                MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
+                RequestDepartmentsReload();
 
             };
 
@@ -963,7 +999,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
             {
 
-                MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
+                RequestDepartmentsReload();
 
             };
 
@@ -971,7 +1007,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
             {
 
-                MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
+                RequestDepartmentsReload();
 
             };
 
@@ -979,7 +1015,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
             {
 
-                MainThread.BeginInvokeOnMainThread(async () => await LoadDepartmentsAsync());
+                RequestDepartmentsReload();
 
             };
 
@@ -1097,8 +1133,16 @@ public partial class DepartmentsViewModel : ObservableObject
 
         {
 
-            IsBusy = true;
+            // A list left over from a different signed-in user is never shown.
+            if (Departments.Count > 0 && _departmentsLoadedForUserId != _authService?.UserId)
+            {
+                Departments = new ObservableCollection<DepartmentItem>();
+            }
 
+            // Spinner only when there is nothing on screen yet (not on every return to this screen).
+            IsBusy = Departments.Count == 0;
+
+            var perfStartedAt = PerfTrace.Now;
             var liveDepts = await _apiService.GetDepartmentsAsync();
 
             var list = new ObservableCollection<DepartmentItem>();
@@ -1140,6 +1184,8 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
             Departments = list;
+            _departmentsLoadedForUserId = _authService?.UserId;
+            PerfTrace.DepartmentsReloaded(perfStartedAt);
 
         }
 
@@ -1624,7 +1670,9 @@ public partial class DepartmentsViewModel : ObservableObject
         if (_authService?.Role == DeptChat.Shared.Enums.UserRole.Admin || _authService?.Role == DeptChat.Shared.Enums.UserRole.Manager)
         {
             // Staff view: Navigate to list of customer conversations in this department
+            PerfTrace.MarkTap(department.Name);
             await Shell.Current.GoToAsync($"DepartmentConversationsPage?deptId={department.Id}&deptName={Uri.EscapeDataString(department.Name)}");
+            PerfTrace.Step("Navigation finished");
         }
         else
         {

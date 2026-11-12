@@ -13,16 +13,60 @@ public class ConversationListItem : ObservableObject
     public Guid DepartmentId { get; set; }
     public string DepartmentName { get; set; } = string.Empty;
     public Guid CreatedByUserId { get; set; }
-    public string CreatedByUserName { get; set; } = string.Empty;
+
+    // Row fields raise change notifications so a row can be updated in place
+    // instead of rebuilding the whole list when new data arrives.
+    private string _createdByUserName = string.Empty;
+    public string CreatedByUserName
+    {
+        get => _createdByUserName;
+        set
+        {
+            if (SetProperty(ref _createdByUserName, value)) OnPropertyChanged(nameof(UserInitials));
+        }
+    }
+
     public string UserInitials => string.IsNullOrWhiteSpace(CreatedByUserName) ? "👤" : CreatedByUserName[..1].ToUpper();
-    public string LastMessagePreview { get; set; } = "No messages yet";
-    public DateTime? LastMessageAt { get; set; }
+
+    private string _lastMessagePreview = "No messages yet";
+    public string LastMessagePreview
+    {
+        get => _lastMessagePreview;
+        set => SetProperty(ref _lastMessagePreview, value);
+    }
+
+    private DateTime? _lastMessageAt;
+    public DateTime? LastMessageAt
+    {
+        get => _lastMessageAt;
+        set
+        {
+            if (SetProperty(ref _lastMessageAt, value)) OnPropertyChanged(nameof(TimeFormatted));
+        }
+    }
+
     public string TimeFormatted => LastMessageAt.HasValue
         ? (LastMessageAt.Value.Date == DateTime.UtcNow.Date ? LastMessageAt.Value.ToLocalTime().ToString("h:mm tt") : LastMessageAt.Value.ToLocalTime().ToString("MMM d, h:mm tt"))
         : "";
-    public int UnreadCount { get; set; }
+
+    private int _unreadCount;
+    public int UnreadCount
+    {
+        get => _unreadCount;
+        set
+        {
+            if (SetProperty(ref _unreadCount, value)) OnPropertyChanged(nameof(HasUnread));
+        }
+    }
+
     public bool HasUnread => UnreadCount > 0;
-    public ConversationStatus Status { get; set; }
+
+    private ConversationStatus _status;
+    public ConversationStatus Status
+    {
+        get => _status;
+        set => SetProperty(ref _status, value);
+    }
 
     private bool _isOnline;
     public bool IsOnline
@@ -31,7 +75,27 @@ public class ConversationListItem : ObservableObject
         set => SetProperty(ref _isOnline, value);
     }
 
-    public bool IsUserBlocked { get; set; }
+    private bool _isUserBlocked;
+    public bool IsUserBlocked
+    {
+        get => _isUserBlocked;
+        set => SetProperty(ref _isUserBlocked, value);
+    }
+
+    /// <summary>Copies the displayed fields from a fresh copy of the same conversation.</summary>
+    public void UpdateFrom(ConversationListItem fresh)
+    {
+        DepartmentId = fresh.DepartmentId;
+        DepartmentName = fresh.DepartmentName;
+        CreatedByUserId = fresh.CreatedByUserId;
+        CreatedByUserName = fresh.CreatedByUserName;
+        LastMessagePreview = fresh.LastMessagePreview;
+        LastMessageAt = fresh.LastMessageAt;
+        UnreadCount = fresh.UnreadCount;
+        Status = fresh.Status;
+        IsOnline = fresh.IsOnline;
+        IsUserBlocked = fresh.IsUserBlocked;
+    }
 }
 
 public class AvailableUserItem : ObservableObject
@@ -116,7 +180,10 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     public bool HasConversations => !IsEmpty && !IsSearchEmpty;
 
-    public bool ShowEmptyState => IsEmpty && !IsBusy && !IsSearchEmpty;
+    public bool ShowEmptyState => IsEmpty && !ShowLoader && !IsSearchEmpty;
+
+    /// <summary>Loading spinner: while fetching with nothing to show, or until the rows have been shown.</summary>
+    public bool ShowLoader => IsBusy || !_rowsReady;
 
     public string SubtitleText
     {
@@ -141,17 +208,36 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService = signalRService;
 
         IsAdminOrManager = _authService?.Role == UserRole.Admin || _authService?.Role == UserRole.Manager;
+    }
 
-        if (_signalRService != null)
-        {
-            _signalRService.OnInAppToast += HandleInAppToast;
-            _signalRService.OnMessageReceived += HandleMessageReceived;
-            _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
-            _signalRService.OnMessagesRead += (cId, seq) =>
-            {
-                MainThread.BeginInvokeOnMainThread(async () => await LoadConversationsAsync());
-            };
-        }
+    // Real-time events are only listened to while this page is on screen.
+    // Previously each page instance subscribed in its constructor and never unsubscribed,
+    // so every department opened during a session kept reloading in the background.
+    private bool _isSubscribed;
+
+    public void SubscribeToEvents()
+    {
+        if (_isSubscribed || _signalRService == null) return;
+
+        _signalRService.OnInAppToast += HandleInAppToast;
+        _signalRService.OnMessageReceived += HandleMessageReceived;
+        _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
+        _signalRService.OnMessagesRead += HandleMessagesRead;
+        _isSubscribed = true;
+    }
+
+    public void UnsubscribeFromEvents()
+    {
+        if (!_isSubscribed || _signalRService == null) return;
+
+        _signalRService.OnInAppToast -= HandleInAppToast;
+        _signalRService.OnMessageReceived -= HandleMessageReceived;
+        _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
+        _signalRService.OnMessagesRead -= HandleMessagesRead;
+        _isSubscribed = false;
+
+        _reloadDebounceCts?.Cancel();
+        _reloadDebounceCts = null;
     }
 
     public DepartmentConversationsViewModel()
@@ -176,6 +262,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(ShowLoader));
         OnPropertyChanged(nameof(ShowEmptyState));
     }
 
@@ -203,17 +290,17 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         var query = SearchQuery?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(query))
         {
-            Conversations = new ObservableCollection<ConversationListItem>(_allConversations);
+            SyncVisibleConversations(_allConversations);
             IsSearchEmpty = false;
         }
         else
         {
-            var filtered = _allConversations.Where(c => 
+            var filtered = _allConversations.Where(c =>
                 (!string.IsNullOrEmpty(c.CreatedByUserName) && c.CreatedByUserName.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
                 (!string.IsNullOrEmpty(c.LastMessagePreview) && c.LastMessagePreview.Contains(query, StringComparison.OrdinalIgnoreCase))
             ).ToList();
 
-            Conversations = new ObservableCollection<ConversationListItem>(filtered);
+            SyncVisibleConversations(filtered);
             IsSearchEmpty = filtered.Count == 0 && _allConversations.Count > 0;
         }
 
@@ -221,6 +308,62 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         OnPropertyChanged(nameof(SubtitleText));
         OnPropertyChanged(nameof(HasConversations));
         OnPropertyChanged(nameof(ShowSearchBar));
+    }
+
+    /// <summary>
+    /// Makes the on-screen list match <paramref name="target"/> with the fewest changes
+    /// (move / insert / remove), instead of replacing the whole collection, so only rows
+    /// that actually changed are redrawn.
+    /// </summary>
+    private void SyncVisibleConversations(IReadOnlyList<ConversationListItem> target)
+    {
+        // Rows are held back until the page has slid in (see ShowRows).
+        if (!_rowsReady) return;
+
+        var visible = Conversations;
+
+        for (int i = 0; i < target.Count; i++)
+        {
+            var wanted = target[i];
+            if (i < visible.Count && ReferenceEquals(visible[i], wanted)) continue;
+
+            var currentIndex = -1;
+            for (int j = i + 1; j < visible.Count; j++)
+            {
+                if (ReferenceEquals(visible[j], wanted)) { currentIndex = j; break; }
+            }
+
+            if (currentIndex >= 0)
+            {
+                visible.Move(currentIndex, i);
+            }
+            else
+            {
+                visible.Insert(i, wanted);
+            }
+        }
+
+        while (visible.Count > target.Count)
+        {
+            visible.RemoveAt(visible.Count - 1);
+        }
+    }
+
+    private bool _rowsReady;
+
+    /// <summary>
+    /// Called by the page once its slide-in has finished. Until then the list data is kept
+    /// but no rows are created, so opening a department is not held up by building rows.
+    /// </summary>
+    public void ShowRows()
+    {
+        if (_rowsReady) return;
+        _rowsReady = true;
+        ApplyFilter();
+        OnPropertyChanged(nameof(ShowLoader));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        PerfTrace.Step($"Rows shown ({Conversations.Count})");
+        MarkDrawnOnNextFrame("Rows drawn");
     }
 
     private void ApplyUserFilter()
@@ -336,10 +479,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
         if (Guid.TryParse(DepartmentId, out var deptGuid) && toast.DepartmentId == deptGuid)
         {
-            MainThread.BeginInvokeOnMainThread(async () =>
-            {
-                await LoadConversationsAsync();
-            });
+            // Filtered by department (not by rows already listed) so a customer who
+            // messages this department for the first time still appears.
+            ScheduleReload();
             return;
         }
 
@@ -360,55 +502,218 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     private void HandleMessageReceived(ChatMessageDto msg)
     {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_allConversations.Any(c => c.Id == msg.ConversationId))
+            {
+                ScheduleReload();
+            }
+        });
+    }
+
+    private void HandleMessagesRead(Guid conversationId, long maxSequenceNumber)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_allConversations.Any(c => c.Id == conversationId))
+            {
+                ScheduleReload();
+            }
+        });
+    }
+
+    // Bursts of real-time events (several messages arriving together) collapse into one reload.
+    private const int ReloadDebounceMs = 300;
+    private CancellationTokenSource? _reloadDebounceCts;
+    private bool _isLoading;
+    private bool _reloadRequested;
+
+    private void ScheduleReload()
+    {
+        _reloadDebounceCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _reloadDebounceCts = cts;
+
         MainThread.BeginInvokeOnMainThread(async () =>
         {
-            await LoadConversationsAsync();
+            try
+            {
+                await Task.Delay(ReloadDebounceMs, cts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (cts.IsCancellationRequested || !_isSubscribed) return;
+            await LoadCoreAsync(queueIfBusy: true);
         });
     }
 
     [RelayCommand]
-    public async Task LoadConversationsAsync()
+    public Task LoadConversationsAsync() => LoadCoreAsync(queueIfBusy: false);
+
+    /// <summary>
+    /// Loads the department's conversations.
+    /// queueIfBusy=false (page open / refresh button): a load already running covers it, so skip.
+    /// queueIfBusy=true (real-time event): run one more load after the current one finishes.
+    /// </summary>
+    private async Task LoadCoreAsync(bool queueIfBusy)
     {
         if (_apiService == null || !Guid.TryParse(DepartmentId, out var deptGuid))
         {
             return;
         }
 
+        if (_isLoading)
+        {
+            if (queueIfBusy) _reloadRequested = true;
+            return;
+        }
+
+        _isLoading = true;
         try
         {
-            IsBusy = true;
-            var list = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
-            var items = new List<ConversationListItem>();
-
-            foreach (var c in list)
+            // Show the last list for this department instantly while fresh data loads.
+            var cacheKey = ConversationListCache.BuildKey(_authService?.UserId, deptGuid);
+            if (_allConversations.Count == 0 && cacheKey != null && ConversationListCache.TryGet(cacheKey, out var cached))
             {
-                items.Add(new ConversationListItem
-                {
-                    Id = c.Id,
-                    DepartmentId = c.DepartmentId,
-                    DepartmentName = c.DepartmentName,
-                    CreatedByUserId = c.CreatedByUserId,
-                    CreatedByUserName = string.IsNullOrWhiteSpace(c.CreatedByUserName) ? "Customer" : c.CreatedByUserName,
-                    LastMessagePreview = SanitizePreview(c.LastMessagePreview),
-                    LastMessageAt = c.LastMessageAt,
-                    UnreadCount = c.UnreadCount,
-                    Status = c.Status,
-                    IsOnline = c.IsOnline,
-                    IsUserBlocked = c.IsUserBlocked
-                });
+                _allConversations = MapToItems(cached);
+                ApplyFilter();
+                PerfTrace.Step($"Saved list shown ({_allConversations.Count} rows)");
+                MarkDrawnOnNextFrame("Saved list drawn");
             }
 
-            _allConversations = items.OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue).ToList();
-            ApplyFilter();
-        }
-        catch
-        {
-            // Graceful fallback
+            do
+            {
+                _reloadRequested = false;
+
+                // Spinner only when there is nothing on screen yet (no overlay on top of an existing list).
+                IsBusy = _allConversations.Count == 0;
+
+                try
+                {
+                    var requestStartedAt = PerfTrace.Now;
+                    PerfTrace.Step("Server request sent");
+                    var list = await _apiService.GetConversationsForDepartmentAsync(deptGuid);
+                    PerfTrace.Step($"Server replied: {list.Count} rows in {PerfTrace.Now - requestStartedAt} ms");
+                    var items = MapToItems(list);
+
+                    // Identical to what is already on screen (e.g. the saved list): nothing to redraw.
+                    if (!IsSameList(_allConversations, items))
+                    {
+                        _allConversations = MergeIntoExisting(_allConversations, items);
+                        ApplyFilter();
+                        PerfTrace.Step("List updated (changed rows only)");
+                        MarkDrawnOnNextFrame("Fresh list drawn");
+                    }
+                    else
+                    {
+                        PerfTrace.Step("List unchanged (no redraw)");
+                    }
+
+                    if (cacheKey != null) ConversationListCache.Set(cacheKey, list);
+                }
+                catch
+                {
+                    // Graceful fallback: keep whatever is currently shown.
+                }
+                finally
+                {
+                    IsBusy = false;
+                }
+            }
+            while (_reloadRequested && _isSubscribed);
         }
         finally
         {
-            IsBusy = false;
+            _isLoading = false;
+            _reloadRequested = false;
         }
+    }
+
+    /// <summary>Timing builds only: records when the screen has drawn after a list change.</summary>
+    [System.Diagnostics.Conditional("DEPTCHAT_TIMING")]
+    private static void MarkDrawnOnNextFrame(string label)
+    {
+        // Runs after the current layout pass completes on the UI thread.
+        MainThread.BeginInvokeOnMainThread(() =>
+            MainThread.BeginInvokeOnMainThread(() => PerfTrace.Step(label)));
+    }
+
+    /// <summary>
+    /// Reuses the row objects already on screen (updating their fields) so unchanged rows are not
+    /// recreated; only genuinely new conversations get new rows. Order follows the fresh data.
+    /// </summary>
+    private static List<ConversationListItem> MergeIntoExisting(List<ConversationListItem> current, List<ConversationListItem> fresh)
+    {
+        var byId = new Dictionary<Guid, ConversationListItem>(current.Count);
+        foreach (var item in current)
+        {
+            byId[item.Id] = item;
+        }
+
+        var merged = new List<ConversationListItem>(fresh.Count);
+        foreach (var f in fresh)
+        {
+            if (byId.TryGetValue(f.Id, out var existing))
+            {
+                existing.UpdateFrom(f);
+                merged.Add(existing);
+            }
+            else
+            {
+                merged.Add(f);
+            }
+        }
+
+        return merged;
+    }
+
+    private static List<ConversationListItem> MapToItems(IEnumerable<ConversationSummaryDto> list)
+    {
+        return list.Select(c => new ConversationListItem
+        {
+            Id = c.Id,
+            DepartmentId = c.DepartmentId,
+            DepartmentName = c.DepartmentName,
+            CreatedByUserId = c.CreatedByUserId,
+            CreatedByUserName = string.IsNullOrWhiteSpace(c.CreatedByUserName) ? "Customer" : c.CreatedByUserName,
+            LastMessagePreview = SanitizePreview(c.LastMessagePreview),
+            LastMessageAt = c.LastMessageAt,
+            UnreadCount = c.UnreadCount,
+            Status = c.Status,
+            IsOnline = c.IsOnline,
+            IsUserBlocked = c.IsUserBlocked
+        })
+        .OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue)
+        .ToList();
+    }
+
+    /// <summary>True when every row shown would be identical, so the list does not need rebuilding.</summary>
+    private static bool IsSameList(List<ConversationListItem> current, List<ConversationListItem> incoming)
+    {
+        if (current.Count != incoming.Count) return false;
+
+        for (int i = 0; i < current.Count; i++)
+        {
+            var a = current[i];
+            var b = incoming[i];
+            if (a.Id != b.Id
+                || a.CreatedByUserId != b.CreatedByUserId
+                || a.CreatedByUserName != b.CreatedByUserName
+                || a.LastMessagePreview != b.LastMessagePreview
+                || a.LastMessageAt != b.LastMessageAt
+                || a.UnreadCount != b.UnreadCount
+                || a.Status != b.Status
+                || a.IsOnline != b.IsOnline
+                || a.IsUserBlocked != b.IsUserBlocked)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void HandleUserOnlineStatusChanged(Guid userId, bool isOnline)

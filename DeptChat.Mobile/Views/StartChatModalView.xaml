@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Start-a-chat popup for Admins / Managers, moved out of DepartmentConversationsPage
+     so it is only built the first time "+" is tapped (not on every department open). -->
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             x:Class="DeptChat.Mobile.Views.StartChatModalView">
+
+    <Grid BackgroundColor="#99000000"
+          HorizontalOptions="FillAndExpand"
+          VerticalOptions="FillAndExpand">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Command="{Binding CloseStartChatModalCommand}" />
+        </Grid.GestureRecognizers>
+        <Border BackgroundColor="White"
+                Stroke="#CBD5E1"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 18"
+                WidthRequest="350"
+                MaximumHeightRequest="560"
+                HorizontalOptions="Center"
+                VerticalOptions="Center"
+                Padding="20"
+                Margin="16">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer />
+            </Border.GestureRecognizers>
+            <Grid RowDefinitions="Auto, Auto, *">
+                <!-- Title & Close Button -->
+                <Grid Grid.Row="0" ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                    <VerticalStackLayout Grid.Column="0" Spacing="2">
+                        <Label Text="New Chat" FontSize="19" FontAttributes="Bold" TextColor="#111B21" />
+                        <Label Text="Select a user to chat in this channel" FontSize="12" TextColor="#667781" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="1" Text="✕" Command="{Binding CloseStartChatModalCommand}"
+                            BackgroundColor="Transparent" TextColor="#64748B" FontSize="16" WidthRequest="36" HeightRequest="36" Padding="0" />
+                </Grid>
+
+                <!-- Search Input -->
+                <Border Grid.Row="1"
+                        BackgroundColor="#F0F2F5"
+                        Stroke="#CBD5E1"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 20"
+                        Margin="0,14,0,8"
+                        Padding="12,0"
+                        HeightRequest="40">
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8" VerticalOptions="Center">
+                        <Label Grid.Column="0" Text="🔍" FontSize="14" TextColor="#94A3B8" VerticalOptions="Center" />
+                        <Entry Grid.Column="1"
+                               Text="{Binding UserSearchQuery, Mode=TwoWay}"
+                               Placeholder="Search name or email..."
+                               PlaceholderColor="#94A3B8"
+                               TextColor="#111B21"
+                               FontSize="13"
+                               VerticalOptions="Center"
+                               HeightRequest="36" />
+                    </Grid>
+                </Border>
+
+                <!-- Loading Indicator -->
+                <ActivityIndicator Grid.Row="2"
+                                   IsRunning="{Binding IsLoadingUsers}"
+                                   IsVisible="{Binding IsLoadingUsers}"
+                                   Color="#008069"
+                                   WidthRequest="32"
+                                   HeightRequest="32"
+                                   Margin="0,12"
+                                   HorizontalOptions="Center" />
+
+                <!-- No Users Found Notice -->
+                <VerticalStackLayout Grid.Row="2"
+                                     IsVisible="{Binding ShowNoUsersFound}"
+                                     Padding="16"
+                                     Spacing="6"
+                                     HorizontalOptions="Center">
+                    <Label Text="No users found" FontSize="14" FontAttributes="Bold" TextColor="#64748B" HorizontalOptions="Center" />
+                </VerticalStackLayout>
+
+                <!-- Available Users List -->
+                <CollectionView Grid.Row="2"
+                                ItemsSource="{Binding FilteredUsers}"
+                                MaximumHeightRequest="360"
+                                Margin="0,4,0,0">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AvailableUserItem">
+                            <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 10" BackgroundColor="White" Margin="0,3" Padding="10,8">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentConversationsViewModel}}, Path=StartChatWithUserCommand}" 
+                                                          CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+
+                                <Grid ColumnDefinitions="40, *, Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                    <!-- Avatar with Online Dot -->
+                                    <Grid Grid.Column="0" WidthRequest="40" HeightRequest="40">
+                                        <Border BackgroundColor="#E7F8F0" StrokeShape="RoundRectangle 20" WidthRequest="40" HeightRequest="40">
+                                            <Label Text="👤" FontSize="16" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                        <Border IsVisible="{Binding IsOnline}"
+                                                BackgroundColor="#25D366"
+                                                Stroke="White"
+                                                StrokeThickness="1.5"
+                                                StrokeShape="RoundRectangle 5"
+                                                WidthRequest="10"
+                                                HeightRequest="10"
+                                                HorizontalOptions="End"
+                                                VerticalOptions="End"
+                                                Margin="0,0,1,1" />
+                                    </Grid>
+
+                                    <!-- User Name & Email -->
+                                    <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                                            <Label Text="{Binding FullName}" FontSize="14" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
+                                            <Border BackgroundColor="#FEE2E2"
+                                                    Stroke="Transparent"
+                                                    StrokeShape="RoundRectangle 4"
+                                                    Padding="4,1"
+                                                    IsVisible="{Binding IsBlocked}"
+                                                    VerticalOptions="Center">
+                                                <Label Text="BLOCKED"
+                                                       TextColor="#DC2626"
+                                                       FontSize="9"
+                                                       FontAttributes="Bold" />
+                                            </Border>
+                                        </HorizontalStackLayout>
+                                        <Label Text="{Binding Email}" FontSize="11" TextColor="#667781" LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+
+                                    <!-- Existing Chat Tag / Chevron -->
+                                    <Label Grid.Column="2" Text="➔" FontSize="16" FontAttributes="Bold" TextColor="#008069" VerticalOptions="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
+        </Border>
+    </Grid>
+
+</ContentView>

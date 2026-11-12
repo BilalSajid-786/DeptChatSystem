@@ -79,6 +79,34 @@ public class ChatApiService
         return JsonSerializer.Deserialize<PaginatedMessagesDto>(content, JsonOptions);
     }
 
+    /// <summary>
+    /// Same request as <see cref="GetMessagesAsync"/>, but the reply (which can be several MB when it
+    /// contains voice notes) is downloaded and parsed off the UI thread, so scrolling does not freeze.
+    /// Uses its own Authorization header instead of changing the shared HttpClient's default headers.
+    /// Used for loading older messages while scrolling.
+    /// </summary>
+    public async Task<PaginatedMessagesDto?> GetMessagesInBackgroundAsync(Guid conversationId, long? beforeSequenceNumber = null, int pageSize = 25)
+    {
+        var url = beforeSequenceNumber.HasValue && beforeSequenceNumber.Value > 0
+            ? BuildUrl($"api/conversations/{conversationId}/messages?beforeSequenceNumber={beforeSequenceNumber.Value}&pageSize={pageSize}")
+            : BuildUrl($"api/conversations/{conversationId}/messages?pageSize={pageSize}");
+        var token = _authService.Token;
+
+        return await Task.Run(async () =>
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(token))
+            {
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            }
+
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            return await JsonSerializer.DeserializeAsync<PaginatedMessagesDto>(stream, JsonOptions).ConfigureAwait(false);
+        }).ConfigureAwait(true);
+    }
+
     public async Task<DepartmentDto?> CreateDepartmentAsync(string name, string description)
     {
         AttachBearerToken();

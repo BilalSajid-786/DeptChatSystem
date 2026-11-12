@@ -5,6 +5,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
 
              xmlns:vm="clr-namespace:DeptChat.Mobile.ViewModels"
+             xmlns:views="clr-namespace:DeptChat.Mobile.Views"
 
              x:Class="DeptChat.Mobile.Views.ChatRoomPage"
 
@@ -13,6 +14,136 @@
              SafeAreaEdges="None"
 
              BackgroundColor="#EFEAE2">
+
+    <!-- Message row layouts, one per message type (picked by ChatMessageTemplateSelector).
+         Previously every row built all four kinds of content (29 Android views) and hid
+         three of them; now a row only builds what its message type needs. Every layout
+         keeps the deleted label so a message deleted while on screen still updates. -->
+    <ContentPage.Resources>
+
+        <DataTemplate x:Key="TextMessageTemplate" x:DataType="vm:ChatMessageItem">
+            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
+                <!-- WhatsApp Authentic Centered Date Badge Pill -->
+                <Border Grid.Row="0" IsVisible="{Binding ShowDateHeader}" HorizontalOptions="Center" BackgroundColor="#FFFFFF" Stroke="#CBD5E1" StrokeThickness="0.6" StrokeShape="RoundRectangle 8" Padding="12,4" Margin="0,8,0,6">
+                    <Label Text="{Binding DateHeaderText}" TextColor="#54656F" FontSize="11.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Border Grid.Row="1" HorizontalOptions="{Binding Alignment}" BackgroundColor="{Binding BubbleColor}" Stroke="#CBD5E1" StrokeThickness="0.4" StrokeShape="RoundRectangle 14" Padding="10,6,10,6" Margin="0,3" MaximumWidthRequest="300">
+                    <VerticalStackLayout Spacing="3">
+                        <Label Text="↪️ Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}" />
+                        <Label Text="{Binding SenderName}" FontSize="12" TextColor="#075E54" FontAttributes="Bold" IsVisible="{Binding ShowSenderName}" />
+                        <Label Text="🚫 This message was deleted" FontSize="14" FontAttributes="Italic" TextColor="#64748B" Margin="0,2" IsVisible="{Binding IsDeleted}" />
+                        <!-- Regular Text Message -->
+                        <Label Text="{Binding TextContent}" FontSize="15" TextColor="#111B21" LineBreakMode="WordWrap" IsVisible="{Binding IsTextVisible}" />
+                        <!-- Metadata Footer (Timestamp + WhatsApp Delivery Blue Ticks) -->
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                            <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ImageMessageTemplate" x:DataType="vm:ChatMessageItem">
+            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
+                <Border Grid.Row="0" IsVisible="{Binding ShowDateHeader}" HorizontalOptions="Center" BackgroundColor="#FFFFFF" Stroke="#CBD5E1" StrokeThickness="0.6" StrokeShape="RoundRectangle 8" Padding="12,4" Margin="0,8,0,6">
+                    <Label Text="{Binding DateHeaderText}" TextColor="#54656F" FontSize="11.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Border Grid.Row="1" HorizontalOptions="{Binding Alignment}" BackgroundColor="{Binding BubbleColor}" Stroke="#CBD5E1" StrokeThickness="0.4" StrokeShape="RoundRectangle 14" Padding="10,6,10,6" Margin="0,3" MaximumWidthRequest="300">
+                    <VerticalStackLayout Spacing="3">
+                        <Label Text="↪️ Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}" />
+                        <Label Text="{Binding SenderName}" FontSize="12" TextColor="#075E54" FontAttributes="Bold" IsVisible="{Binding ShowSenderName}" />
+                        <Label Text="🚫 This message was deleted" FontSize="14" FontAttributes="Italic" TextColor="#64748B" Margin="0,2" IsVisible="{Binding IsDeleted}" />
+                        <!-- WhatsApp Style Image Message -->
+                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsImageVisible}">
+                            <Border Stroke="Transparent" StrokeShape="RoundRectangle 12" HeightRequest="200" WidthRequest="240" HorizontalOptions="Center">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenImageCommand}" />
+                                </Border.GestureRecognizers>
+                                <Image Source="{Binding ImageDisplaySource}" Aspect="AspectFit" BackgroundColor="#121B22" HorizontalOptions="Fill" VerticalOptions="Fill" />
+                            </Border>
+                            <!-- Optional Image Caption -->
+                            <Label Text="{Binding ImageCaption}" IsVisible="{Binding HasCaption}" FontSize="14" TextColor="#111B21" LineBreakMode="WordWrap" Margin="2,2,2,0" />
+                        </VerticalStackLayout>
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                            <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="DocumentMessageTemplate" x:DataType="vm:ChatMessageItem">
+            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
+                <Border Grid.Row="0" IsVisible="{Binding ShowDateHeader}" HorizontalOptions="Center" BackgroundColor="#FFFFFF" Stroke="#CBD5E1" StrokeThickness="0.6" StrokeShape="RoundRectangle 8" Padding="12,4" Margin="0,8,0,6">
+                    <Label Text="{Binding DateHeaderText}" TextColor="#54656F" FontSize="11.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Border Grid.Row="1" HorizontalOptions="{Binding Alignment}" BackgroundColor="{Binding BubbleColor}" Stroke="#CBD5E1" StrokeThickness="0.4" StrokeShape="RoundRectangle 14" Padding="10,6,10,6" Margin="0,3" MaximumWidthRequest="300">
+                    <VerticalStackLayout Spacing="3">
+                        <Label Text="↪️ Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}" />
+                        <Label Text="{Binding SenderName}" FontSize="12" TextColor="#075E54" FontAttributes="Bold" IsVisible="{Binding ShowSenderName}" />
+                        <Label Text="🚫 This message was deleted" FontSize="14" FontAttributes="Italic" TextColor="#64748B" Margin="0,2" IsVisible="{Binding IsDeleted}" />
+                        <!-- WhatsApp Style Document Message -->
+                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4" IsVisible="{Binding IsDocumentVisible}">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenDocumentCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border Grid.Column="0" BackgroundColor="#F1F5F9" Stroke="#CBD5E1" StrokeShape="RoundRectangle 8" WidthRequest="38" HeightRequest="42" VerticalOptions="Center">
+                                <Label Text="📄" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                <Label Text="{Binding DocumentFileName}" FontSize="13" FontAttributes="Bold" TextColor="#0F172A" LineBreakMode="TailTruncation" MaxLines="1" />
+                                <Label Text="{Binding DocumentFileSizeText}" FontSize="11" TextColor="#64748B" />
+                            </VerticalStackLayout>
+                        </Grid>
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                            <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="VoiceMessageTemplate" x:DataType="vm:ChatMessageItem">
+            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
+                <Border Grid.Row="0" IsVisible="{Binding ShowDateHeader}" HorizontalOptions="Center" BackgroundColor="#FFFFFF" Stroke="#CBD5E1" StrokeThickness="0.6" StrokeShape="RoundRectangle 8" Padding="12,4" Margin="0,8,0,6">
+                    <Label Text="{Binding DateHeaderText}" TextColor="#54656F" FontSize="11.5" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <Border Grid.Row="1" HorizontalOptions="{Binding Alignment}" BackgroundColor="{Binding BubbleColor}" Stroke="#CBD5E1" StrokeThickness="0.4" StrokeShape="RoundRectangle 14" Padding="10,6,10,6" Margin="0,3" MaximumWidthRequest="300">
+                    <VerticalStackLayout Spacing="3">
+                        <Label Text="↪️ Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}" />
+                        <Label Text="{Binding SenderName}" FontSize="12" TextColor="#075E54" FontAttributes="Bold" IsVisible="{Binding ShowSenderName}" />
+                        <Label Text="🚫 This message was deleted" FontSize="14" FontAttributes="Italic" TextColor="#64748B" Margin="0,2" IsVisible="{Binding IsDeleted}" />
+                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
+                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
+                            <Button Grid.Column="0" Text="{Binding PlayButtonIcon}" Command="{Binding TogglePlayVoiceCommand}" BackgroundColor="{Binding PlayButtonColor}" TextColor="White" WidthRequest="38" HeightRequest="38" CornerRadius="19" Padding="0" FontSize="15" FontAttributes="Bold" VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                                <Slider Value="{Binding PlaybackProgress}" Minimum="0" Maximum="1" MinimumTrackColor="#00A884" MaximumTrackColor="#CBD5E1" ThumbColor="#00A884" DragStarted="OnMessageSliderDragStarted" DragCompleted="OnMessageSliderDragCompleted" HeightRequest="28" Margin="0,-3" />
+                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
+                                    <Label Grid.Column="0" Text="{Binding CurrentPlaybackTime}" FontSize="11" TextColor="#667781" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="🎙️" FontSize="11" TextColor="#34B7F1" VerticalOptions="Center" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Grid>
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
+                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                            <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </DataTemplate>
+
+        <views:ChatMessageTemplateSelector x:Key="MessageTemplateSelector"
+                                           TextTemplate="{StaticResource TextMessageTemplate}"
+                                           ImageTemplate="{StaticResource ImageMessageTemplate}"
+                                           DocumentTemplate="{StaticResource DocumentMessageTemplate}"
+                                           VoiceTemplate="{StaticResource VoiceMessageTemplate}" />
+    </ContentPage.Resources>
+
+
 
 
 
@@ -284,344 +415,11 @@
 
                                 HorizontalScrollBarVisibility="Never"
 
+                                ItemTemplate="{StaticResource MessageTemplateSelector}"
+
                                 Scrolled="OnMessagesScrolled">
 
-                    <CollectionView.ItemTemplate>
-
-                        <DataTemplate x:DataType="vm:ChatMessageItem">
-
-                            <Grid RowDefinitions="Auto, Auto" RowSpacing="0" ColumnSpacing="0" HorizontalOptions="FillAndExpand">
-
-                                <!-- WhatsApp Authentic Centered Date Badge Pill -->
-
-                                <Border Grid.Row="0"
-
-                                        IsVisible="{Binding ShowDateHeader}"
-
-                                        HorizontalOptions="Center"
-
-                                        BackgroundColor="#FFFFFF"
-
-                                        Stroke="#CBD5E1"
-
-                                        StrokeThickness="0.6"
-
-                                        StrokeShape="RoundRectangle 8"
-
-                                        Padding="12,4"
-
-                                        Margin="0,8,0,6">
-
-                                    <Label Text="{Binding DateHeaderText}"
-
-                                           TextColor="#54656F"
-
-                                           FontSize="11.5"
-
-                                           FontAttributes="Bold"
-
-                                           HorizontalOptions="Center"
-
-                                           VerticalOptions="Center" />
-
-                                </Border>
-
-
-
-                                <Border Grid.Row="1"
-                                        HorizontalOptions="{Binding Alignment}"
-                                        BackgroundColor="{Binding BubbleColor}"
-                                        Stroke="#CBD5E1"
-                                        StrokeThickness="0.4"
-                                        StrokeShape="RoundRectangle 14"
-                                        Padding="10,6,10,6"
-                                        Margin="0,3"
-                                        MaximumWidthRequest="300">
-
-                                    <VerticalStackLayout Spacing="3">
-
-                                        <!-- Forwarded Indicator -->
-                                        <Label Text="↪️ Forwarded"
-                                               FontSize="11"
-                                               FontAttributes="Italic"
-                                               TextColor="#64748B"
-                                               Margin="0,0,0,2"
-                                               IsVisible="{Binding IsForwardedVisible}" />
-
-                                        <!-- Sender Name (Only shown on incoming departmental messages) -->
-                                        <Label Text="{Binding SenderName}"
-                                               FontSize="12"
-                                               TextColor="#075E54"
-                                               FontAttributes="Bold"
-                                               IsVisible="{Binding ShowSenderName}" />
-
-                                        <!-- Deleted Message Indicator -->
-                                        <Label Text="🚫 This message was deleted"
-                                               FontSize="14"
-                                               FontAttributes="Italic"
-                                               TextColor="#64748B"
-                                               Margin="0,2"
-                                               IsVisible="{Binding IsDeleted}" />
-
-
-
-                                        <!-- Regular Text Message -->
-
-                                        <Label Text="{Binding Content}"
-
-                                               FontSize="15"
-
-                                               TextColor="#111B21"
-
-                                               LineBreakMode="WordWrap"
-
-                                               IsVisible="{Binding IsTextVisible}" />
-
-
-
-                                        <!-- WhatsApp Style Image Message -->
-
-                                        <VerticalStackLayout Spacing="4" IsVisible="{Binding IsImageVisible}">
-
-                                            <Border Stroke="Transparent"
-
-                                                    StrokeShape="RoundRectangle 12"
-
-                                                    HeightRequest="200"
-
-                                                    WidthRequest="240"
-
-                                                    HorizontalOptions="Center">
-
-                                                <Border.GestureRecognizers>
-
-                                                    <TapGestureRecognizer Command="{Binding OpenImageCommand}" />
-
-                                                </Border.GestureRecognizers>
-
-                                                <Image Source="{Binding ImageUrl}"
-
-                                                       Aspect="AspectFit"
-
-                                                       BackgroundColor="#121B22"
-
-                                                       HorizontalOptions="Fill"
-
-                                                       VerticalOptions="Fill" />
-
-                                            </Border>
-
-
-
-                                            <!-- Optional Image Caption -->
-
-                                            <Label Text="{Binding ImageCaption}"
-
-                                                   IsVisible="{Binding HasCaption}"
-
-                                                   FontSize="14"
-
-                                                   TextColor="#111B21"
-
-                                                   LineBreakMode="WordWrap"
-
-                                                   Margin="2,2,2,0" />
-
-                                        </VerticalStackLayout>
-
-
-
-                                        <!-- WhatsApp Style Document Message -->
-
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="10" WidthRequest="220" Padding="4,4" IsVisible="{Binding IsDocumentVisible}">
-
-                                            <Grid.GestureRecognizers>
-
-                                                <TapGestureRecognizer Command="{Binding OpenDocumentCommand}" />
-
-                                            </Grid.GestureRecognizers>
-
-
-
-                                            <!-- File Icon Badge -->
-
-                                            <Border Grid.Column="0"
-
-                                                    BackgroundColor="#F1F5F9"
-
-                                                    Stroke="#CBD5E1"
-
-                                                    StrokeShape="RoundRectangle 8"
-
-                                                    WidthRequest="38"
-
-                                                    HeightRequest="42"
-
-                                                    VerticalOptions="Center">
-
-                                                <Label Text="📄"
-
-                                                       FontSize="20"
-
-                                                       HorizontalOptions="Center"
-
-                                                       VerticalOptions="Center" />
-
-                                            </Border>
-
-
-
-                                            <!-- File Details -->
-
-                                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
-
-                                                <Label Text="{Binding DocumentFileName}"
-
-                                                       FontSize="13"
-
-                                                       FontAttributes="Bold"
-
-                                                       TextColor="#0F172A"
-
-                                                       LineBreakMode="TailTruncation"
-
-                                                       MaxLines="1" />
-
-                                                <Label Text="{Binding DocumentFileSizeText}"
-
-                                                       FontSize="11"
-
-                                                       TextColor="#64748B" />
-
-                                            </VerticalStackLayout>
-
-                                        </Grid>
-
-
-
-                                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
-
-                                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
-
-                                            <!-- Circular Play/Pause Button -->
-
-                                            <Button Grid.Column="0"
-
-                                                    Text="{Binding PlayButtonIcon}"
-
-                                                    Command="{Binding TogglePlayVoiceCommand}"
-
-                                                    BackgroundColor="{Binding PlayButtonColor}"
-
-                                                    TextColor="White"
-
-                                                    WidthRequest="38"
-
-                                                    HeightRequest="38"
-
-                                                    CornerRadius="19"
-
-                                                    Padding="0"
-
-                                                    FontSize="15"
-
-                                                    FontAttributes="Bold"
-
-                                                    VerticalOptions="Center" />
-
-
-
-                                            <!-- Waveform Draggable Scrubber & Duration -->
-
-                                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
-
-                                                <!-- Draggable Slider Scrubber -->
-
-                                                <Slider Value="{Binding PlaybackProgress}"
-
-                                                        Minimum="0"
-
-                                                        Maximum="1"
-
-                                                        MinimumTrackColor="#00A884"
-
-                                                        MaximumTrackColor="#CBD5E1"
-
-                                                        ThumbColor="#00A884"
-
-                                                        DragStarted="OnMessageSliderDragStarted"
-
-                                                        DragCompleted="OnMessageSliderDragCompleted"
-
-                                                        HeightRequest="28"
-
-                                                        Margin="0,-3" />
-
-
-
-                                                <!-- Duration + Mic Badge -->
-
-                                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
-
-                                                    <Label Grid.Column="0" 
-
-                                                           Text="{Binding CurrentPlaybackTime}" 
-
-                                                           FontSize="11" 
-
-                                                           TextColor="#667781" 
-
-                                                           FontAttributes="Bold" 
-
-                                                           VerticalOptions="Center" />
-
-                                                    <Label Grid.Column="1" 
-
-                                                           Text="🎙️" 
-
-                                                           FontSize="11" 
-
-                                                           TextColor="#34B7F1"
-
-                                                           VerticalOptions="Center" />
-
-                                                </Grid>
-
-                                            </VerticalStackLayout>
-
-                                        </Grid>
-
-
-
-                                        <!-- Metadata Footer (Timestamp + WhatsApp Delivery Blue Ticks) -->
-
-                                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
-
-                                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
-
-                                            <Label Text="{Binding StatusIcon}" 
-
-                                                   TextColor="{Binding StatusColor}" 
-
-                                                   FontSize="11" 
-
-                                                   FontAttributes="Bold"
-
-                                                   VerticalOptions="Center"
-
-                                                   IsVisible="{Binding IsStatusVisible}" />
-
-                                        </HorizontalStackLayout>
-
-                                    </VerticalStackLayout>
-
-                                </Border>
-
-                        </Grid>
-
-                    </DataTemplate>
-
-                </CollectionView.ItemTemplate>
+                    <!-- Row layout per message type: see MessageTemplateSelector in Resources above -->
 
                 </CollectionView>
 

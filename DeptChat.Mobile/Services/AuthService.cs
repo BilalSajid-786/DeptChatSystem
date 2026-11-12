@@ -191,6 +191,8 @@ public class AuthService
         catch { }
 
         _ = _outboxService?.ClearAllAsync();
+        ConversationListCache.Clear();
+        ChatImageThumbnails.Clear();
     }
 
     public async Task<(bool Success, string Message)> ChangePasswordAsync(string currentPassword, string newPassword)

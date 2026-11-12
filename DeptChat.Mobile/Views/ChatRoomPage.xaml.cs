@@ -85,11 +85,19 @@ public partial class ChatRoomPage : ContentPage
             _anchorPosition = lm.FindFirstVisibleItemPosition();
             var view = lm.FindViewByPosition(_anchorPosition);
             _anchorTopOffset = view?.Top ?? 0;
-            try
+
+            // SuppressLayout(true) also cancels any scroll in progress, so only use it when the
+            // list is at rest. While the user is scrolling, RecyclerView batches the inserts into
+            // its next layout pass on its own.
+            _layoutSuppressedForInsert = rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle;
+            if (_layoutSuppressedForInsert)
             {
-                rv.SuppressLayout(true);
+                try
+                {
+                    rv.SuppressLayout(true);
+                }
+                catch { }
             }
-            catch { }
         }
 #endif
     }
@@ -100,16 +108,27 @@ public partial class ChatRoomPage : ContentPage
         if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
             rv.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager lm)
         {
-            try
+            if (_layoutSuppressedForInsert)
             {
-                rv.SuppressLayout(false);
+                try
+                {
+                    rv.SuppressLayout(false);
+                }
+                catch { }
+                _layoutSuppressedForInsert = false;
             }
-            catch { }
 
             if (insertedCount > 0 && _anchorPosition >= 0)
             {
-                int restoredPosition = _anchorPosition + insertedCount;
-                lm.ScrollToPositionWithOffset(restoredPosition, _anchorTopOffset);
+                // Older messages now usually arrive while the user is still scrolling up
+                // (they load ~10 rows before the top). Forcing a position during a fling would
+                // stop the scroll, so only restore it when the list is at rest; while scrolling,
+                // RecyclerView keeps the visible rows in place itself.
+                if (rv.ScrollState == AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+                {
+                    int restoredPosition = _anchorPosition + insertedCount;
+                    lm.ScrollToPositionWithOffset(restoredPosition, _anchorTopOffset);
+                }
                 _anchorPosition = -1;
             }
         }
@@ -131,7 +150,9 @@ public partial class ChatRoomPage : ContentPage
             rv.HorizontalScrollBarEnabled = false;
             rv.HasFixedSize = false;
             rv.NestedScrollingEnabled = false;
-            rv.SetItemViewCacheSize(20);
+            // Smaller caches now that each message type has its own (lighter) row layout:
+            // fewer hidden rows and pictures kept in memory means less memory cleanup while scrolling.
+            rv.SetItemViewCacheSize(10);
             rv.SetItemAnimator(null);
 
             // Expand Android RecycledViewPool so cells are recycled instead of re-inflated
@@ -140,7 +161,7 @@ public partial class ChatRoomPage : ContentPage
             {
                 for (int vt = 0; vt <= 15; vt++)
                 {
-                    pool.SetMaxRecycledViews(vt, 25);
+                    pool.SetMaxRecycledViews(vt, 15);
                 }
             }
 
@@ -224,6 +245,11 @@ public partial class ChatRoomPage : ContentPage
 
     private DateTime _lastOlderMessagesFetchTime = DateTime.MinValue;
 
+    // How many rows from the top the next page of older messages starts loading.
+    private const int OlderMessagesPrefetchRows = 10;
+
+    private bool _layoutSuppressedForInsert;
+
     private void OnMessagesScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
         if (_vm == null || _vm.Messages.Count == 0) return;
@@ -246,12 +272,13 @@ public partial class ChatRoomPage : ContentPage
         // Only trigger older messages if:
         // 1. Initial scroll to bottom has completed AND user is NOT looking at bottom
         // 2. We have at least 20 messages loaded
-        // 3. User is scrolling near top (FirstVisibleItemIndex <= 2, VerticalDelta < 0)
+        // 3. User is scrolling up and about 10 rows from the top (FirstVisibleItemIndex <= 10, VerticalDelta < 0).
+        //    Starting this early means the next page is usually loaded before the user reaches the top.
         // 4. Server confirmed there are more older messages
         if (_hasInitiallyScrolledToBottom &&
             !_isUserNearBottom &&
             _vm.Messages.Count >= 20 &&
-            e.FirstVisibleItemIndex <= 2 &&
+            e.FirstVisibleItemIndex <= OlderMessagesPrefetchRows &&
             e.VerticalDelta < 0 &&
             _vm.HasMoreOlderMessages &&
             !_vm.IsLoadingOlderMessages &&
@@ -413,6 +440,9 @@ public partial class ChatRoomPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+#if DEPTCHAT_TIMING
+        StartChatTiming();
+#endif
         _hasInitiallyScrolledToBottom = false;
         _isUserNearBottom = true;
 
@@ -456,6 +486,9 @@ public partial class ChatRoomPage : ContentPage
 
     protected override async void OnDisappearing()
     {
+#if DEPTCHAT_TIMING
+        StopChatTiming();
+#endif
         base.OnDisappearing();
         _hasInitiallyScrolledToBottom = false;
         _isUserNearBottom = true;
@@ -471,6 +504,68 @@ public partial class ChatRoomPage : ContentPage
             await vm.OnDisappearingAsync();
         }
     }
+#if DEPTCHAT_TIMING
+    // ---------------------------------------------------------------------------------
+    // Internal chat timing box. Compiled only with -p:DeptChatTiming=true.
+    // Lists each freeze over 100 ms with GC runs (gen0/gen1/gen2) and the kinds of rows
+    // shown during it (t=text, i=image, d=document, v=voice). Tap the box to copy it.
+    // ---------------------------------------------------------------------------------
+    private Label? _chatTimingLabel;
+    private IDispatcherTimer? _chatTimingTimer;
+
+    private void StartChatTiming()
+    {
+        Services.PerfTrace.MarkTap("Chat opened");
+        Services.PerfTrace.StartFrames();
+
+        if (_chatTimingLabel == null && Content is Grid root)
+        {
+            _chatTimingLabel = new Label
+            {
+                FontFamily = "monospace",
+                FontSize = 9,
+                TextColor = Colors.White,
+                BackgroundColor = Color.FromArgb("#CC000000"),
+                Padding = new Thickness(6, 4),
+                Margin = new Thickness(6, 4),
+                VerticalOptions = LayoutOptions.Start,
+                HorizontalOptions = LayoutOptions.Start,
+                MaximumWidthRequest = 340,
+                ZIndex = 1000
+            };
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += async (_, _) =>
+            {
+                try
+                {
+                    await Clipboard.Default.SetTextAsync(Services.PerfTrace.Snapshot());
+                    _chatTimingLabel.Text = "Copied to clipboard ✓" + Environment.NewLine + Services.PerfTrace.Snapshot();
+                }
+                catch { }
+            };
+            _chatTimingLabel.GestureRecognizers.Add(tap);
+            Grid.SetRow(_chatTimingLabel, Math.Min(1, Math.Max(0, root.RowDefinitions.Count - 1)));
+            root.Children.Add(_chatTimingLabel);
+        }
+
+        _chatTimingTimer ??= Dispatcher.CreateTimer();
+        _chatTimingTimer.Interval = TimeSpan.FromSeconds(1);
+        _chatTimingTimer.Tick -= OnChatTimingTick;
+        _chatTimingTimer.Tick += OnChatTimingTick;
+        _chatTimingTimer.Start();
+    }
+
+    private void StopChatTiming()
+    {
+        _chatTimingTimer?.Stop();
+        Services.PerfTrace.StopFrames();
+    }
+
+    private void OnChatTimingTick(object? sender, EventArgs e)
+    {
+        if (_chatTimingLabel != null) _chatTimingLabel.Text = Services.PerfTrace.Snapshot();
+    }
+#endif
 }
 
 #if ANDROID
@@ -627,5 +722,6 @@ public class OneShotBottomScrollLayoutListener : Java.Lang.Object, Android.Views
         _view.RemoveOnLayoutChangeListener(this);
         _callback();
     }
+
 }
 #endif

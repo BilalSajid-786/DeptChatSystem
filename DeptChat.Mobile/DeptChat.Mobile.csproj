@@ -28,6 +28,12 @@
 		<WindowsAppSDKSelfContained Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</WindowsAppSDKSelfContained>
 	</PropertyGroup>
 
+	<!-- Internal diagnostics only: build with -p:DeptChatTiming=true to show the timing overlay.
+	     Off by default, so normal builds contain none of the timing code. -->
+	<PropertyGroup Condition="'$(DeptChatTiming)' == 'true'">
+		<DefineConstants>$(DefineConstants);DEPTCHAT_TIMING</DefineConstants>
+	</PropertyGroup>
+
 	<!-- Platform Specific Code Exclusions -->
 	<ItemGroup Condition="$(TargetFramework.StartsWith('net10.0-android')) != true">
 		<Compile Remove="Platforms\Android\**" />
@@ -94,6 +100,10 @@
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Process" Version="2.11.0.1" />
     <PackageReference Include="Xamarin.AndroidX.Lifecycle.Runtime" Version="2.11.0.1" />
     <GoogleServicesJson Include="Platforms\Android\google-services.json" />
+    <!-- .NET (Mono) GC: larger nursery so short-lived objects are cleaned up less often.
+         Each cleanup on Android also checks every view linked to Java, which showed up as
+         ~280 ms pauses while scrolling chats. Sets MONO_GC_PARAMS=nursery-size=16m (see Platforms/Android/environment.txt). -->
+    <AndroidEnvironment Include="Platforms\Android\environment.txt" />
 </ItemGroup>
 
 
