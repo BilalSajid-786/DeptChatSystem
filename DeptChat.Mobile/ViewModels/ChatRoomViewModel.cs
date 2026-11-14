@@ -650,7 +650,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 }
                 else if (sync.Messages.Count > 0)
                 {
-                    MainThread.BeginInvokeOnMainThread(() =>
+                    MainThread.BeginInvokeOnMainThread(() => RunBulkUpdate(() =>
                     {
                         foreach (var m in sync.Messages)
                         {
@@ -675,7 +675,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                             }
                         }
                         SortMessages();
-                    });
+                    }));
 
                     if (sync.LastSequenceNumber > _lastSequenceNumber)
                     {
@@ -737,7 +737,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         try
         {
-            var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 50);
+            // First page: 25 messages (same size as older pages) so the chat fills sooner;
+            // scrolling up still loads older messages.
+            var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
             if (paged != null)
             {
                 HasMoreOlderMessages = paged.HasMore;
@@ -748,7 +750,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
                 if (paged.Messages.Count > 0)
                 {
-                    MainThread.BeginInvokeOnMainThread(() =>
+                    MainThread.BeginInvokeOnMainThread(() => RunBulkUpdate(() =>
                     {
                         foreach (var m in paged.Messages)
                         {
@@ -774,7 +776,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                         }
                         SortMessages();
                         TriggerScrollToBottom();
-                    });
+                    }));
 
                     if (paged.LatestSequenceNumber.HasValue && paged.LatestSequenceNumber.Value > _lastSequenceNumber)
                     {
@@ -1234,6 +1236,27 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
     public void TriggerScrollToBottom() => RequestScrollToBottom?.Invoke();
 
+    /// <summary>
+    /// True while many messages are being added at once (opening a chat, syncing). The page then
+    /// skips its per-message scroll-to-bottom and scrolls once when <see cref="BulkLoadFinished"/> fires.
+    /// </summary>
+    public bool IsBulkLoading { get; private set; }
+    public event Action? BulkLoadFinished;
+
+    private void RunBulkUpdate(Action update)
+    {
+        IsBulkLoading = true;
+        try
+        {
+            update();
+        }
+        finally
+        {
+            IsBulkLoading = false;
+            BulkLoadFinished?.Invoke();
+        }
+    }
+
     // Voice message recording & preview states
     [ObservableProperty]
     private bool _isRecordingVoice;
@@ -1423,11 +1446,14 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
                 PreComputeDateHeaders(items);
 
-                Messages.Clear();
-                foreach (var item in items)
+                RunBulkUpdate(() =>
                 {
-                    Messages.Add(item);
-                }
+                    Messages.Clear();
+                    foreach (var item in items)
+                    {
+                        Messages.Add(item);
+                    }
+                });
                 TriggerScrollToBottom();
             });
         }
@@ -1471,6 +1497,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         }
         else
         {
+            // Saved messages are on screen: hide the "Loading messages..." card the page may have
+            // shown during the slide-in; the small "Updating" pill shows instead.
+            IsLoadingMessages = false;
             IsSyncingMessages = true;
         }
 
@@ -1484,8 +1513,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             try
             {
-                // Yield 400ms so UI thread can complete transition, layout, and bottom scroll with 0% CPU contention!
-                await Task.Delay(400, ct);
+                // Short yield so the saved messages finish drawing first. (The page now starts this only
+                // after the slide-in has finished, so the old 400 ms wait is no longer needed.)
+                await Task.Delay(150, ct);
                 if (ct.IsCancellationRequested) return;
 
                 if (isCustomer && Guid.TryParse(DepartmentId, out var deptGuid) && _apiService != null)

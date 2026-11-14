@@ -49,6 +49,9 @@ public partial class ChatRoomPage : ContentPage
         _vm.PreparingOlderMessagesInsert += OnPreparingOlderMessagesInsert;
         _vm.OlderMessagesInserted -= OnOlderMessagesInserted;
         _vm.OlderMessagesInserted += OnOlderMessagesInserted;
+
+        _vm.BulkLoadFinished -= OnBulkLoadFinished;
+        _vm.BulkLoadFinished += OnBulkLoadFinished;
     }
 
     private void DetachScrollHandler()
@@ -60,10 +63,19 @@ public partial class ChatRoomPage : ContentPage
         _vm.Messages.CollectionChanged -= OnMessagesCollectionChanged;
         _vm.PreparingOlderMessagesInsert -= OnPreparingOlderMessagesInsert;
         _vm.OlderMessagesInserted -= OnOlderMessagesInserted;
+        _vm.BulkLoadFinished -= OnBulkLoadFinished;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // The forward popup is built the first time it is opened, not on every chat open.
+        if (e.PropertyName == nameof(ViewModels.ChatRoomViewModel.IsForwardModalVisible)
+            && _vm?.IsForwardModalVisible == true
+            && ForwardModalHost.Content == null)
+        {
+            ForwardModalHost.Content = new ForwardModalView();
+        }
+
         if (e.PropertyName == nameof(ViewModels.ChatRoomViewModel.IsLoadingMessages) && _vm?.IsLoadingMessages == false)
         {
             if (_vm.Messages.Count > 0 && !_hasInitiallyScrolledToBottom)
@@ -198,9 +210,21 @@ public partial class ChatRoomPage : ContentPage
         return null;
     }
 
+    // Set when messages were added during a bulk load; one scroll happens when it finishes.
+    private bool _bulkAddPending;
+
     private void OnMessagesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         if (_vm?.IsLoadingOlderMessages == true || _vm?.IsLoadingMessages == true) return;
+
+        // During a bulk load (opening a chat, syncing) messages arrive many at a time; scrolling for
+        // each one caused dozens of layout passes. Remember it and scroll once at the end instead.
+        if (_vm?.IsBulkLoading == true)
+        {
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add) _bulkAddPending = true;
+            return;
+        }
+
 
         if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
         {
@@ -289,6 +313,25 @@ public partial class ChatRoomPage : ContentPage
                 _lastOlderMessagesFetchTime = DateTime.UtcNow;
                 _vm.LoadOlderMessagesCommand.Execute(null);
             }
+        }
+    }
+
+    private void OnBulkLoadFinished()
+    {
+        if (!_bulkAddPending) return;
+        _bulkAddPending = false;
+
+        // Same rule as for a single new message: only follow to the bottom if the user is there.
+        if (_isUserNearBottom)
+        {
+#if ANDROID
+            if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvCheck &&
+                rvCheck.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle)
+            {
+                return;
+            }
+#endif
+            ScrollToBottom(animate: false);
         }
     }
 
@@ -437,7 +480,7 @@ public partial class ChatRoomPage : ContentPage
         });
     }
 
-    protected override async void OnAppearing()
+    protected override void OnAppearing()
     {
         base.OnAppearing();
 #if DEPTCHAT_TIMING
@@ -467,25 +510,53 @@ public partial class ChatRoomPage : ContentPage
         {
             _vm = vm;
             AttachScrollHandler();
-            await vm.InitializeAsync();
 
-            // Auto-scroll to the very last message when opening a chat
-            ScrollToBottom(animate: false);
+            // Show the chat screen first and load/draw the messages right after the slide-in
+            // (OnNavigatedTo), so building message rows no longer delays the screen opening.
+            if (vm.Messages.Count == 0)
+            {
+                vm.IsLoadingMessages = true; // "Loading messages..." until the first messages are shown
+            }
+            _initializePending = true;
+
+            // Safety net in case OnNavigatedTo does not arrive (e.g. returning from a popup page).
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(700), RunPendingInitialize);
+        }
+    }
+
+    protected override void OnNavigatedTo(NavigatedToEventArgs args)
+    {
+        base.OnNavigatedTo(args);
+        RunPendingInitialize();
+    }
+
+    private bool _initializePending;
+
+    private async void RunPendingInitialize()
+    {
+        if (!_initializePending || _vm == null) return;
+        _initializePending = false;
+
+        var vm = _vm;
+        await vm.InitializeAsync();
+
+        // Auto-scroll to the very last message when opening a chat
+        ScrollToBottom(animate: false);
 
 #if ANDROID
-            if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
-            {
-                rvInitial.Post(() => ScrollToBottom(animate: false));
-                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 80);
-                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 200);
-                rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 400);
-            }
-#endif
+        if (MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rvInitial)
+        {
+            rvInitial.Post(() => ScrollToBottom(animate: false));
+            rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 80);
+            rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 200);
+            rvInitial.PostDelayed(() => ScrollToBottom(animate: false), 400);
         }
+#endif
     }
 
     protected override async void OnDisappearing()
     {
+        _initializePending = false;
 #if DEPTCHAT_TIMING
         StopChatTiming();
 #endif
