@@ -50,3 +50,9 @@ $RECYCLE.BIN/
 
 ## Claude Code local settings
 .claude/settings.local.json
+
+# Local database backups (contain customer data; never commit)
+backups/
+
+# Local one-off production scripts (may contain personal data / password hashes; never commit)
+ops/
