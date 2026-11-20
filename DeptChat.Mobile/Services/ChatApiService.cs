@@ -57,6 +57,26 @@ public class ChatApiService
         return JsonSerializer.Deserialize<List<ConversationSummaryDto>>(content, JsonOptions) ?? new();
     }
 
+    /// <summary>
+    /// One conversation's details (existing server endpoint, which checks the caller may see it).
+    /// Returns null when not found / not allowed / on any error.
+    /// </summary>
+    public async Task<ConversationSummaryDto?> GetConversationByIdAsync(Guid conversationId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl($"api/conversations/{conversationId}"));
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<ConversationSummaryDto>(content, JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task<ConversationSyncResponseDto?> SyncDeltaAsync(Guid conversationId, long sinceSequenceNumber)
     {
         AttachBearerToken();

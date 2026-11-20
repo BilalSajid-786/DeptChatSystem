@@ -223,7 +223,12 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived += HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead += HandleMessagesRead;
+        _signalRService.OnReconnected += HandleCatchUp;
+        Connectivity.ConnectivityChanged += HandleConnectivityChanged;
+        App.AppResumed += HandleCatchUp;
         _isSubscribed = true;
+
+        StartPeriodicRefresh();
     }
 
     public void UnsubscribeFromEvents()
@@ -234,10 +239,53 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived -= HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead -= HandleMessagesRead;
+        _signalRService.OnReconnected -= HandleCatchUp;
+        Connectivity.ConnectivityChanged -= HandleConnectivityChanged;
+        App.AppResumed -= HandleCatchUp;
         _isSubscribed = false;
 
         _reloadDebounceCts?.Cancel();
         _reloadDebounceCts = null;
+        _periodicRefreshCts?.Cancel();
+        _periodicRefreshCts = null;
+    }
+
+    // Catch-up: real-time events sent while the connection was down (reconnecting, no internet,
+    // app in the background) are never replayed, so the list reloads from the server when the
+    // connection, the internet or the app comes back, and every 45 s as a safety net.
+    private const int PeriodicRefreshMs = 45_000;
+    private CancellationTokenSource? _periodicRefreshCts;
+
+    private void HandleCatchUp() => ScheduleReload();
+
+    private void HandleConnectivityChanged(object? sender, ConnectivityChangedEventArgs e)
+    {
+        if (e.NetworkAccess == NetworkAccess.Internet) ScheduleReload();
+    }
+
+    private void StartPeriodicRefresh()
+    {
+        _periodicRefreshCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _periodicRefreshCts = cts;
+
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            while (!cts.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(PeriodicRefreshMs, cts.Token);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+
+                if (cts.IsCancellationRequested || !_isSubscribed) return;
+                if (App.IsInForeground) await LoadCoreAsync(queueIfBusy: false);
+            }
+        });
     }
 
     public DepartmentConversationsViewModel()

@@ -33,6 +33,9 @@ public partial class DepartmentsPage : ContentPage
             Console.WriteLine($"DEBUG_PAGE: OnAppearing vm found. Initial vm.IsAdmin={vm.IsAdmin}");
             vm.RefreshUserInfo();
             vm.CheckPendingShare();
+
+            // A tapped message notification opens its chat once this screen is up (after login).
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(300), () => _ = NotificationNavigation.OpenPendingAsync());
             Console.WriteLine($"DEBUG_PAGE: OnAppearing after Refresh. vm.IsAdmin={vm.IsAdmin}");
 
             if (vm.HasListForCurrentUser)

@@ -47,7 +47,12 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
                 body = message.Data["body"];
         }
 
-        SendNotification(title, SanitizeNotificationBody(body));
+        string? tappedConversationId = null;
+        if (message.Data != null && message.Data.TryGetValue("conversationId", out var dataConversationId))
+        {
+            tappedConversationId = dataConversationId;
+        }
+        SendNotification(title, SanitizeNotificationBody(body), tappedConversationId);
     }
 
     private static string SanitizeNotificationBody(string body)
@@ -78,11 +83,16 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         return body;
     }
 
-    private void SendNotification(string title, string body)
+    private void SendNotification(string title, string body, string? conversationId = null)
     {
+        var notificationId = Random.Shared.Next(1000, 9999);
+
         var intent = new Intent(this, typeof(MainActivity));
         intent.AddFlags(ActivityFlags.ClearTop | ActivityFlags.SingleTop);
-        var pendingIntent = PendingIntent.GetActivity(this, 0, intent, PendingIntentFlags.OneShot | PendingIntentFlags.Immutable);
+        // Tapping opens this chat (handled in MainActivity, same key as Android's own notifications).
+        if (!string.IsNullOrEmpty(conversationId)) intent.PutExtra("conversationId", conversationId);
+        // Own request code per notification, so each one opens its own chat.
+        var pendingIntent = PendingIntent.GetActivity(this, notificationId, intent, PendingIntentFlags.OneShot | PendingIntentFlags.Immutable);
 
         var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
         if (notificationManager == null) return;
@@ -108,6 +118,6 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
             .SetDefaults((int)NotificationDefaults.All)
             .SetContentIntent(pendingIntent);
 
-        notificationManager.Notify(Random.Shared.Next(1000, 9999), builder.Build());
+        notificationManager.Notify(notificationId, builder.Build());
     }
 }

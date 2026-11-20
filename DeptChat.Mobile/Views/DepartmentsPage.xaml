@@ -285,7 +285,24 @@
 
             <!-- Department Cards List -->
 
-            <CollectionView Grid.Row="1" ItemsSource="{Binding Departments}" Margin="16,8">
+            <Grid Grid.Row="1" RowDefinitions="Auto, *">
+
+            <!-- A reload failed: the last list stays on screen with a small refresh banner -->
+            <Border Grid.Row="0" IsVisible="{Binding ShowRefreshFailed}" BackgroundColor="#FFF4E5" Stroke="#F5C27A" StrokeThickness="1"
+                    StrokeShape="RoundRectangle 10" Margin="16,8,16,0" Padding="12,8">
+                <Grid ColumnDefinitions="*, Auto" ColumnSpacing="10">
+                    <Label Text="Couldn't refresh. Showing the last list." FontSize="12" TextColor="#7A4B00" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="Refresh" FontSize="12" FontAttributes="Bold" TextColor="#008069" VerticalOptions="Center" Padding="6,4">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding LoadDepartmentsCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </Grid>
+            </Border>
+
+            <!-- Pull down to refresh -->
+            <RefreshView Grid.Row="1" Command="{Binding PullToRefreshCommand}" IsRefreshing="{Binding IsRefreshing}" RefreshColor="#008069">
+            <CollectionView ItemsSource="{Binding Departments}" Margin="16,8">
 
                 <CollectionView.ItemTemplate>
 
@@ -380,6 +397,8 @@
                 </CollectionView.ItemTemplate>
 
             </CollectionView>
+            </RefreshView>
+            </Grid>
 
             <!-- Loading Indicator Overlay -->
 
@@ -398,6 +417,17 @@
                                HorizontalOptions="Center"
 
                                VerticalOptions="Center" />
+
+            <!-- Loading failed and nothing to show: message + Try again (never placeholder departments) -->
+            <VerticalStackLayout Grid.Row="1" IsVisible="{Binding ShowLoadError}" Spacing="10" Padding="32,0"
+                                 HorizontalOptions="Center" VerticalOptions="Center">
+                <Label Text="⚠️" FontSize="36" HorizontalOptions="Center" />
+                <Label Text="Couldn't load departments" FontSize="16" FontAttributes="Bold" TextColor="#111B21" HorizontalOptions="Center" />
+                <Label Text="Check your internet connection and try again." FontSize="13" TextColor="#667781"
+                       HorizontalTextAlignment="Center" HorizontalOptions="Center" />
+                <Button Text="Try again" Command="{Binding LoadDepartmentsCommand}" BackgroundColor="#008069" TextColor="White"
+                        CornerRadius="20" Padding="24,0" HeightRequest="40" HorizontalOptions="Center" Margin="0,6,0,0" />
+            </VerticalStackLayout>
 
         </Grid>
 

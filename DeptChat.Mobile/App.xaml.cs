@@ -28,6 +28,9 @@ public partial class App : Application
                 await Task.Delay(400);
                 await CheckAndEnforceUpdateAsync();
             });
+#if DEPTCHAT_DIAG
+            _ = FreezeReport.CheckAndOfferAsync();
+#endif
         };
 
         window.Resumed += (s, e) =>
@@ -50,10 +53,24 @@ public partial class App : Application
         _ = CheckAndEnforceUpdateAsync();
     }
 
+    /// <summary>False while the app is in the background. Lists use it to skip timed refreshes.</summary>
+    public static bool IsInForeground { get; private set; } = true;
+
+    /// <summary>Raised when the app comes back to the foreground, so open lists can catch up on missed messages.</summary>
+    public static event Action? AppResumed;
+
+    protected override void OnSleep()
+    {
+        base.OnSleep();
+        IsInForeground = false;
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
+        IsInForeground = true;
         _ = CheckAndEnforceUpdateAsync();
+        AppResumed?.Invoke();
     }
 
     /// <summary>

@@ -20,6 +20,7 @@ public partial class ChatMessageItem : ObservableObject
     public static Action<ChatMessageItem>? OnOpenImage;
     public static Action<ChatMessageItem>? OnOpenDocument;
     public static Action<ChatMessageItem>? OnTogglePlayVoice;
+    public static Action<ChatMessageItem>? OnCycleVoiceSpeed;
 
     [RelayCommand]
     private void OpenImage() => OnOpenImage?.Invoke(this);
@@ -29,6 +30,9 @@ public partial class ChatMessageItem : ObservableObject
 
     [RelayCommand]
     private void TogglePlayVoice() => OnTogglePlayVoice?.Invoke(this);
+
+    [RelayCommand]
+    private void CycleVoiceSpeed() => OnCycleVoiceSpeed?.Invoke(this);
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SenderId { get; set; }
@@ -283,6 +287,61 @@ public partial class ChatMessageItem : ObservableObject
         {
             SetProperty(ref _isPlaying, value);
             OnPropertyChanged(nameof(PlayButtonIcon));
+            OnPropertyChanged(nameof(ShowMicIcon));
+        }
+    }
+
+    /// <summary>The mic icon shows when idle; the speed button (1x / 1.5x / 2x) takes its place while playing.</summary>
+    public bool ShowMicIcon => !IsPlaying;
+
+    private string _speedText = "1x";
+    public string SpeedText
+    {
+        get => _speedText;
+        set => SetProperty(ref _speedText, value);
+    }
+
+    /// <summary>Initial shown in the voice message's round picture (there are no profile photos).</summary>
+    public string VoiceAvatarInitial
+    {
+        get
+        {
+            var name = SenderName?.Trim();
+            return string.IsNullOrEmpty(name) ? "?" : name[..1].ToUpperInvariant();
+        }
+    }
+
+    private byte[]? _waveformLevels;
+    /// <summary>Real bar heights read from the audio (null until ready; placeholder bars meanwhile).</summary>
+    public byte[]? WaveformLevels
+    {
+        get => _waveformLevels;
+        set => SetProperty(ref _waveformLevels, value);
+    }
+
+    /// <summary>Set when the audio could not be analysed, so it is not retried in this chat visit.</summary>
+    public bool WaveformUnavailable { get; set; }
+
+    private int? _waveSeed;
+    /// <summary>
+    /// Picks the waveform bar pattern. Stable for the same message across app restarts
+    /// (string.GetHashCode is not), so a voice message always shows the same shape.
+    /// </summary>
+    public int WaveSeed
+    {
+        get
+        {
+            if (_waveSeed == null)
+            {
+                var key = !string.IsNullOrEmpty(ClientGeneratedId) ? ClientGeneratedId : Id.ToString();
+                uint hash = 2166136261;
+                foreach (var ch in key)
+                {
+                    hash = (hash ^ ch) * 16777619;
+                }
+                _waveSeed = (int)(hash & 0x7FFFFFFF);
+            }
+            return _waveSeed.Value;
         }
     }
 
@@ -600,6 +659,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         SortMessages();
     }
 
+    // How many of the latest messages are checked for out-of-date ticks on each sync.
+    private const int StaleTickCheckWindow = 30;
+
     public async Task SyncMissedMessagesAsync()
     {
         if (_apiService == null) return;
@@ -626,6 +688,25 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             {
                 await LoadInitialMessagesAsync();
                 return;
+            }
+
+            // Ticks on my own recent messages that are not blue yet may be out of date: a "read" update
+            // only reaches this phone while this chat is open, and missed ones are never re-sent.
+            // Fetch again from just before the oldest of them so the server's current tick is shown
+            // (and saved). Only the last few messages are checked, so this stays small.
+            long staleTickFromSeq;
+            lock (Messages)
+            {
+                staleTickFromSeq = Messages
+                    .Skip(Math.Max(0, Messages.Count - StaleTickCheckWindow))
+                    .Where(m => m.IsOutgoing && m.SequenceNumber > 0 && m.Status < MessageDeliveryStatus.Read)
+                    .Select(m => m.SequenceNumber)
+                    .DefaultIfEmpty(0)
+                    .Min();
+            }
+            if (staleTickFromSeq > 0 && staleTickFromSeq - 1 < syncFromSeq)
+            {
+                syncFromSeq = staleTickFromSeq - 1;
             }
 
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
@@ -1326,6 +1407,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         ChatMessageItem.OnOpenImage = item => _ = OpenImageAsync(item);
         ChatMessageItem.OnOpenDocument = item => _ = OpenDocumentAsync(item);
         ChatMessageItem.OnTogglePlayVoice = item => _ = TogglePlayVoiceAsync(item);
+        ChatMessageItem.OnCycleVoiceSpeed = CycleVoiceSpeed;
 
         SubscribeToEvents();
 
@@ -1345,11 +1427,16 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         ChatMessageItem.OnOpenImage = item => _ = OpenImageAsync(item);
         ChatMessageItem.OnOpenDocument = item => _ = OpenDocumentAsync(item);
         ChatMessageItem.OnTogglePlayVoice = item => _ = TogglePlayVoiceAsync(item);
+        ChatMessageItem.OnCycleVoiceSpeed = CycleVoiceSpeed;
     }
 
     public void SubscribeToEvents()
     {
         if (_isSubscribed) return;
+
+        // Load the "message sent" sound off the screen thread (cheap, done once per app run).
+        var audioForSounds = _audioService;
+        if (audioForSounds != null) _ = Task.Run(audioForSounds.PreloadSounds);
 
         if (_signalRService != null)
         {
@@ -1369,6 +1456,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         }
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
+        App.AppResumed += HandleAppResumed;
         _isSubscribed = true;
     }
 
@@ -1394,6 +1482,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         }
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
+        App.AppResumed -= HandleAppResumed;
         _isSubscribed = false;
     }
 
@@ -1954,35 +2043,42 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _currentlyPlayingItem = null;
         }
 
-        // Ensure local audio file exists from base64
+        // Show the pause icon (and speed button) straight away; a second tap while the audio is
+        // being prepared cancels it instead of starting it twice.
+        _currentlyPlayingItem = item;
+        item.IsPlaying = true;
+        item.SpeedText = FormatVoiceSpeed(GetVoiceSpeed());
+
+        // Ensure local audio file exists from base64. Decoding a long voice message can take a
+        // moment, so it runs off the screen thread.
         var audioPath = item.LocalAudioPath;
         if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
         {
-            try
+            var content = item.Content;
+            var cacheFile = Path.Combine(FileSystem.CacheDirectory, $"{item.ClientGeneratedId}.m4a");
+            // The waveform reader may already have written this file; otherwise create it
+            // (written to a temporary file and renamed, so it is never seen half-written).
+            var decodedPath = await Task.Run(() =>
+                File.Exists(cacheFile) ? cacheFile : VoiceWaveforms.WriteVoiceAudioFile(content, cacheFile));
+
+            if (decodedPath != null)
             {
-                var content = item.Content;
-                if (content.StartsWith("[voice:data:audio/m4a;base64,", StringComparison.OrdinalIgnoreCase))
-                {
-                    var prefixLen = "[voice:data:audio/m4a;base64,".Length;
-                    var lastColon = content.LastIndexOf(':');
-                    if (lastColon > prefixLen)
-                    {
-                        var base64 = content.Substring(prefixLen, lastColon - prefixLen);
-                        var bytes = Convert.FromBase64String(base64);
-                        var cacheFile = Path.Combine(FileSystem.CacheDirectory, $"{item.ClientGeneratedId}.m4a");
-                        await File.WriteAllBytesAsync(cacheFile, bytes);
-                        item.LocalAudioPath = cacheFile;
-                        audioPath = cacheFile;
-                    }
-                }
+                item.LocalAudioPath = decodedPath;
+                audioPath = decodedPath;
             }
-            catch { }
+
+            // Tapped again, another message started, or the chat was closed while preparing.
+            if (_currentlyPlayingItem != item || !item.IsPlaying) return;
         }
 
-        if (!string.IsNullOrEmpty(audioPath) && File.Exists(audioPath))
+        if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
         {
-            _currentlyPlayingItem = item;
-            item.IsPlaying = true;
+            item.IsPlaying = false;
+            _currentlyPlayingItem = null;
+            return;
+        }
+
+        {
             var totalDuration = Math.Max(1, item.VoiceDurationSeconds);
 
             if (item.PlaybackProgress > 0.01 && item.PlaybackProgress < 0.98)
@@ -2000,13 +2096,10 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _playbackTimer = new System.Timers.Timer(100);
             _playbackTimer.Elapsed += (s, e) =>
             {
-                if (!item.IsDragging)
+                // Follow the player's real position so the bar and timer stay right at 1.5x / 2x.
+                if (!item.IsDragging && _audioService.IsPlaying)
                 {
-                    _playbackElapsedSeconds += 0.1;
-                    if (_playbackElapsedSeconds > totalDuration)
-                    {
-                        _playbackElapsedSeconds = totalDuration;
-                    }
+                    _playbackElapsedSeconds = Math.Min(totalDuration, _audioService.GetCurrentPositionMs() / 1000.0);
                 }
                 var progress = Math.Clamp(_playbackElapsedSeconds / totalDuration, 0.0, 1.0);
                 var curSec = (int)_playbackElapsedSeconds;
@@ -2038,8 +2131,125 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                     item.CurrentPlaybackTime = item.VoiceDurationText;
                     _currentlyPlayingItem = null;
                 });
-            }, startOffsetMs);
+            }, startOffsetMs, GetVoiceSpeed());
         }
+    }
+
+    // ---- Real voice waveforms: worked out one message at a time, only while the list is still ----
+
+    /// <summary>Set by the page: true while the message list is being scrolled or flung.</summary>
+    public Func<bool>? IsListScrolling { get; set; }
+
+    private CancellationTokenSource? _waveformCts;
+    private bool _waveformWorkerRunning;
+
+    /// <summary>
+    /// Starts (if not already running) the background job that reads real waveform bars for voice
+    /// messages in this chat. Cheap to call often (the page calls it when messages are added).
+    /// </summary>
+    public void ScheduleWaveforms()
+    {
+        if (_waveformWorkerRunning) return;
+        _waveformWorkerRunning = true;
+        _waveformCts?.Dispose();
+        _waveformCts = new CancellationTokenSource();
+        _ = RunWaveformWorkerAsync(_waveformCts.Token);
+    }
+
+    private async Task RunWaveformWorkerAsync(CancellationToken ct)
+    {
+        try
+        {
+            // Let the chat finish opening / the new message settle first.
+            await Task.Delay(700, ct);
+
+            while (!ct.IsCancellationRequested)
+            {
+                // Runs on the screen thread here (only cheap checks); the heavy part is in Task.Run.
+                if (IsBulkLoading || IsLoadingMessages || IsLoadingOlderMessages || IsListScrolling?.Invoke() == true)
+                {
+                    await Task.Delay(250, ct);
+                    continue;
+                }
+
+                // Newest voice message first (the end of the list is what the user sees after opening).
+                ChatMessageItem? next = null;
+                for (var i = Messages.Count - 1; i >= 0; i--)
+                {
+                    var m = Messages[i];
+                    if (m.IsVoiceMessage && !m.IsDeleted && m.WaveformLevels == null && !m.WaveformUnavailable)
+                    {
+                        next = m;
+                        break;
+                    }
+                }
+                if (next == null) break;
+
+                var key = !string.IsNullOrEmpty(next.ClientGeneratedId) ? next.ClientGeneratedId : next.Id.ToString();
+                var cached = VoiceWaveforms.TryGetCached(key);
+                if (cached != null)
+                {
+                    next.WaveformLevels = cached;
+                    await Task.Yield();
+                    continue;
+                }
+
+                var content = next.Content;
+                var localPath = next.LocalAudioPath;
+                var audioCachePath = Path.Combine(FileSystem.CacheDirectory, $"{next.ClientGeneratedId}.m4a");
+                var result = await Task.Run(() => VoiceWaveforms.Compute(key, localPath, content, audioCachePath), ct);
+                if (ct.IsCancellationRequested) break;
+
+                if (result.Levels != null) next.WaveformLevels = result.Levels;
+                else next.WaveformUnavailable = true;
+
+                // Playback can reuse the audio file the reader had to create.
+                if (result.AudioPath != null && (string.IsNullOrEmpty(next.LocalAudioPath) || !File.Exists(next.LocalAudioPath)))
+                {
+                    next.LocalAudioPath = result.AudioPath;
+                }
+
+                // Small pause between messages so other work always gets a turn.
+                await Task.Delay(80, ct);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ChatRoom] Waveform worker error: {ex.Message}");
+        }
+        finally
+        {
+            _waveformWorkerRunning = false;
+        }
+    }
+
+    // ---- Voice message speed (1x / 1.5x / 2x), remembered on the phone ----
+    private static readonly float[] VoiceSpeeds = { 1f, 1.5f, 2f };
+    private const string VoiceSpeedKey = "voice_playback_speed";
+    private static float? _voiceSpeed;
+
+    private static float GetVoiceSpeed()
+    {
+        if (_voiceSpeed == null)
+        {
+            var saved = Preferences.Default.Get(VoiceSpeedKey, 1f);
+            _voiceSpeed = Array.IndexOf(VoiceSpeeds, saved) >= 0 ? saved : 1f;
+        }
+        return _voiceSpeed.Value;
+    }
+
+    private static string FormatVoiceSpeed(float speed) =>
+        speed >= 2f ? "2x" : speed >= 1.5f ? "1.5x" : "1x";
+
+    private void CycleVoiceSpeed(ChatMessageItem item)
+    {
+        var index = Array.IndexOf(VoiceSpeeds, GetVoiceSpeed());
+        var next = VoiceSpeeds[(index + 1) % VoiceSpeeds.Length];
+        _voiceSpeed = next;
+        Preferences.Default.Set(VoiceSpeedKey, next);
+        item.SpeedText = FormatVoiceSpeed(next);
+        if (item.IsPlaying) _audioService?.SetPlaybackSpeed(next);
     }
 
     private Task SendMessageInternalAsync(string content, bool isVoice = false, int duration = 0, string? localPath = null)
@@ -2908,6 +3118,11 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == clientGenId);
             if (existing != null)
             {
+                if (existing.Status < MessageDeliveryStatus.Sent && status >= MessageDeliveryStatus.Sent)
+                {
+                    PlaySentSound();
+                }
+
                 existing.Id = serverMsgId;
                 existing.SequenceNumber = sequenceNumber;
                 UpdateStatusVisuals(existing, status);
@@ -2919,6 +3134,21 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             _ = _outboxService.UpdateAckAsync(clientGenId, serverMsgId, sequenceNumber, status);
         }
+    }
+
+    private DateTime _lastSentSoundUtc;
+
+    /// <summary>
+    /// "Message sent" sound when the server confirms a message (single tick). Several messages
+    /// confirmed together (e.g. queued while offline) play it once.
+    /// </summary>
+    private void PlaySentSound()
+    {
+        if (!App.IsInForeground) return;
+        var now = DateTime.UtcNow;
+        if ((now - _lastSentSoundUtc).TotalMilliseconds < 1000) return;
+        _lastSentSoundUtc = now;
+        _audioService?.PlayMessageSentSound();
     }
 
     private void HandleMessageDelivered(Guid serverMsgId)
@@ -2970,6 +3200,22 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 }
                 catch { }
             }
+        });
+    }
+
+    // Back from the background with this chat open: the connection may have stayed up (so no
+    // reconnect), but updates sent meanwhile can still be missing. Catch up, including ticks.
+    private void HandleAppResumed()
+    {
+        if (_conversationId == Guid.Empty) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await SyncMissedMessagesAsync();
+            }
+            catch { }
         });
     }
 
@@ -3065,6 +3311,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     public async Task OnDisappearingAsync()
     {
         _disposeCts.Cancel();
+        _waveformCts?.Cancel();
         if (ActiveConversationId == _conversationId)
         {
             ActiveConversationId = Guid.Empty;
@@ -3187,11 +3434,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         SelectedMenuMessage = item;
         SelectedMessageSenderName = item.IsOutgoing ? "You" : (string.IsNullOrWhiteSpace(item.SenderName) ? "User" : item.SenderName);
         SelectedMessageTime = item.TimeFormatted;
-        SelectedMessagePreviewText = !string.IsNullOrWhiteSpace(item.Content) 
+        SelectedMessagePreviewText = item.IsTextMessage && !string.IsNullOrWhiteSpace(item.Content) 
             ? item.Content 
             : (item.IsVoiceMessage ? "🎙️ Voice message" : (item.IsImageMessage ? "📷 Image" : (item.IsDocumentMessage ? "📄 Document" : "Message")));
 
-        CanCopySelectedMessage = !item.IsDeleted && !string.IsNullOrWhiteSpace(item.Content);
+        // Only real text can be copied; voice/image/file messages hold encoded data, not words.
+        CanCopySelectedMessage = !item.IsDeleted && item.IsTextMessage && !string.IsNullOrWhiteSpace(item.Content);
         CanForwardSelectedMessage = myRole == UserRole.Admin && !item.IsDeleted;
         CanDeleteSelectedMessage = !item.IsDeleted && (
             myRole == UserRole.Admin ||
@@ -3213,13 +3461,22 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     {
         var msg = SelectedMenuMessage;
         IsMessageMenuVisible = false;
-        if (msg != null && !string.IsNullOrWhiteSpace(msg.Content))
+        if (msg != null && msg.IsTextMessage && !msg.IsDeleted && !string.IsNullOrWhiteSpace(msg.Content))
         {
             await Clipboard.Default.SetTextAsync(msg.Content);
+#if ANDROID
+            // Android 13+ shows its own "Copied" confirmation; older versions get a short toast
+            // instead of a popup that has to be dismissed.
+            if (!OperatingSystem.IsAndroidVersionAtLeast(33))
+            {
+                Android.Widget.Toast.MakeText(Android.App.Application.Context, "Message copied", Android.Widget.ToastLength.Short)?.Show();
+            }
+#else
             if (Application.Current?.MainPage != null)
             {
                 await Application.Current.MainPage.DisplayAlertAsync("Copied", "Message text copied to clipboard.", "OK");
             }
+#endif
         }
         SelectedMenuMessage = null;
     }

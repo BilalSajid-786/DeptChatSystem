@@ -183,6 +183,31 @@ public partial class DepartmentsViewModel : ObservableObject
 
     private bool _isBusy;
 
+    // Loading the department list failed and nothing is on screen: show "Couldn't load departments" + Try again.
+    [ObservableProperty]
+    private bool _showLoadError;
+
+    // A reload failed but the last list is still on screen: show a small "Couldn't refresh" banner.
+    [ObservableProperty]
+    private bool _showRefreshFailed;
+
+    // Pull-to-refresh spinner on the department list.
+    [ObservableProperty]
+    private bool _isRefreshing;
+
+    [RelayCommand]
+    private async Task PullToRefreshAsync()
+    {
+        try
+        {
+            await LoadDepartmentsAsync();
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
+    }
+
 
 
     public string CurrentUserName => _authService?.CurrentUser?.FullName ?? "User";
@@ -929,7 +954,24 @@ public partial class DepartmentsViewModel : ObservableObject
     // Background reloads from real-time events run only while the department screen is on screen.
     // When it is hidden (customer list or chat open on top), DepartmentsPage.OnAppearing reloads
     // anyway on return, so skipped events lose nothing. Bursts of events collapse into one reload.
-    public bool IsPageVisible { get; set; } = true;
+    private bool _isPageVisible = true;
+    public bool IsPageVisible
+    {
+        get => _isPageVisible;
+        set
+        {
+            _isPageVisible = value;
+            // The departments screen the user is looking at (or came from) is the one in use.
+            if (value) _current = this;
+        }
+    }
+
+    // Only the departments screen in use reacts to app-wide events. A new screen (and view model) is
+    // created e.g. after logout + login, and the old one stays subscribed because these subscriptions
+    // are never removed; it used to react as well: two "Session expired" alerts on a forced logout
+    // and the department list loading twice at the same moment.
+    private static DepartmentsViewModel? _current;
+    private bool IsCurrent => ReferenceEquals(_current, this);
 
     private Guid? _departmentsLoadedForUserId;
 
@@ -940,7 +982,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
     private void RequestDepartmentsReload()
     {
-        if (!IsPageVisible) return;
+        if (!IsPageVisible || !IsCurrent) return;
 
         _departmentsReloadCts?.Cancel();
         var cts = new CancellationTokenSource();
@@ -972,6 +1014,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
         _signalRService = signalRService;
         _outboxService = outboxService;
+        _current = this;
 
 
 
@@ -1021,12 +1064,21 @@ public partial class DepartmentsViewModel : ObservableObject
 
             _signalRService.OnForceLogout += HandleForceLogout;
 
+            // Catch-up after missed real-time events (reconnect, internet back, app resumed).
+            _signalRService.OnReconnected += RequestDepartmentsReload;
+            Connectivity.ConnectivityChanged += (s, e) =>
+            {
+                if (e.NetworkAccess == NetworkAccess.Internet) RequestDepartmentsReload();
+            };
+            App.AppResumed += RequestDepartmentsReload;
+
         }
 
 
 
         IncomingShareService.Instance.OnPendingShareReceived += (path) =>
         {
+            if (!IsCurrent) return;
             MainThread.BeginInvokeOnMainThread(CheckPendingShare);
         };
 
@@ -1118,11 +1170,8 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
         if (_apiService == null)
-
         {
-
-            LoadDefaultDepartments();
-
+            ShowLoadError = Departments.Count == 0;
             return;
 
         }
@@ -1141,9 +1190,22 @@ public partial class DepartmentsViewModel : ObservableObject
 
             // Spinner only when there is nothing on screen yet (not on every return to this screen).
             IsBusy = Departments.Count == 0;
+            if (IsBusy) ShowLoadError = false;
 
             var perfStartedAt = PerfTrace.Now;
-            var liveDepts = await _apiService.GetDepartmentsAsync();
+            List<DepartmentDto> liveDepts;
+            try
+            {
+                liveDepts = await _apiService.GetDepartmentsAsync();
+            }
+            catch (Exception firstEx) when (firstEx is not HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized })
+            {
+                // A first request can fail right after the app opens (connection not ready yet).
+                // Try once more after a short pause before showing "Couldn't load departments".
+                DiagLog.Error("Departments load failed (will retry once)", firstEx);
+                await Task.Delay(2000);
+                liveDepts = await _apiService.GetDepartmentsAsync();
+            }
 
             var list = new ObservableCollection<DepartmentItem>();
 
@@ -1185,6 +1247,8 @@ public partial class DepartmentsViewModel : ObservableObject
 
             Departments = list;
             _departmentsLoadedForUserId = _authService?.UserId;
+            ShowLoadError = false;
+            ShowRefreshFailed = false;
             PerfTrace.DepartmentsReloaded(perfStartedAt);
 
         }
@@ -1205,12 +1269,14 @@ public partial class DepartmentsViewModel : ObservableObject
 
         }
 
-        catch
-
+        catch (Exception ex)
         {
+            DiagLog.Error("Departments load failed after retry", ex);
 
-            LoadDefaultDepartments();
-
+            // No internet / timeout / server error: never show placeholder departments.
+            // Keep the list already on screen (it belongs to this user, see above) and offer a refresh.
+            ShowLoadError = Departments.Count == 0;
+            ShowRefreshFailed = Departments.Count > 0;
         }
 
         finally
@@ -1735,8 +1801,9 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
         _authService?.Logout();
-
         Departments.Clear();
+        ShowLoadError = false;
+        ShowRefreshFailed = false;
 
 
 
@@ -2399,6 +2466,8 @@ public partial class DepartmentsViewModel : ObservableObject
 
     private void HandleForceLogout(string reason)
     {
+        if (!IsCurrent) return;
+
         MainThread.BeginInvokeOnMainThread(async () =>
         {
             try

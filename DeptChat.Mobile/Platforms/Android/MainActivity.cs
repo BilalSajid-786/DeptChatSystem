@@ -10,6 +10,9 @@ namespace DeptChat.Mobile;
 [Activity(
     Theme = "@style/Maui.SplashTheme", 
     MainLauncher = true, 
+    // SingleTop: tapping a notification while the app is open delivers it to this screen
+    // (OnNewIntent) instead of restarting it, so the chat can be opened.
+    LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density | ConfigChanges.Keyboard | ConfigChanges.KeyboardHidden,
     WindowSoftInputMode = SoftInput.AdjustResize)]
 [IntentFilter(
@@ -68,6 +71,10 @@ public class MainActivity : MauiAppCompatActivity
 
         // Handle incoming external share (e.g. JazzCash or banking transaction receipt)
         HandleIncomingIntent(Intent);
+
+        // App started by tapping a message notification: the chat opens once login has finished
+        // (DepartmentsPage). Not on a restore, which would re-open an old tap.
+        HandleNotificationTap(Intent, openNow: false, isRestore: savedInstanceState != null);
     }
 
     protected override void OnNewIntent(Android.Content.Intent? intent)
@@ -75,6 +82,25 @@ public class MainActivity : MauiAppCompatActivity
         base.OnNewIntent(intent);
         Intent = intent;
         HandleIncomingIntent(intent);
+
+        // Notification tapped while the app was already running: open the chat now.
+        HandleNotificationTap(intent, openNow: true, isRestore: false);
+    }
+
+    private static void HandleNotificationTap(Android.Content.Intent? intent, bool openNow, bool isRestore)
+    {
+        var id = intent?.GetStringExtra("conversationId");
+        if (string.IsNullOrEmpty(id) || !Guid.TryParse(id, out var conversationId)) return;
+
+        // Use each tap once.
+        intent!.RemoveExtra("conversationId");
+        if (isRestore) return;
+
+        Services.NotificationNavigation.SetPending(conversationId);
+        if (openNow)
+        {
+            MainThread.BeginInvokeOnMainThread(() => _ = Services.NotificationNavigation.OpenPendingAsync());
+        }
     }
 
     private void HandleIncomingIntent(Android.Content.Intent? intent)

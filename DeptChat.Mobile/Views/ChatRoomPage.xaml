@@ -116,21 +116,33 @@
                         <Label Text="↪️ Forwarded" FontSize="11" FontAttributes="Italic" TextColor="#64748B" Margin="0,0,0,2" IsVisible="{Binding IsForwardedVisible}" />
                         <Label Text="{Binding SenderName}" FontSize="12" TextColor="#075E54" FontAttributes="Bold" IsVisible="{Binding ShowSenderName}" />
                         <Label Text="🚫 This message was deleted" FontSize="14" FontAttributes="Italic" TextColor="#64748B" Margin="0,2" IsVisible="{Binding IsDeleted}" />
-                        <!-- WhatsApp Voice Note Player with Draggable Scrubber -->
-                        <Grid ColumnDefinitions="38, *" ColumnSpacing="8" WidthRequest="225" VerticalOptions="Center" Padding="2,2" IsVisible="{Binding IsVoiceVisible}">
-                            <Button Grid.Column="0" Text="{Binding PlayButtonIcon}" Command="{Binding TogglePlayVoiceCommand}" BackgroundColor="{Binding PlayButtonColor}" TextColor="White" WidthRequest="38" HeightRequest="38" CornerRadius="19" Padding="0" FontSize="15" FontAttributes="Bold" VerticalOptions="Center" />
-                            <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
-                                <Slider Value="{Binding PlaybackProgress}" Minimum="0" Maximum="1" MinimumTrackColor="#00A884" MaximumTrackColor="#CBD5E1" ThumbColor="#00A884" DragStarted="OnMessageSliderDragStarted" DragCompleted="OnMessageSliderDragCompleted" HeightRequest="28" Margin="0,-3" />
-                                <Grid ColumnDefinitions="*, Auto" Margin="4,-2,4,0">
-                                    <Label Grid.Column="0" Text="{Binding CurrentPlaybackTime}" FontSize="11" TextColor="#667781" FontAttributes="Bold" VerticalOptions="Center" />
-                                    <Label Grid.Column="1" Text="🎙️" FontSize="11" TextColor="#34B7F1" VerticalOptions="Center" />
+                        <!-- WhatsApp-style voice note: [round picture with mic | speed button while playing] [play] [waveform + times].
+                             Fixed sizes everywhere so the row height never changes (smooth scrolling, no jumps). -->
+                        <Grid ColumnDefinitions="44, 36, *" ColumnSpacing="6" WidthRequest="250" HeightRequest="52" VerticalOptions="Center" IsVisible="{Binding IsVoiceVisible}">
+                            <Grid Grid.Column="0" WidthRequest="44" HeightRequest="44" VerticalOptions="Center">
+                                <Border IsVisible="{Binding ShowMicIcon}" BackgroundColor="#A8B5BC" StrokeThickness="0" StrokeShape="RoundRectangle 22" WidthRequest="44" HeightRequest="44">
+                                    <Label Text="{Binding VoiceAvatarInitial}" FontSize="18" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Border IsVisible="{Binding ShowMicIcon}" BackgroundColor="{Binding PlayButtonColor}" Stroke="White" StrokeThickness="1.5" StrokeShape="RoundRectangle 9" WidthRequest="18" HeightRequest="18" HorizontalOptions="End" VerticalOptions="End">
+                                    <Label Text="🎙" FontSize="9" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <!-- Playback speed: tap to switch 1x / 1.5x / 2x (takes the picture's place while playing) -->
+                                <Button IsVisible="{Binding IsPlaying}" Text="{Binding SpeedText}" Command="{Binding CycleVoiceSpeedCommand}" FontSize="12" FontAttributes="Bold" TextColor="White" BackgroundColor="#667781" CornerRadius="13" WidthRequest="42" HeightRequest="26" MinimumHeightRequest="26" Padding="0" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Grid>
+                            <Button Grid.Column="1" Text="{Binding PlayButtonIcon}" Command="{Binding TogglePlayVoiceCommand}" BackgroundColor="{Binding PlayButtonColor}" TextColor="White" WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Grid Grid.Column="2" RowDefinitions="32, 16" RowSpacing="0" VerticalOptions="Center">
+                                <!-- One drawn view for all bars; the slider on top keeps tap/drag-to-seek (thumb only, no track) -->
+                                <views:VoiceWaveformView Grid.Row="0" Progress="{Binding PlaybackProgress}" Seed="{Binding WaveSeed}" Levels="{Binding WaveformLevels}" PlayedColor="{Binding PlayButtonColor}" HeightRequest="26" Margin="8,0" VerticalOptions="Center" />
+                                <Slider Grid.Row="0" Value="{Binding PlaybackProgress}" Minimum="0" Maximum="1" MinimumTrackColor="Transparent" MaximumTrackColor="Transparent" ThumbColor="{Binding PlayButtonColor}" DragStarted="OnMessageSliderDragStarted" DragCompleted="OnMessageSliderDragCompleted" HeightRequest="32" VerticalOptions="Center" />
+                                <Grid Grid.Row="1" ColumnDefinitions="*, Auto" Margin="8,0,0,0">
+                                    <Label Grid.Column="0" Text="{Binding CurrentPlaybackTime}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                                    <HorizontalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
+                                        <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
+                                        <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
+                                    </HorizontalStackLayout>
                                 </Grid>
-                            </VerticalStackLayout>
+                            </Grid>
                         </Grid>
-                        <HorizontalStackLayout HorizontalOptions="End" Spacing="3" Margin="4,1,0,0">
-                            <Label Text="{Binding TimeFormatted}" FontSize="11" TextColor="#667781" VerticalOptions="Center" />
-                            <Label Text="{Binding StatusIcon}" TextColor="{Binding StatusColor}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" IsVisible="{Binding IsStatusVisible}" />
-                        </HorizontalStackLayout>
                     </VerticalStackLayout>
                 </Border>
             </Grid>

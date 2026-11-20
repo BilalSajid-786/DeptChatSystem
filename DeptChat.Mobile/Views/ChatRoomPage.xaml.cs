@@ -52,6 +52,20 @@ public partial class ChatRoomPage : ContentPage
 
         _vm.BulkLoadFinished -= OnBulkLoadFinished;
         _vm.BulkLoadFinished += OnBulkLoadFinished;
+
+        _vm.IsListScrolling = IsMessageListScrolling;
+        _vm.ScheduleWaveforms();
+    }
+
+    // Waveform bars are worked out only while the list is still, so scrolling never competes with it.
+    private bool IsMessageListScrolling()
+    {
+#if ANDROID
+        return MessagesCollectionView?.Handler?.PlatformView is AndroidX.RecyclerView.Widget.RecyclerView rv &&
+               rv.ScrollState != AndroidX.RecyclerView.Widget.RecyclerView.ScrollStateIdle;
+#else
+        return false;
+#endif
     }
 
     private void DetachScrollHandler()
@@ -64,6 +78,7 @@ public partial class ChatRoomPage : ContentPage
         _vm.PreparingOlderMessagesInsert -= OnPreparingOlderMessagesInsert;
         _vm.OlderMessagesInserted -= OnOlderMessagesInserted;
         _vm.BulkLoadFinished -= OnBulkLoadFinished;
+        _vm.IsListScrolling = null;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -215,6 +230,13 @@ public partial class ChatRoomPage : ContentPage
 
     private void OnMessagesCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
+        // New or older messages may include voice messages that need waveform bars (runs later, when idle).
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add ||
+            e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+        {
+            _vm?.ScheduleWaveforms();
+        }
+
         if (_vm?.IsLoadingOlderMessages == true || _vm?.IsLoadingMessages == true) return;
 
         // During a bulk load (opening a chat, syncing) messages arrive many at a time; scrolling for

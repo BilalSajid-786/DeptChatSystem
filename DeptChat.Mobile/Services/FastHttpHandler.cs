@@ -18,7 +18,7 @@ public static class FastHttpHandler
             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
             MaxConnectionsPerServer = 20,
             EnableMultipleHttp2Connections = true,
-            ConnectTimeout = TimeSpan.FromSeconds(3),
+            ConnectTimeout = TimeSpan.FromSeconds(10),
             SslOptions = new System.Net.Security.SslClientAuthenticationOptions
             {
                 RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
