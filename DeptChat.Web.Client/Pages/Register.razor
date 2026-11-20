@@ -1,0 +1,126 @@
+@page "/register"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject BrowserInterop Browser
+@inject NavigationManager Nav
+
+<PageTitle>Create account · DeptChat</PageTitle>
+
+<div class="register-top"></div>
+<div class="register-wrap">
+    <form class="card register-card" @onsubmit="RegisterAsync" @onsubmit:preventDefault="true" novalidate>
+        <div style="display:flex;align-items:center;gap:12px">
+            <a href="/login" class="icon-btn" aria-label="Back to sign in" style="background:var(--app-bg)"><Icon Name="back" /></a>
+            <div>
+                <h1 style="font-size:24px">Create your account</h1>
+                <p style="margin:2px 0 0;font-size:14px;color:var(--text-2)">Ask your organisation for its company code.</p>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <label class="field span-all">Company code *
+                <input type="text" @bind="_companyCode" @bind:event="oninput" placeholder="e.g. MAIN" style="letter-spacing:1px;text-transform:uppercase" disabled="@_busy" />
+            </label>
+            <label class="field span-all">Full name *
+                <input type="text" @bind="_fullName" @bind:event="oninput" autocomplete="name" placeholder="Your full name" disabled="@_busy" />
+            </label>
+            <label class="field">Email address
+                <input type="email" @bind="_email" @bind:event="oninput" autocomplete="email" placeholder="name@company.com" disabled="@_busy" />
+            </label>
+            <label class="field">Phone number
+                <input type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" placeholder="+92 300 0000000" disabled="@_busy" />
+            </label>
+            <div class="span-all" style="font-size:13px;color:var(--text-2);margin-top:-6px">Email or phone is required — you can sign in with either.</div>
+            <label class="field">Username (optional)
+                <input type="text" @bind="_username" @bind:event="oninput" autocomplete="username" placeholder="Can be used to sign in" disabled="@_busy" />
+            </label>
+            <label class="field">Address (optional)
+                <input type="text" @bind="_address" @bind:event="oninput" autocomplete="street-address" placeholder="Street, city" disabled="@_busy" />
+            </label>
+            <label class="field">Password *
+                <input type="password" @bind="_password" @bind:event="oninput" autocomplete="new-password" placeholder="At least 6 characters" disabled="@_busy" />
+            </label>
+            <label class="field @(Mismatch ? "invalid" : "")">Confirm password *
+                <input type="password" @bind="_confirm" @bind:event="oninput" autocomplete="new-password" placeholder="Repeat password" disabled="@_busy" />
+                @if (Mismatch) { <span class="err">Passwords don't match.</span> }
+            </label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="banner banner-error" role="alert">@_error</div>
+        }
+
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+            <div style="font-size:14px;color:var(--text-2)">Already have an account? <a href="/login" style="font-weight:600">Sign in</a></div>
+            <button type="submit" class="btn btn-primary" style="height:48px;border-radius:24px;padding:0 32px;font-size:16px" disabled="@_busy">
+                @if (_busy) { <span class="spinner" style="width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,.4);border-top-color:#fff"></span> }
+                Create account
+            </button>
+        </div>
+    </form>
+</div>
+
+@code {
+    private string _companyCode = "", _fullName = "", _email = "", _phone = "", _username = "", _address = "", _password = "", _confirm = "";
+    private bool _busy;
+    private string? _error;
+
+    private bool Mismatch => _confirm.Length > 0 && _confirm != _password;
+
+    protected override void OnInitialized()
+    {
+        if (Auth.IsSignedIn) Nav.NavigateTo("/chats", replace: true);
+    }
+
+    private async Task RegisterAsync()
+    {
+        if (_busy) return;
+        _error = Validate();
+        if (_error != null) return;
+
+        _busy = true;
+        try
+        {
+            await Api.RegisterAsync(new RegisterRequestDto(
+                _fullName.Trim(),
+                NullIfEmpty(_email),
+                _password,
+                _companyCode.Trim(),
+                NullIfEmpty(_phone),
+                NullIfEmpty(_address),
+                NullIfEmpty(_username)));
+
+            // The register token has no session; sign in properly so this browser gets a
+            // real, revocable session (shows up under Active sessions as "Web").
+            var identifier = NullIfEmpty(_email) ?? NullIfEmpty(_phone) ?? _username.Trim();
+            var response = await Api.LoginAsync(new LoginRequestDto(
+                identifier, _password,
+                DeviceName: await Browser.DeviceNameAsync(),
+                DevicePlatform: "Web",
+                DeviceId: await Browser.DeviceIdAsync()));
+            await Auth.SignInAsync(response, keepSignedIn: true);
+            Nav.NavigateTo("/chats", replace: true);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(_companyCode)) return "Company code is required.";
+        if (string.IsNullOrWhiteSpace(_fullName)) return "Full name is required.";
+        if (string.IsNullOrWhiteSpace(_email) && string.IsNullOrWhiteSpace(_phone)) return "Please enter an email address or a phone number.";
+        if (_password.Length < 6) return "Password must be at least 6 characters long.";
+        if (_password != _confirm) return "Passwords don't match.";
+        return null;
+    }
+
+    private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}

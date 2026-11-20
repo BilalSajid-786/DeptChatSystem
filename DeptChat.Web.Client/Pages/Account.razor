@@ -1,0 +1,224 @@
+@page "/account"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>My account · DeptChat</PageTitle>
+
+@if (Auth.IsSignedIn)
+{
+    <div class="page">
+        <header class="page-bar">
+            <a href="/chats" class="icon-btn on-dark" aria-label="Back to chats"><Icon Name="back" /></a>
+            <h1>My account</h1>
+        </header>
+        <div class="page-body narrow">
+            <div class="profile-head">
+                <div class="avatar lg" style="background:var(--primary)">@Format.Initials(Auth.User!.FullName)</div>
+                <div class="who">
+                    <strong>@Auth.User!.FullName</strong>
+                    <span>@(Auth.User!.Email ?? Auth.User!.PhoneNumber ?? Auth.User!.Username) · @Auth.User!.ClientName</span>
+                </div>
+                <span class="tag tag-soft" style="font-size:12px;padding:4px 10px">@Format.RoleLabel(Auth.User!.Role).ToUpperInvariant()</span>
+            </div>
+
+            <nav class="tabs" aria-label="Account sections">
+                <button type="button" class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">Profile</button>
+                <button type="button" class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">Password</button>
+                <button type="button" class="@(_tab == 2 ? "on" : "")" @onclick="OpenSessionsAsync">Devices &amp; sessions</button>
+            </nav>
+
+            @if (_tab == 0)
+            {
+                <section class="panel">
+                    <h2>Profile</h2>
+                    @if (_profileLoading)
+                    {
+                        <div class="state"><span class="spinner"></span></div>
+                    }
+                    else
+                    {
+                        <div class="grid-2">
+                            <label class="field">Full name *<input type="text" @bind="_fullName" @bind:event="oninput" /></label>
+                            <label class="field">Username<input type="text" @bind="_username" @bind:event="oninput" /></label>
+                            <label class="field">Phone number<input type="tel" @bind="_phone" @bind:event="oninput" /></label>
+                            <label class="field">Email (can't be changed)<input type="email" value="@(_email ?? "—")" disabled /></label>
+                            <label class="field span-all">Address<input type="text" @bind="_address" @bind:event="oninput" /></label>
+                        </div>
+                        @if (_profileError != null) { <div class="banner banner-error">@_profileError</div> }
+                        <div class="actions"><button type="button" class="btn btn-primary" @onclick="SaveProfileAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_fullName))">Save changes</button></div>
+                    }
+                </section>
+            }
+            else if (_tab == 1)
+            {
+                <section class="panel">
+                    <h2>Change password</h2>
+                    <div class="banner banner-warn"><Icon Name="alert" Size="18" />This signs you out on every device, including the Android app.</div>
+                    <div class="grid-3">
+                        <label class="field">Current password<input type="password" @bind="_currentPw" @bind:event="oninput" autocomplete="current-password" /></label>
+                        <label class="field">New password (6+)<input type="password" @bind="_newPw" @bind:event="oninput" autocomplete="new-password" /></label>
+                        <label class="field @(_confirmPw.Length > 0 && _confirmPw != _newPw ? "invalid" : "")">Confirm new password
+                            <input type="password" @bind="_confirmPw" @bind:event="oninput" autocomplete="new-password" />
+                        </label>
+                    </div>
+                    @if (_pwError != null) { <div class="banner banner-error">@_pwError</div> }
+                    <div class="actions"><button type="button" class="btn btn-outline" @onclick="ChangePasswordAsync" disabled="@_busy">Change password</button></div>
+                </section>
+            }
+            else
+            {
+                <section class="panel">
+                    <div class="panel-head">
+                        <div>
+                            <h2>Active devices &amp; sessions</h2>
+                            <div class="sub">Devices currently signed in to your account</div>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button type="button" class="icon-btn" aria-label="Refresh" @onclick="LoadSessionsAsync"><Icon Name="refresh" Size="18" /></button>
+                            <button type="button" class="btn btn-sm btn-danger-outline" @onclick="() => _confirmRevokeOthers = true" disabled="@(_sessions.Count(s => !s.IsCurrentSession) == 0)">Sign out all other devices</button>
+                        </div>
+                    </div>
+                    @if (_sessionsLoading)
+                    {
+                        <div class="state"><span class="spinner"></span>Loading sessions…</div>
+                    }
+                    else if (_sessionsError != null)
+                    {
+                        <div class="state"><strong>Couldn't load sessions</strong>@_sessionsError</div>
+                    }
+                    else if (_sessions.Count == 0)
+                    {
+                        <div class="state">No active sessions.</div>
+                    }
+                    else
+                    {
+                        @foreach (var s in _sessions.OrderByDescending(s => s.IsCurrentSession).ThenByDescending(s => s.LastActiveAt))
+                        {
+                            var isWeb = string.Equals(s.DevicePlatform, "Web", StringComparison.OrdinalIgnoreCase);
+                            <div class="session">
+                                <div class="icon"><Icon Name="@(isWeb ? "laptop" : "phone")" Size="22" /></div>
+                                <div class="body">
+                                    <div class="top">
+                                        <span>@(string.IsNullOrWhiteSpace(s.DeviceName) ? "Unknown device" : s.DeviceName)</span>
+                                        <span class="tag tag-grey">@s.PlatformBadge</span>
+                                        @if (s.IsCurrentSession) { <span class="tag tag-role">THIS DEVICE</span> }
+                                    </div>
+                                    <div class="info">Signed in @Format.LongDate(s.CreatedAt) · last active @Format.LongDate(s.LastActiveAt)@(string.IsNullOrWhiteSpace(s.IpAddress) ? "" : $" · IP {s.IpAddress}")</div>
+                                </div>
+                                @if (s.CanRevoke)
+                                {
+                                    <button type="button" class="btn btn-sm btn-danger-soft" @onclick="() => _revoking = s">Revoke</button>
+                                }
+                            </div>
+                        }
+                        <div style="font-size:12px;color:var(--text-2)">Signing out of this browser (menu › Sign out) doesn't end its session here yet; revoke it from another device if needed.</div>
+                    }
+                </section>
+            }
+        </div>
+    </div>
+
+    <ConfirmDialog Open="_revoking != null" Title="Sign out this device?" Message="@($"{_revoking?.DeviceName} will be signed out the next time it contacts the server.")"
+                   ConfirmText="Revoke" Danger="true" OnConfirm="RevokeAsync" OnClose="() => _revoking = null" />
+    <ConfirmDialog Open="_confirmRevokeOthers" Title="Sign out all other devices?" Message="Every device except this browser will be signed out, including phones."
+                   ConfirmText="Sign out others" Danger="true" OnConfirm="RevokeOthersAsync" OnClose="() => _confirmRevokeOthers = false" />
+}
+
+@code {
+    private int _tab;
+    private bool _busy, _profileLoading = true;
+    private string _fullName = "", _username = "", _phone = "", _address = "";
+    private string? _email, _profileError;
+    private string _currentPw = "", _newPw = "", _confirmPw = "";
+    private string? _pwError;
+    private List<UserSessionDto> _sessions = new();
+    private bool _sessionsLoading, _sessionsLoaded, _confirmRevokeOthers;
+    private string? _sessionsError;
+    private UserSessionDto? _revoking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn) { Nav.NavigateTo("/login", replace: true); return; }
+        try
+        {
+            var p = await Api.GetProfileAsync();
+            _fullName = p.FullName;
+            _username = p.Username ?? "";
+            _phone = p.PhoneNumber ?? "";
+            _address = p.Address ?? "";
+            _email = p.Email;
+        }
+        catch (ApiException ex) { _profileError = ex.Message; }
+        finally { _profileLoading = false; }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _busy = true;
+        _profileError = null;
+        try
+        {
+            var updated = await Api.UpdateProfileAsync(new UpdateProfileRequestDto(
+                _fullName.Trim(), Null(_phone), Null(_address), Null(_username)));
+            await Auth.ApplyProfileAsync(updated);
+            ToastService.Success("Profile saved.");
+        }
+        catch (ApiException ex) { _profileError = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        _pwError = null;
+        if (string.IsNullOrEmpty(_currentPw) || string.IsNullOrEmpty(_newPw)) { _pwError = "Both current password and new password are required."; return; }
+        if (_newPw.Length < 6) { _pwError = "New password must be at least 6 characters long."; return; }
+        if (_newPw != _confirmPw) { _pwError = "New passwords don't match."; return; }
+        _busy = true;
+        try
+        {
+            await Api.ChangePasswordAsync(new ChangePasswordRequestDto(_currentPw, _newPw));
+            // The server revokes every session and sends ForceLogout; sign out here as well in case it arrives late.
+            await Auth.SignOutAsync("Your password has been changed. Please sign in again with your new password.");
+        }
+        catch (ApiException ex) { _pwError = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenSessionsAsync()
+    {
+        _tab = 2;
+        if (!_sessionsLoaded) await LoadSessionsAsync();
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        _sessionsLoading = true;
+        _sessionsError = null;
+        try
+        {
+            _sessions = await Api.GetSessionsAsync();
+            _sessionsLoaded = true;
+        }
+        catch (ApiException ex) { _sessionsError = ex.Message; }
+        finally { _sessionsLoading = false; }
+    }
+
+    private async Task RevokeAsync()
+    {
+        if (_revoking == null) return;
+        var message = await Api.RevokeSessionAsync(_revoking.Id);
+        ToastService.Success(message);
+        await LoadSessionsAsync();
+    }
+
+    private async Task RevokeOthersAsync()
+    {
+        var message = await Api.RevokeOtherSessionsAsync();
+        ToastService.Success(message);
+        await LoadSessionsAsync();
+    }
+
+    private static string? Null(string v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+}

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Host for the DeptChat web app.
+    Serves the Blazor WebAssembly client and forwards /api, /hubs and /uploads
+    to the existing DeptChat.WebApi backend (same origin, so the API needs no CORS).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.15" />
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeptChat.Web.Client\DeptChat.Web.Client.csproj" />
+  </ItemGroup>
+
+</Project>

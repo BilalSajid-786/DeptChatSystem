@@ -1,0 +1,135 @@
+@* Admin only: forward a message to a customer's conversation in any department (hub ForwardMessage). *@
+@inject ApiClient Api
+@inject ChatHubClient Hub
+@inject ToastService ToastService
+
+<Modal Open="Open" Title="@($"Forward message ({(_dept == null ? 1 : 2)}/2)")"
+       Subtitle="@(_dept == null ? "Choose the department" : $"{_dept.Name} → choose the customer")"
+       Flush="true" Busy="_busy" OnClose="CloseAsync">
+    <ChildContent>
+        @if (Message != null)
+        {
+            <div style="margin:12px 16px 4px;background:var(--bubble-out);border-radius:10px;padding:10px 12px;font-size:13px;color:var(--label);overflow-wrap:anywhere">
+                “@MessageContent.Preview(Message.Content)”
+            </div>
+        }
+        <div style="padding:8px 16px">
+            <label class="search">
+                <Icon Name="search" Size="16" />
+                <input type="search" placeholder="@(_dept == null ? "Search department…" : "Search user by name or email…")" aria-label="Search" @bind="_query" @bind:event="oninput" />
+            </label>
+        </div>
+        @if (_loading)
+        {
+            <div class="state"><span class="spinner"></span></div>
+        }
+        else if (_error != null)
+        {
+            <div class="state"><strong>Couldn't load</strong>@_error</div>
+        }
+        else if (_dept == null)
+        {
+            @foreach (var d in Filtered(_departments, x => x.Name))
+            {
+                <button type="button" class="pick-row" @onclick="() => PickDepartmentAsync(d)">
+                    <div class="avatar sm dept">@Format.Initials(d.Name)</div>
+                    <span class="body"><span>@d.Name</span><span>@d.Description</span></span>
+                </button>
+            }
+        }
+        else
+        {
+            @foreach (var u in Filtered(_users, x => x.FullName + " " + x.Email))
+            {
+                <label class="pick-row" style="cursor:pointer">
+                    <input type="radio" name="fwd-target" checked="@(_target == u)" @onchange="() => _target = u" style="width:18px;height:18px;accent-color:var(--primary)" />
+                    <span class="body"><span>@u.FullName</span><span>@u.Email</span></span>
+                    @if (u.IsOnline) { <span class="tag tag-online">ONLINE</span> }
+                    @if (u.IsBlocked) { <span class="tag tag-blocked">BLOCKED</span> }
+                </label>
+            }
+            @if (!_users.Any())
+            {
+                <div class="state">No customers in this organisation yet.</div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        @if (_dept != null)
+        {
+            <button type="button" class="btn btn-ghost" @onclick="() => { _dept = null; _target = null; _query = string.Empty; }" disabled="@_busy">Back</button>
+        }
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-ghost" @onclick="CloseAsync" disabled="@_busy">Cancel</button>
+        @if (_dept != null)
+        {
+            <button type="button" class="btn btn-primary" disabled="@(_busy || _target == null)" @onclick="ForwardAsync">Forward</button>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public MessageVm? Message { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<DepartmentDto> _departments = new();
+    private List<AvailableDepartmentUserDto> _users = new();
+    private DepartmentDto? _dept;
+    private AvailableDepartmentUserDto? _target;
+    private string _query = "";
+    private bool _loading, _busy, _wasOpen;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _dept = null; _target = null; _query = ""; _error = null;
+            _loading = true;
+            try { _departments = await Api.GetDepartmentsAsync(); }
+            catch (ApiException ex) { _error = ex.Message; }
+            finally { _loading = false; }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private IEnumerable<T> Filtered<T>(IEnumerable<T> items, Func<T, string?> text)
+        => string.IsNullOrWhiteSpace(_query) ? items : items.Where(i => (text(i) ?? "").Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private async Task PickDepartmentAsync(DepartmentDto d)
+    {
+        _dept = d;
+        _query = "";
+        _loading = true;
+        _error = null;
+        try
+        {
+            var users = await Api.GetAvailableUsersAsync(d.Id);
+            _users = users.Where(u => u.Role == UserRole.User).ToList();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ForwardAsync()
+    {
+        if (Message?.Id is not { } id || _dept == null || _target == null) return;
+        _busy = true;
+        var ok = await Hub.ForwardMessageAsync(id, _dept.Id, _target.Id);
+        _busy = false;
+        if (!ok)
+        {
+            ToastService.Error("Not connected. Try again when the connection is back.");
+            return;
+        }
+        ToastService.Success($"Forwarded to {_target.FullName} in {_dept.Name}.");
+        await CloseAsync();
+    }
+
+    private Task CloseAsync() => OnClose.InvokeAsync();
+}

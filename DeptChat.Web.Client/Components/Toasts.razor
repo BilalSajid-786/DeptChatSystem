@@ -1,0 +1,36 @@
+@implements IDisposable
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<div class="toasts" role="status" aria-live="polite">
+    @foreach (var t in ToastService.Items)
+    {
+        <div class="toast @t.Kind.ToString().ToLowerInvariant()">
+            @if (t.Kind == ToastKind.Message && !string.IsNullOrEmpty(t.Initial))
+            {
+                <div class="avatar xs dept">@t.Initial</div>
+            }
+            <div class="tbody" style="@(t.Link != null ? "cursor:pointer" : "")" @onclick="() => Open(t)">
+                @if (!string.IsNullOrEmpty(t.Title)) { <strong>@t.Title</strong> }
+                <span>@t.Text</span>
+                @if (t.Link != null) { <span style="font-size:11px;color:#667781">click to open</span> }
+            </div>
+            <button type="button" class="x" aria-label="Dismiss" @onclick="() => ToastService.Dismiss(t.Id)"><Icon Name="x" Size="16" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => ToastService.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void Open(ToastItem t)
+    {
+        if (t.Link == null) return;
+        ToastService.Dismiss(t.Id);
+        Nav.NavigateTo(t.Link);
+    }
+
+    public void Dispose() => ToastService.Changed -= OnChanged;
+}

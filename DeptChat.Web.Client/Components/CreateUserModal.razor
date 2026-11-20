@@ -1,0 +1,83 @@
+@* Admin: any role. Manager: standard users only (the API enforces this too). *@
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ToastService ToastService
+
+<Modal Open="Open" Title="Add new user" Subtitle="@(Auth.IsAdmin ? "Create an account in your organisation" : "Managers can add standard customer users")" Wide="true" Busy="_busy" OnClose="() => OnClose.InvokeAsync()">
+    <ChildContent>
+        @if (Auth.IsAdmin)
+        {
+            <div class="chips" role="radiogroup" aria-label="Role">
+                <button type="button" class="chip @(_role == UserRole.User ? "on" : "")" @onclick="() => _role = UserRole.User">Standard user</button>
+                <button type="button" class="chip @(_role == UserRole.Manager ? "on" : "")" @onclick="() => _role = UserRole.Manager">Staff / Manager</button>
+                <button type="button" class="chip @(_role == UserRole.Admin ? "on" : "")" @onclick="() => _role = UserRole.Admin">Admin</button>
+            </div>
+        }
+        <div class="grid-3">
+            <label class="field">Full name *<input type="text" @bind="_fullName" @bind:event="oninput" /></label>
+            <label class="field">Email<input type="email" @bind="_email" @bind:event="oninput" /></label>
+            <label class="field">Phone<input type="tel" @bind="_phone" @bind:event="oninput" /></label>
+            <label class="field">Username<input type="text" @bind="_username" @bind:event="oninput" /></label>
+            <label class="field">Address<input type="text" @bind="_address" @bind:event="oninput" /></label>
+            <label class="field">Initial password *
+                <span class="pw-wrap">
+                    <input type="@(_show ? "text" : "password")" @bind="_password" @bind:event="oninput" autocomplete="new-password" />
+                    <button type="button" class="icon-btn" aria-label="@(_show ? "Hide password" : "Show password")" @onclick="() => _show = !_show"><Icon Name="@(_show ? "eye-off" : "eye")" /></button>
+                </span>
+            </label>
+        </div>
+        <span style="font-size:12px;color:var(--text-2)">Email, phone or username — at least one is required. Password: 6 characters or more.</span>
+        @if (_error != null) { <div class="banner banner-error">@_error</div> }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-ghost" @onclick="() => OnClose.InvokeAsync()" disabled="@_busy">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="CreateAsync" disabled="@_busy">Create user</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<UserSummaryDto> OnCreated { get; set; }
+
+    private string _fullName = "", _email = "", _phone = "", _username = "", _address = "", _password = "";
+    private UserRole _role = UserRole.User;
+    private bool _busy, _show, _wasOpen;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            _fullName = _email = _phone = _username = _address = _password = "";
+            _role = UserRole.User;
+            _error = null;
+        }
+        else if (!Open) _wasOpen = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_fullName)) { _error = "Full name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_email) && string.IsNullOrWhiteSpace(_phone) && string.IsNullOrWhiteSpace(_username))
+        { _error = "Please provide a username, an email address, or a phone number."; return; }
+        if (_password.Length < 6) { _error = "Password must be at least 6 characters long."; return; }
+
+        _busy = true;
+        try
+        {
+            var created = await Api.CreateUserAsync(new CreateUserRequestDto(
+                _fullName.Trim(), Null(_email), Null(_phone), _password,
+                Auth.IsAdmin ? _role : UserRole.User, Null(_address), Null(_username)));
+            ToastService.Success($"{created.FullName} was created.");
+            await OnCreated.InvokeAsync(created);
+            await OnClose.InvokeAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string? Null(string v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+}

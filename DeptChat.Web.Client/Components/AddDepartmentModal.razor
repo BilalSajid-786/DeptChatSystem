@@ -1,0 +1,45 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<Modal Open="Open" Title="Add department" Subtitle="Visible to all users and managers by default." Busy="_busy" OnClose="() => OnClose.InvokeAsync()">
+    <ChildContent>
+        <label class="field">Department name *<input type="text" @bind="_name" @bind:event="oninput" placeholder="e.g. Sales" /></label>
+        <label class="field">Description<input type="text" @bind="_description" @bind:event="oninput" placeholder="What this channel handles" /></label>
+        @if (_error != null) { <div class="banner banner-error">@_error</div> }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-ghost" @onclick="() => OnClose.InvokeAsync()" disabled="@_busy">Cancel</button>
+        <button type="button" class="btn btn-primary" @onclick="CreateAsync" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))">Add channel</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<DepartmentDto> OnCreated { get; set; }
+
+    private string _name = "", _description = "";
+    private bool _busy, _wasOpen;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen) { _wasOpen = true; _name = _description = ""; _error = null; }
+        else if (!Open) _wasOpen = false;
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var created = await Api.CreateDepartmentAsync(new CreateDepartmentDto(_name.Trim(), _description.Trim()));
+            ToastService.Success($"Department “{created.Name}” was added.");
+            await OnCreated.InvokeAsync(created);
+            await OnClose.InvokeAsync();
+        }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

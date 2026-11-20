@@ -1,0 +1,1218 @@
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ChatHubClient Hub
+@inject OutboxStore Outbox
+@inject BrowserInterop Browser
+@inject ToastService ToastService
+
+<section class="col col-chat" aria-label="Conversation">
+    <div class="bar light">
+        <button type="button" class="icon-btn back-btn" aria-label="Back" @onclick="() => OnBack.InvokeAsync()"><Icon Name="back" /></button>
+        <div class="avatar sm @(Auth.IsStaff ? "" : "dept")" style="@(Auth.IsStaff ? $"background:{Format.AvatarColor(Conversation.CreatedByUserId)}" : "")">
+            @Format.Initials(Title)
+        </div>
+        <div class="titles">
+            <span class="t1">@Title</span>
+            <span class="t2 @(_typingName != null ? "typing" : "")">@PresenceText</span>
+        </div>
+        @if (Auth.IsStaff)
+        {
+            <button type="button" class="btn btn-sm @(_blocked ? "btn-outline" : "btn-danger-outline")" @onclick="() => _confirmBlock = true">
+                @(_blocked ? "Unblock user" : "Block user")
+            </button>
+        }
+        <button type="button" class="icon-btn" aria-label="Contact info" @onclick="() => _showInfo = true"><Icon Name="info" /></button>
+    </div>
+
+    @if (Hub.State != Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected)
+    {
+        <div class="chat-banner warn"><Icon Name="refresh" Size="16" /> Reconnecting… messages you send now will go out automatically.</div>
+    }
+    @if (_blocked && Auth.IsStaff)
+    {
+        <div class="chat-banner error"><Icon Name="lock" Size="16" /> This user is blocked and can't send messages.</div>
+    }
+
+    <div class="messages" @ref="_scroller">
+        @if (_loading)
+        {
+            <div class="state"><span class="spinner"></span>Loading messages…</div>
+        }
+        else if (_loadError != null)
+        {
+            <div class="state"><strong>Couldn't load messages</strong>@_loadError<button type="button" class="btn btn-outline btn-sm" @onclick="LoadAsync">Try again</button></div>
+        }
+        else
+        {
+            @if (_loadingOlder)
+            {
+                <div class="older"><span class="spinner"></span></div>
+            }
+            else if (_hasMore)
+            {
+                <button type="button" class="btn btn-sm btn-outline older" @onclick="LoadOlderAsync">Load older messages</button>
+            }
+            else if (_messages.Count == 0)
+            {
+                <div class="state" style="margin:auto"><strong>No messages yet</strong>@(Auth.IsStaff ? "Say hello to start the conversation." : "Send a message and the team will reply here.")</div>
+            }
+
+            DateTime? lastDay = null;
+            foreach (var m in _messages)
+            {
+                var day = Format.ToLocal(m.SentAt).Date;
+                if (lastDay != day)
+                {
+                    lastDay = day;
+                    <div class="day">@Format.DayLabel(m.SentAt)</div>
+                }
+                if (_unreadFromSeq > 0 && m.Seq == _unreadFromSeq)
+                {
+                    <div class="unread-divider">Unread messages</div>
+                }
+                var outgoing = IsOutgoing(m);
+                <div class="msg @(outgoing ? "out" : "") @(_menuFor == m ? "highlight" : "")" @key="m.ClientGeneratedId">
+                    <div class="bubble" @oncontextmenu="() => OpenMenu(m)" @oncontextmenu:preventDefault="@CanShowMenu(m)">
+                        @if (CanShowMenu(m))
+                        {
+                            <button type="button" class="more" aria-label="Message options" @onclick="() => OpenMenu(m)"><Icon Name="chevron-down" Size="16" /></button>
+                        }
+                        @{ var sender = SenderLabel(m, outgoing); }
+                        @if (sender != null)
+                        {
+                            <span class="sender">@sender</span>
+                        }
+                        @if (m.IsForwarded && !m.IsDeleted)
+                        {
+                            <span class="fwd"><Icon Name="forward" Size="13" /> Forwarded</span>
+                        }
+                        @RenderContent(m)
+                        <span class="meta">
+                            @if (m.Failed)
+                            {
+                                <span class="failed"><Icon Name="alert" Size="13" /> Not sent
+                                    @if (!m.LocalOnly) { <button type="button" @onclick="() => RetryAsync(m)">Retry</button> }
+                                </span>
+                            }
+                            <span>@Format.Time(m.SentAt)</span>
+                            @if (outgoing && !m.IsDeleted && !m.Failed)
+                            {
+                                @RenderTicks(m.Status)
+                            }
+                        </span>
+                    </div>
+                </div>
+            }
+
+            @if (_typingName != null)
+            {
+                <div class="typing-bubble" aria-label="@_typingName is typing"><span></span><span></span><span></span></div>
+            }
+        }
+    </div>
+
+    @if (_newBelow > 0 && !_nearBottom)
+    {
+        <button type="button" class="jump" @onclick="JumpToBottomAsync">@_newBelow new <Icon Name="chevron-down" Size="14" StrokeWidth="2.4" /></button>
+    }
+
+    <div class="composer">
+        @if (_composerBlockedReason != null)
+        {
+            <div class="blocked">@_composerBlockedReason</div>
+        }
+        else
+        {
+            @if (_attachment != null)
+            {
+                <div class="attach-chip">
+                    @if (_attachmentThumb != null)
+                    {
+                        <img class="thumb" src="@_attachmentThumb" alt="" />
+                    }
+                    else
+                    {
+                        <div class="thumb">@MessageContent.FileTypeLabel(_attachment.Name)</div>
+                    }
+                    <div class="body">
+                        <span>@_attachment.Name</span>
+                        <span>@MessageContent.FormatSize(_attachment.Size) · @(_uploading ? "uploading…" : "ready to send")</span>
+                    </div>
+                    <button type="button" class="icon-btn" aria-label="Remove attachment" @onclick="ClearAttachment" disabled="@_uploading"><Icon Name="x" Size="16" StrokeWidth="2.4" /></button>
+                </div>
+            }
+
+            @if (_rec == RecState.None)
+            {
+                <div class="row-c">
+                    <label class="icon-btn" for="@_fileInputId" title="Attach a photo or document" style="cursor:pointer;height:44px;width:44px;border-radius:22px">
+                        <Icon Name="clip" Size="22" />
+                        <span class="sr-only">Attach file</span>
+                    </label>
+                    <InputFile id="@_fileInputId" class="sr-only" OnChange="OnFileSelectedAsync" accept="@AcceptList" />
+                    <div class="input">
+                        <textarea rows="1" placeholder="Type a message" aria-label="Message" @ref="_textarea"
+                                  @bind="_draft" @bind:event="oninput" @bind:after="OnDraftChangedAsync" data-file-input="@_fileInputId"></textarea>
+                    </div>
+                    @if (string.IsNullOrWhiteSpace(_draft) && _attachment == null)
+                    {
+                        <button type="button" class="send" aria-label="Record voice message" @onclick="StartRecordingAsync"><Icon Name="mic" /></button>
+                    }
+                    else
+                    {
+                        <button type="button" class="send" aria-label="Send" @onclick="SendFromComposerAsync" disabled="@_uploading"><Icon Name="send" /></button>
+                    }
+                </div>
+                <div class="hint">Enter to send · Shift+Enter for a new line · drop a file here or paste an image</div>
+            }
+            else if (_rec == RecState.Recording)
+            {
+                <div class="row-c">
+                    <div class="recording"><span class="rec-dot"></span><span class="clock">@MessageContent.FormatDuration(_recSeconds)</span><span style="font-size:13px;color:var(--text-2)">Recording voice message…</span></div>
+                    <button type="button" class="round red" aria-label="Discard recording" @onclick="DiscardRecordingAsync"><Icon Name="trash" Size="18" /></button>
+                    <button type="button" class="round" aria-label="Stop and preview" @onclick="StopRecordingAsync"><Icon Name="pause" Size="16" Filled="true" /></button>
+                </div>
+            }
+            else if (_rec == RecState.Preview && _recording != null)
+            {
+                <div class="row-c">
+                    <div class="recording">
+                        <button type="button" class="round" style="width:32px;height:32px" aria-label="@(_playingId == "preview" && _playing ? "Pause preview" : "Play preview")" @onclick="TogglePreviewAsync">
+                            <Icon Name="@(_playingId == "preview" && _playing ? "pause" : "play")" Size="14" Filled="true" />
+                        </button>
+                        <span class="clock">@MessageContent.FormatDuration(_recording.Seconds)</span>
+                        <span style="font-size:13px;color:var(--text-2)">Voice message ready</span>
+                    </div>
+                    <button type="button" class="round red" aria-label="Discard recording" @onclick="DiscardRecordingAsync"><Icon Name="trash" Size="18" /></button>
+                    <button type="button" class="send" aria-label="Send voice message" @onclick="SendRecordingAsync"><Icon Name="send" /></button>
+                </div>
+            }
+        }
+    </div>
+</section>
+
+@if (_menuFor != null)
+{
+    <div class="menu-backdrop" @onclick="() => _menuFor = null"></div>
+    <div class="menu-pop" style="position:fixed;right:24px;top:120px" role="menu" aria-label="Message options">
+        @if (_menuFor.Parsed.Kind == ContentKind.Text)
+        {
+            <button type="button" role="menuitem" @onclick="CopyAsync"><Icon Name="copy" Size="16" /> Copy</button>
+        }
+        @if (CanForward(_menuFor))
+        {
+            <button type="button" role="menuitem" @onclick="() => { _forwarding = _menuFor; _menuFor = null; }"><Icon Name="forward" Size="16" /> Forward…</button>
+        }
+        @if (CanDelete(_menuFor))
+        {
+            <button type="button" role="menuitem" class="danger" @onclick="() => { _deleting = _menuFor; _menuFor = null; }"><Icon Name="trash" Size="16" /> Delete</button>
+        }
+    </div>
+}
+
+@if (_lightboxUrl != null)
+{
+    <div class="lightbox" role="dialog" aria-label="Photo" @onkeydown="OnLightboxKey">
+        <div class="lb-bar">
+            <a class="icon-btn on-dark" href="@_lightboxUrl" download target="_blank" rel="noopener" aria-label="Download"><Icon Name="download" /></a>
+            <button type="button" class="icon-btn on-dark" aria-label="Close" @onclick="() => _lightboxUrl = null"><Icon Name="x" /></button>
+        </div>
+        <div class="lb-img" @onclick="() => _lightboxUrl = null"><img src="@_lightboxUrl" alt="Photo" @onclick:stopPropagation="true" /></div>
+    </div>
+}
+
+<Modal Open="_showInfo" Title="Contact info" OnClose="() => _showInfo = false">
+    <div style="display:flex;align-items:center;gap:14px">
+        <div class="avatar lg @(Auth.IsStaff ? "" : "dept")" style="@(Auth.IsStaff ? $"background:{Format.AvatarColor(Conversation.CreatedByUserId)}" : "")">@Format.Initials(Title)</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+            <strong style="font-size:18px">@Title</strong>
+            <span style="color:var(--text-2);font-size:14px">@PresenceText</span>
+        </div>
+    </div>
+    <div style="font-size:14px;display:flex;flex-direction:column;gap:6px">
+        <div><span style="color:var(--text-2)">Department:</span> @Conversation.DepartmentName</div>
+        @if (Auth.IsStaff)
+        {
+            <div><span style="color:var(--text-2)">Status:</span> @(_blocked ? "Blocked" : "Active")</div>
+        }
+    </div>
+</Modal>
+
+<ConfirmDialog Open="_confirmBlock"
+               Title="@(_blocked ? $"Unblock {Conversation.CreatedByUserName}?" : $"Block {Conversation.CreatedByUserName}?")"
+               Message="@(_blocked ? "They will be able to send messages again." : "They won't be able to send messages until they are unblocked.")"
+               ConfirmText="@(_blocked ? "Unblock" : "Block")" Danger="@(!_blocked)"
+               OnConfirm="ToggleBlockAsync" OnClose="() => _confirmBlock = false" />
+
+<ConfirmDialog Open="_deleting != null" Title="Delete message?" Message="It will be replaced with “This message was deleted” for everyone."
+               ConfirmText="Delete" Danger="true" OnConfirm="DeleteAsync" OnClose="() => _deleting = null" />
+
+<ForwardModal Open="_forwarding != null" Message="_forwarding" OnClose="() => _forwarding = null" />
+
+@code {
+    [Parameter, EditorRequired] public ConversationSummaryDto Conversation { get; set; } = default!;
+    [Parameter] public bool PageVisible { get; set; } = true;
+    [Parameter] public EventCallback OnBack { get; set; }
+    [Parameter] public EventCallback<ChatActivity> OnActivity { get; set; }
+    [Parameter] public EventCallback<bool> OnBlockChanged { get; set; }
+
+    private enum RecState { None, Recording, Preview }
+
+    private const int PageSize = 30;
+    private const int AckTimeoutSeconds = 20;
+    private const int MaxVoiceSeconds = 300;
+    private static readonly string AcceptList = string.Join(",", ApiClient.ImageExtensions.Concat(ApiClient.DocumentExtensions));
+
+    private readonly List<MessageVm> _messages = new();
+    private DotNetObjectReference<ChatPane>? _ref;
+    private ElementReference _scroller, _textarea;
+    private string _fileInputId = "";
+    private bool _jsAttached, _disposed;
+
+    private bool _loading = true, _loadingOlder, _hasMore;
+    private string? _loadError;
+    private long _unreadFromSeq;
+    private bool _nearBottom = true, _scrollToBottom, _keepPosition;
+    private double _heightBeforeOlder;
+    private int _newBelow;
+
+    // presence
+    private bool _otherOnline, _otherInRoom, _deptOnline;
+    private DateTime? _otherLastSeen;
+    private string? _typingName;
+    private CancellationTokenSource? _typingCts;
+    private bool _leftForHidden;
+    private CancellationTokenSource? _hiddenCts;
+
+    // composer
+    private string _draft = "";
+    private IBrowserFile? _attachment;
+    private string? _attachmentThumb;
+    private bool _uploading;
+    private string? _composerBlockedReason;
+    private DateTime _lastTypingSent = DateTime.MinValue;
+    private CancellationTokenSource? _typingStopCts;
+
+    // voice
+    private RecState _rec = RecState.None;
+    private int _recSeconds;
+    private VoiceRecording? _recording;
+    private CancellationTokenSource? _recTimerCts;
+    private string? _playingId;
+    private bool _playing;
+    private double _playPos, _playDur;
+    private double _rate = 1;
+
+    // dialogs
+    private MessageVm? _menuFor, _forwarding, _deleting;
+    private string? _lightboxUrl;
+    private bool _showInfo, _confirmBlock, _blocked;
+
+    private string Title => Auth.IsStaff ? Conversation.CreatedByUserName : Conversation.DepartmentName;
+
+    private string PresenceText
+    {
+        get
+        {
+            if (_typingName != null) return Auth.IsStaff ? "typing…" : $"{_typingName} is typing…";
+            if (Auth.IsStaff)
+            {
+                if (_otherInRoom) return "in chat";
+                if (_otherOnline) return "online";
+                return Format.LastSeen(_otherLastSeen);
+            }
+            if (_otherInRoom) return "Support is in the chat";
+            return _deptOnline ? "Support online" : "Support offline — you'll get a reply here";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _fileInputId = $"file-{Conversation.Id:N}";
+        _blocked = Conversation.IsUserBlocked;
+        _otherOnline = Conversation.IsOnline;
+        _ref = DotNetObjectReference.Create(this);
+
+        Hub.MessageReceived += OnMessageReceived;
+        Hub.MessageAck += OnMessageAck;
+        Hub.MessageDelivered += OnMessageDelivered;
+        Hub.MessagesRead += OnMessagesRead;
+        Hub.UserTyping += OnUserTyping;
+        Hub.UserPresenceState += OnPresenceState;
+        Hub.UserPresenceChanged += OnPresenceChanged;
+        Hub.DepartmentPresenceState += OnDepartmentPresence;
+        Hub.UserOnlineStatusChanged += OnOnlineStatus;
+        Hub.MessageDeleted += OnMessageDeleted;
+        Hub.ErrorMessage += OnHubError;
+        Hub.StateChanged += OnHubStateChanged;
+        Hub.Connected += OnHubConnectedAsync;
+
+        await LoadAsync();
+        if (Hub.IsConnected)
+        {
+            await Hub.EnterRoomAsync(Conversation.Id);
+            await MarkLatestReadAsync();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Leave the room 30 s after the tab is hidden so the other side doesn't see "in chat"; rejoin on return.
+        if (!PageVisible && _hiddenCts == null && !_leftForHidden)
+        {
+            _hiddenCts = new CancellationTokenSource();
+            var token = _hiddenCts.Token;
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(TimeSpan.FromSeconds(30), token); } catch { return; }
+                await InvokeAsync(async () =>
+                {
+                    _leftForHidden = true;
+                    await Hub.LeaveRoomAsync(Conversation.Id);
+                });
+            });
+        }
+        else if (PageVisible)
+        {
+            _hiddenCts?.Cancel();
+            _hiddenCts = null;
+            if (_leftForHidden)
+            {
+                _leftForHidden = false;
+                await Hub.EnterRoomAsync(Conversation.Id);
+            }
+            await MarkLatestReadAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (!_jsAttached && !_loading && _ref != null)
+        {
+            _jsAttached = true;
+            await Browser.WatchScrollAsync(_scroller, _ref);
+            await Browser.AttachDropAsync(_scroller, _fileInputId);
+        }
+        if (_rec == RecState.None && _composerBlockedReason == null && _ref != null)
+        {
+            try { await Browser.AttachComposerAsync(_textarea, _ref); } catch { }
+        }
+        if (_keepPosition)
+        {
+            _keepPosition = false;
+            await Browser.KeepScrollPositionAsync(_scroller, _heightBeforeOlder);
+        }
+        if (_scrollToBottom)
+        {
+            _scrollToBottom = false;
+            await Browser.ScrollToBottomAsync(_scroller);
+            _nearBottom = true;
+            _newBelow = 0;
+        }
+    }
+
+    // ---------------- loading ----------------
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+        try
+        {
+            var page = await Api.GetMessagesAsync(Conversation.Id, null, PageSize);
+            _messages.Clear();
+            _messages.AddRange(page.Messages.Select(MessageVm.From));
+            _hasMore = page.HasMore;
+
+            await Outbox.EnsureLoadedAsync();
+            foreach (var pending in Outbox.ForConversation(Conversation.Id))
+            {
+                if (_messages.Any(m => m.ClientGeneratedId == pending.Message.ClientGeneratedId)) continue;
+                _messages.Add(NewLocal(pending.Message.ClientGeneratedId, pending.Message.Content, pending.CreatedAt));
+            }
+            Sort();
+
+            if (Conversation.UnreadCount > 0)
+            {
+                var incoming = _messages.Where(m => !IsOutgoing(m) && m.Seq > 0).ToList();
+                if (incoming.Count > 0)
+                {
+                    _unreadFromSeq = incoming[Math.Max(0, incoming.Count - Conversation.UnreadCount)].Seq;
+                }
+            }
+            _scrollToBottom = true;
+        }
+        catch (ApiException ex)
+        {
+            _loadError = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadOlderAsync()
+    {
+        if (_loadingOlder || !_hasMore) return;
+        var earliest = _messages.Where(m => m.Seq > 0).Select(m => m.Seq).DefaultIfEmpty(0).Min();
+        if (earliest <= 1) { _hasMore = false; return; }
+        _loadingOlder = true;
+        StateHasChanged();
+        try
+        {
+            _heightBeforeOlder = await Browser.ScrollHeightAsync(_scroller);
+            var page = await Api.GetMessagesAsync(Conversation.Id, earliest, PageSize);
+            foreach (var dto in page.Messages) Upsert(dto);
+            _hasMore = page.HasMore;
+            _keepPosition = true;
+        }
+        catch (ApiException ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+        finally
+        {
+            _loadingOlder = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnHubConnectedAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (_disposed) return;
+            await Hub.EnterRoomAsync(Conversation.Id);
+            var since = _messages.Where(m => m.Seq > 0).Select(m => m.Seq).DefaultIfEmpty(0).Max();
+            try
+            {
+                var sync = await Api.SyncAsync(Conversation.Id, since);
+                foreach (var dto in sync.Messages) Upsert(dto);
+            }
+            catch (ApiException) { /* next reconnect will retry */ }
+            await MarkLatestReadAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task MarkLatestReadAsync()
+    {
+        if (!PageVisible) return;
+        var maxIncoming = _messages.Where(m => !IsOutgoing(m) && m.Seq > 0).Select(m => m.Seq).DefaultIfEmpty(0).Max();
+        if (maxIncoming > 0) await Hub.MarkAsReadAsync(Conversation.Id, maxIncoming);
+    }
+
+    // ---------------- hub events ----------------
+    private void OnMessageReceived(ChatMessageDto dto)
+    {
+        if (dto.ConversationId != Conversation.Id) return;
+        _ = InvokeAsync(async () =>
+        {
+            var isNew = !_messages.Any(m => m.Id == dto.Id || m.ClientGeneratedId == dto.ClientGeneratedId);
+            var vm = Upsert(dto);
+            var outgoing = IsOutgoing(vm);
+            if (outgoing && vm.SenderId == Auth.UserId)
+            {
+                await Outbox.RemoveAsync(dto.ClientGeneratedId);
+            }
+            if (!outgoing)
+            {
+                _typingName = null;
+                await Hub.AcknowledgeDeliveryAsync(dto.Id);
+                if (PageVisible) await Hub.MarkAsReadAsync(Conversation.Id, dto.SequenceNumber);
+            }
+            if (isNew)
+            {
+                await OnActivity.InvokeAsync(new ChatActivity(Conversation.Id, Conversation.DepartmentId, PreviewFor(vm), dto.SentAt));
+                if (_nearBottom || vm.SenderId == Auth.UserId) _scrollToBottom = true;
+                else _newBelow++;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnMessageAck(string clientGeneratedId, Guid id, long seq, MessageDeliveryStatus status)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await Outbox.RemoveAsync(clientGeneratedId);
+            var vm = _messages.FirstOrDefault(m => m.ClientGeneratedId == clientGeneratedId);
+            if (vm == null) return;
+            vm.Id = id;
+            vm.Seq = seq;
+            vm.Failed = false;
+            vm.Raise(status == MessageDeliveryStatus.Pending ? MessageDeliveryStatus.Sent : status);
+            Sort();
+            StateHasChanged();
+        });
+    }
+
+    private void OnMessageDelivered(Guid messageId)
+    {
+        _ = InvokeAsync(() =>
+        {
+            var vm = _messages.FirstOrDefault(m => m.Id == messageId);
+            if (vm == null) return;
+            vm.Raise(MessageDeliveryStatus.Delivered);
+            StateHasChanged();
+        });
+    }
+
+    private void OnMessagesRead(Guid conversationId, long maxSeq)
+    {
+        if (conversationId != Conversation.Id) return;
+        _ = InvokeAsync(() =>
+        {
+            // The event doesn't say who read. The hub only marks the *other* side's messages as read,
+            // so if the message at maxSeq is one of ours, the other side read our messages.
+            // Fallback: the other side is in the room (e.g. a client that reports its own latest seq).
+            var atSeq = _messages.FirstOrDefault(m => m.Seq == maxSeq);
+            var theyRead = (atSeq != null && IsOutgoing(atSeq)) || _otherInRoom;
+            if (!theyRead) return;
+            foreach (var m in _messages.Where(m => IsOutgoing(m) && m.Seq > 0 && m.Seq <= maxSeq))
+            {
+                m.Raise(MessageDeliveryStatus.Read);
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnUserTyping(Guid conversationId, Guid userId, string name, bool isTyping)
+    {
+        if (conversationId != Conversation.Id || userId == Auth.UserId) return;
+        if (Auth.IsStaff && userId != Conversation.CreatedByUserId) return;
+        _ = InvokeAsync(() =>
+        {
+            _typingCts?.Cancel();
+            _typingName = isTyping ? name : null;
+            if (isTyping)
+            {
+                _typingCts = new CancellationTokenSource();
+                var token = _typingCts.Token;
+                _ = Task.Delay(6000, token).ContinueWith(t =>
+                {
+                    if (!t.IsCanceled) InvokeAsync(() => { _typingName = null; StateHasChanged(); });
+                }, TaskScheduler.Default);
+            }
+            StateHasChanged();
+        });
+    }
+
+    private bool IsCounterpart(Guid userId)
+        => userId != Auth.UserId && (!Auth.IsStaff || userId == Conversation.CreatedByUserId);
+
+    private void OnPresenceState(Guid conversationId, Guid userId, bool inRoom, bool online, DateTime? lastSeen)
+    {
+        if (conversationId != Conversation.Id || !IsCounterpart(userId)) return;
+        _ = InvokeAsync(() =>
+        {
+            _otherInRoom = inRoom;
+            _otherOnline = online;
+            _otherLastSeen = lastSeen;
+            if (!Auth.IsStaff && online) _deptOnline = true;
+            StateHasChanged();
+        });
+    }
+
+    private void OnPresenceChanged(Guid conversationId, Guid userId, bool inRoom)
+    {
+        if (conversationId != Conversation.Id || !IsCounterpart(userId)) return;
+        _ = InvokeAsync(() =>
+        {
+            _otherInRoom = inRoom;
+            if (inRoom) _otherOnline = true;
+            StateHasChanged();
+        });
+    }
+
+    private void OnDepartmentPresence(Guid conversationId, Guid departmentId, bool online)
+    {
+        if (conversationId != Conversation.Id || Auth.IsStaff) return;
+        _ = InvokeAsync(() => { _deptOnline = online; StateHasChanged(); });
+    }
+
+    private void OnOnlineStatus(Guid userId, bool online)
+    {
+        if (!Auth.IsStaff || userId != Conversation.CreatedByUserId) return;
+        _ = InvokeAsync(() =>
+        {
+            _otherOnline = online;
+            if (!online) { _otherInRoom = false; _otherLastSeen = DateTime.UtcNow; }
+            StateHasChanged();
+        });
+    }
+
+    private void OnMessageDeleted(Guid conversationId, Guid messageId)
+    {
+        if (conversationId != Conversation.Id) return;
+        _ = InvokeAsync(() =>
+        {
+            var vm = _messages.FirstOrDefault(m => m.Id == messageId);
+            if (vm == null) return;
+            vm.MarkDeleted();
+            StateHasChanged();
+        });
+    }
+
+    private void OnHubError(string message)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (message.Contains("blocked", StringComparison.OrdinalIgnoreCase))
+            {
+                // The server never stores messages from a blocked sender: stop re-sending them.
+                _composerBlockedReason = message;
+                foreach (var m in _messages.Where(m => m.Status == MessageDeliveryStatus.Pending && m.SenderId == Auth.UserId))
+                {
+                    m.Failed = true;
+                    await Outbox.RemoveAsync(m.ClientGeneratedId);
+                }
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnHubStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    // ---------------- sending ----------------
+    [JSInvokable]
+    public Task OnEnterPressed(string value)
+    {
+        _draft = value ?? "";
+        return SendFromComposerAsync();
+    }
+
+    private async Task SendFromComposerAsync()
+    {
+        if (_uploading || _composerBlockedReason != null) return;
+        var text = _draft.Trim();
+        if (_attachment == null && text.Length == 0) return;
+
+        _draft = "";
+        await Browser.ResetComposerAsync(_textarea);
+        await StopTypingAsync();
+
+        if (_attachment != null)
+        {
+            await SendAttachmentAsync(text);
+        }
+        else
+        {
+            await SendContentAsync(text);
+        }
+    }
+
+    private async Task SendContentAsync(string content)
+    {
+        var dto = new SendMessageDto(Conversation.Id, Guid.NewGuid().ToString(), content);
+        var vm = NewLocal(dto.ClientGeneratedId, content, DateTime.UtcNow);
+        _messages.Add(vm);
+        _scrollToBottom = true;
+        StateHasChanged();
+
+        await Outbox.AddAsync(dto);
+        await OnActivity.InvokeAsync(new ChatActivity(Conversation.Id, Conversation.DepartmentId, "You: " + MessageContent.Preview(content), vm.SentAt));
+        await Hub.SendMessageAsync(dto); // if offline it stays in the outbox and goes out on reconnect
+        WatchForAck(vm);
+    }
+
+    private void WatchForAck(MessageVm vm)
+    {
+        _ = Task.Delay(TimeSpan.FromSeconds(AckTimeoutSeconds)).ContinueWith(_ => InvokeAsync(() =>
+        {
+            if (_disposed || vm.Status != MessageDeliveryStatus.Pending || vm.Failed) return;
+            if (!Hub.IsConnected) { WatchForAck(vm); return; } // still offline: keep waiting
+            vm.Failed = true;
+            StateHasChanged();
+        }), TaskScheduler.Default);
+    }
+
+    private async Task RetryAsync(MessageVm vm)
+    {
+        if (_composerBlockedReason != null) return;
+        vm.Failed = false;
+        var dto = new SendMessageDto(Conversation.Id, vm.ClientGeneratedId, vm.Content);
+        await Outbox.AddAsync(dto);
+        await Hub.SendMessageAsync(dto);
+        WatchForAck(vm);
+    }
+
+    private async Task OnFileSelectedAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        var ext = Path.GetExtension(file.Name);
+        if (!ApiClient.ImageExtensions.Contains(ext) && !ApiClient.DocumentExtensions.Contains(ext))
+        {
+            ToastService.Error($"File type '{ext}' is not supported.");
+            return;
+        }
+        if (file.Size > ApiClient.MaxUploadBytes)
+        {
+            ToastService.Error("File size exceeds the 25 MB limit.");
+            return;
+        }
+        _attachment = file;
+        _attachmentThumb = null;
+        if (ApiClient.ImageExtensions.Contains(ext) && !ext.Equals(".gif", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var thumb = await file.RequestImageFileAsync("image/jpeg", 120, 120);
+                await using var s = thumb.OpenReadStream(2 * 1024 * 1024);
+                using var ms = new MemoryStream();
+                await s.CopyToAsync(ms);
+                _attachmentThumb = "data:image/jpeg;base64," + Convert.ToBase64String(ms.ToArray());
+            }
+            catch { _attachmentThumb = null; }
+        }
+        StateHasChanged();
+    }
+
+    private void ClearAttachment()
+    {
+        _attachment = null;
+        _attachmentThumb = null;
+    }
+
+    private async Task SendAttachmentAsync(string caption)
+    {
+        var file = _attachment!;
+        var isImage = ApiClient.ImageExtensions.Contains(Path.GetExtension(file.Name));
+        _uploading = true;
+        var placeholder = NewLocal(Guid.NewGuid().ToString(),
+            isImage ? "[image:uploading...]" : MessageContent.FileMarker("uploading", file.Name, file.Size), DateTime.UtcNow);
+        placeholder.LocalOnly = true;
+        _messages.Add(placeholder);
+        _scrollToBottom = true;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.UploadAsync(file);
+            _messages.Remove(placeholder);
+            ClearAttachment();
+            if (isImage)
+            {
+                var safeCaption = caption.Replace("]", ")");
+                await SendContentAsync(safeCaption.Length > 0 ? $"[image:{result.Url}:{safeCaption}]" : MessageContent.ImageMarker(result.Url));
+            }
+            else
+            {
+                await SendContentAsync(MessageContent.FileMarker(result.Url, file.Name, result.FileSizeBytes > 0 ? result.FileSizeBytes : file.Size));
+                if (caption.Length > 0) await SendContentAsync(caption);
+            }
+        }
+        catch (ApiException ex)
+        {
+            placeholder.Failed = true;
+            ToastService.Error(ex.Message);
+        }
+        catch (Exception)
+        {
+            placeholder.Failed = true;
+            ToastService.Error("The file couldn't be read. Try choosing it again.");
+        }
+        finally
+        {
+            _uploading = false;
+            StateHasChanged();
+        }
+    }
+
+    // ---------------- typing ----------------
+    private async Task OnDraftChangedAsync()
+    {
+        if (string.IsNullOrEmpty(_draft)) { await StopTypingAsync(); return; }
+        if ((DateTime.UtcNow - _lastTypingSent).TotalSeconds > 2.5)
+        {
+            _lastTypingSent = DateTime.UtcNow;
+            await Hub.SendTypingAsync(Conversation.Id, true);
+        }
+        _typingStopCts?.Cancel();
+        _typingStopCts = new CancellationTokenSource();
+        var token = _typingStopCts.Token;
+        _ = Task.Delay(3000, token).ContinueWith(t =>
+        {
+            if (!t.IsCanceled) InvokeAsync(StopTypingAsync);
+        }, TaskScheduler.Default);
+    }
+
+    private async Task StopTypingAsync()
+    {
+        _typingStopCts?.Cancel();
+        if (_lastTypingSent == DateTime.MinValue) return;
+        _lastTypingSent = DateTime.MinValue;
+        await Hub.SendTypingAsync(Conversation.Id, false);
+    }
+
+    // ---------------- voice ----------------
+    private async Task StartRecordingAsync()
+    {
+        if (_composerBlockedReason != null) return;
+        if (!await Browser.VoiceSupportedAsync())
+        {
+            ToastService.Error("This browser can't record voice messages the phone app can play. Use Chrome, Edge or Safari.");
+            return;
+        }
+        var result = await Browser.StartRecordingAsync();
+        if (result == "denied")
+        {
+            ToastService.Error("Microphone access was blocked. Allow the microphone for this site and try again.");
+            return;
+        }
+        if (result != "ok")
+        {
+            ToastService.Error("Voice recording isn't available in this browser.");
+            return;
+        }
+        _rec = RecState.Recording;
+        _recSeconds = 0;
+        _recTimerCts = new CancellationTokenSource();
+        _ = RecordingTimerAsync(_recTimerCts.Token);
+    }
+
+    private async Task RecordingTimerAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try { await Task.Delay(500, token); } catch { return; }
+            await InvokeAsync(async () =>
+            {
+                if (_rec != RecState.Recording) return;
+                _recSeconds = await Browser.RecordingElapsedAsync();
+                if (_recSeconds >= MaxVoiceSeconds)
+                {
+                    ToastService.Show("Voice messages are limited to 5 minutes.");
+                    await StopRecordingAsync();
+                }
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        _recTimerCts?.Cancel();
+        _recording = await Browser.StopRecordingAsync();
+        _rec = _recording != null && !string.IsNullOrEmpty(_recording.Base64) ? RecState.Preview : RecState.None;
+    }
+
+    private async Task DiscardRecordingAsync()
+    {
+        _recTimerCts?.Cancel();
+        if (_rec == RecState.Recording) await Browser.CancelRecordingAsync();
+        await StopPlaybackIfAsync("preview");
+        await Browser.RevokeObjectUrlAsync(_recording?.PreviewUrl);
+        _recording = null;
+        _rec = RecState.None;
+    }
+
+    private async Task SendRecordingAsync()
+    {
+        if (_recording == null) return;
+        var rec = _recording;
+        await StopPlaybackIfAsync("preview");
+        await Browser.RevokeObjectUrlAsync(rec.PreviewUrl);
+        _recording = null;
+        _rec = RecState.None;
+        await SendContentAsync(MessageContent.VoiceMarker(rec.Base64, rec.Seconds));
+    }
+
+    private async Task TogglePreviewAsync()
+    {
+        if (_recording == null || _ref == null) return;
+        await ToggleAudioAsync("preview", _recording.PreviewUrl);
+    }
+
+    private async Task ToggleAudioAsync(string id, string src)
+    {
+        if (_ref == null) return;
+        if (_playingId == id && _playing)
+        {
+            await Browser.PauseAudioAsync();
+            _playing = false;
+            return;
+        }
+        if (_playingId != id) { _playPos = 0; _playDur = 0; }
+        _playingId = id;
+        _playing = true;
+        await Browser.PlayAudioAsync(_ref, id, src, _rate);
+    }
+
+    private async Task CycleRateAsync()
+    {
+        _rate = _rate switch { 1 => 1.5, 1.5 => 2, _ => 1 };
+        await Browser.SetAudioRateAsync(_rate);
+    }
+
+    private async Task StopPlaybackIfAsync(string id)
+    {
+        if (_playingId != id) return;
+        await Browser.StopAudioAsync();
+        _playingId = null;
+        _playing = false;
+    }
+
+    [JSInvokable]
+    public Task OnAudioProgress(string id, double current, double duration)
+    {
+        if (id != _playingId) return Task.CompletedTask;
+        _playPos = current;
+        if (duration > 0) _playDur = duration;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnAudioEnded(string id)
+    {
+        if (id == _playingId) { _playing = false; _playingId = null; _playPos = 0; }
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnAudioError(string id)
+    {
+        if (id == _playingId) { _playing = false; _playingId = null; }
+        ToastService.Error("This voice message can't be played in this browser.");
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // ---------------- scrolling ----------------
+    [JSInvokable]
+    public async Task OnScrollChanged(bool nearTop, bool nearBottom)
+    {
+        var changed = _nearBottom != nearBottom;
+        _nearBottom = nearBottom;
+        if (nearBottom && _newBelow > 0) { _newBelow = 0; changed = true; }
+        if (changed) await InvokeAsync(StateHasChanged);
+        if (nearTop && _hasMore && !_loadingOlder && !_loading) await InvokeAsync(LoadOlderAsync);
+    }
+
+    private Task JumpToBottomAsync()
+    {
+        _scrollToBottom = true;
+        return Task.CompletedTask;
+    }
+
+    // ---------------- message actions ----------------
+    private bool CanShowMenu(MessageVm m) => !m.IsDeleted && !m.LocalOnly && (m.Parsed.Kind == ContentKind.Text || CanForward(m) || CanDelete(m));
+    private bool CanForward(MessageVm m) => Auth.IsAdmin && m.Id.HasValue && !m.IsDeleted;
+    private bool CanDelete(MessageVm m) => m.Id.HasValue && !m.IsDeleted && (Auth.IsAdmin || (Auth.IsManager && m.SenderId == Auth.UserId));
+
+    private void OnLightboxKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _lightboxUrl = null;
+    }
+
+    private void OpenMenu(MessageVm m)
+    {
+        if (CanShowMenu(m)) _menuFor = m;
+    }
+
+    private async Task CopyAsync()
+    {
+        var m = _menuFor;
+        _menuFor = null;
+        if (m == null) return;
+        if (await Browser.CopyAsync(m.Parsed.Text)) ToastService.Success("Copied");
+    }
+
+    private async Task DeleteAsync()
+    {
+        var m = _deleting;
+        if (m?.Id is not { } id) return;
+        if (!await Hub.DeleteMessageAsync(id))
+        {
+            throw new ApiException("Not connected. Try again when the connection is back.", 0);
+        }
+    }
+
+    private async Task ToggleBlockAsync()
+    {
+        var userId = Conversation.CreatedByUserId;
+        var message = _blocked ? await Api.UnblockUserAsync(userId) : await Api.BlockUserAsync(userId);
+        _blocked = !_blocked;
+        ToastService.Success(message);
+        await OnBlockChanged.InvokeAsync(_blocked);
+    }
+
+    // ---------------- helpers ----------------
+    private bool IsOutgoing(MessageVm m) => Auth.IsStaff ? m.SenderRole != UserRole.User : m.SenderId == Auth.UserId;
+
+    private string? SenderLabel(MessageVm m, bool outgoing)
+    {
+        if (m.IsDeleted) return null;
+        if (Auth.IsStaff)
+        {
+            if (!outgoing) return null;
+            return m.SenderId == Auth.UserId ? "You" : $"{m.SenderName} ({Format.RoleLabel(m.SenderRole)})";
+        }
+        return outgoing ? null : m.SenderName;
+    }
+
+    private string PreviewFor(MessageVm m)
+    {
+        var text = MessageContent.Preview(m.Content);
+        if (m.SenderId == Auth.UserId) return "You: " + text;
+        return Auth.IsStaff && m.SenderRole == UserRole.User ? text : $"{m.SenderName}: {text}";
+    }
+
+    private MessageVm NewLocal(string clientGeneratedId, string content, DateTime at)
+    {
+        var vm = new MessageVm
+        {
+            ClientGeneratedId = clientGeneratedId,
+            SenderId = Auth.UserId,
+            SenderName = Auth.User?.FullName ?? "You",
+            SenderRole = Auth.User?.Role ?? UserRole.User,
+            SentAt = at,
+            Status = MessageDeliveryStatus.Pending
+        };
+        vm.SetContent(content, false);
+        return vm;
+    }
+
+    private MessageVm Upsert(ChatMessageDto dto)
+    {
+        var vm = _messages.FirstOrDefault(m => m.Id == dto.Id || m.ClientGeneratedId == dto.ClientGeneratedId);
+        if (vm == null)
+        {
+            vm = MessageVm.From(dto);
+            _messages.Add(vm);
+        }
+        else
+        {
+            vm.Apply(dto);
+        }
+        Sort();
+        return vm;
+    }
+
+    private void Sort()
+    {
+        _messages.Sort((a, b) =>
+        {
+            var sa = a.Seq > 0 ? a.Seq : long.MaxValue;
+            var sb = b.Seq > 0 ? b.Seq : long.MaxValue;
+            var c = sa.CompareTo(sb);
+            return c != 0 ? c : a.SentAt.CompareTo(b.SentAt);
+        });
+    }
+
+    private static string FileTypeClass(string? name)
+    {
+        var ext = Path.GetExtension(name ?? "").ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "",
+            ".doc" or ".docx" or ".txt" => "doc",
+            ".xls" or ".xlsx" or ".csv" => "sheet",
+            _ => "other"
+        };
+    }
+
+    private RenderFragment RenderTicks(MessageDeliveryStatus status) => __builder =>
+    {
+        switch (status)
+        {
+            case MessageDeliveryStatus.Pending:
+                <span title="Sending" style="color:var(--tick-sent);display:flex"><Icon Name="clock" Size="13" StrokeWidth="2.2" /></span>
+                break;
+            case MessageDeliveryStatus.Sent:
+                <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Sent"><path d="m2 6.5 3.5 3.5L12 2"></path></svg>
+                break;
+            case MessageDeliveryStatus.Delivered:
+                <svg width="18" height="12" viewBox="0 0 18 12" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Delivered"><path d="m1 6.5 3.5 3.5L11 2"></path><path d="m7 9.5.5.5L14 2"></path></svg>
+                break;
+            default:
+                <svg width="18" height="12" viewBox="0 0 18 12" fill="none" stroke="#34B7F1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Read"><path d="m1 6.5 3.5 3.5L11 2"></path><path d="m7 9.5.5.5L14 2"></path></svg>
+                break;
+        }
+    };
+
+    private RenderFragment RenderContent(MessageVm m) => __builder =>
+    {
+        var p = m.Parsed;
+        switch (p.Kind)
+        {
+            case ContentKind.Deleted:
+                <span class="text deleted">@p.Text</span>
+                break;
+            case ContentKind.Image:
+                var url = ApiClient.MediaUrl(p.Url);
+                <button type="button" class="photo-btn" aria-label="Open photo" @onclick="() => _lightboxUrl = url">
+                    <img class="photo" src="@url" alt="Photo" loading="lazy" />
+                </button>
+                @if (!string.IsNullOrWhiteSpace(p.Text)) { <span class="text">@p.Text</span> }
+                break;
+            case ContentKind.ImageUploading:
+                <div class="photo-placeholder">@if (!m.Failed) { <span class="spinner"></span> }<Icon Name="image" /> @(m.Failed ? "Upload failed" : "Uploading photo…")</div>
+                break;
+            case ContentKind.File:
+            case ContentKind.FileUploading:
+                var uploading = p.Kind == ContentKind.FileUploading;
+                <a class="file-card" href="@(uploading ? null : ApiClient.MediaUrl(p.Url))" target="_blank" rel="noopener" download="@p.FileName">
+                    <span class="ftype @FileTypeClass(p.FileName)">@MessageContent.FileTypeLabel(p.FileName)</span>
+                    <span class="fbody">
+                        <span class="fname">@p.FileName</span>
+                        <span class="fsize">@(uploading ? (m.Failed ? "Upload failed" : "Uploading…") : MessageContent.FormatSize(p.FileSizeBytes))</span>
+                    </span>
+                    @if (!uploading) { <Icon Name="download" Size="18" /> }
+                    else if (!m.Failed) { <span class="spinner"></span> }
+                </a>
+                break;
+            case ContentKind.Voice:
+                var id = m.ClientGeneratedId;
+                var active = _playingId == id;
+                var total = active && _playDur > 0 ? _playDur : p.VoiceSeconds;
+                var pct = active && total > 0 ? Math.Min(100, _playPos / total * 100) : 0;
+                <div class="voice">
+                    <button type="button" class="play" aria-label="@(active && _playing ? "Pause voice message" : "Play voice message")"
+                            @onclick="() => ToggleAudioAsync(id, p.VoiceDataUri ?? string.Empty)">
+                        <Icon Name="@(active && _playing ? "pause" : "play")" Size="16" Filled="true" />
+                    </button>
+                    <div class="track"><div class="fill" style="width:@(pct.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></div></div>
+                    <button type="button" class="speed" aria-label="Playback speed" @onclick="CycleRateAsync">@(_rate.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))×</button>
+                </div>
+                <span class="voice-time">@(active ? MessageContent.FormatDuration(_playPos) + " / " : "")@MessageContent.FormatDuration(total)</span>
+                break;
+            default:
+                <span class="text">@p.Text</span>
+                break;
+        }
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        Hub.MessageReceived -= OnMessageReceived;
+        Hub.MessageAck -= OnMessageAck;
+        Hub.MessageDelivered -= OnMessageDelivered;
+        Hub.MessagesRead -= OnMessagesRead;
+        Hub.UserTyping -= OnUserTyping;
+        Hub.UserPresenceState -= OnPresenceState;
+        Hub.UserPresenceChanged -= OnPresenceChanged;
+        Hub.DepartmentPresenceState -= OnDepartmentPresence;
+        Hub.UserOnlineStatusChanged -= OnOnlineStatus;
+        Hub.MessageDeleted -= OnMessageDeleted;
+        Hub.ErrorMessage -= OnHubError;
+        Hub.StateChanged -= OnHubStateChanged;
+        Hub.Connected -= OnHubConnectedAsync;
+        _typingCts?.Cancel();
+        _typingStopCts?.Cancel();
+        _hiddenCts?.Cancel();
+        _recTimerCts?.Cancel();
+        try
+        {
+            if (_rec == RecState.Recording) await Browser.CancelRecordingAsync();
+            if (_playingId != null) await Browser.StopAudioAsync();
+            if (_lastTypingSent != DateTime.MinValue) await Hub.SendTypingAsync(Conversation.Id, false);
+            await Hub.LeaveRoomAsync(Conversation.Id);
+        }
+        catch { /* leaving the page while disconnected */ }
+        _ref?.Dispose();
+    }
+}

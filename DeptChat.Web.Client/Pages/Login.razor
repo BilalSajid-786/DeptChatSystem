@@ -1,0 +1,118 @@
+@page "/"
+@page "/login"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject BrowserInterop Browser
+@inject NavigationManager Nav
+
+<PageTitle>Sign in · DeptChat</PageTitle>
+
+<div class="auth">
+    <div class="auth-brand">
+        <div class="logo">
+            <div class="logo-mark"><Icon Name="chat" Size="26" /></div>
+            Department Chat
+        </div>
+        <div>
+            <h2>Direct real-time support.<br />Zero ticket queues.</h2>
+            <p>One continuous conversation with every department — the same chats you use in the DeptChat Android app, now in your browser.</p>
+            <ul>
+                <li><span class="dot-inline"></span>Messages sync live with your phone</li>
+                <li><span class="dot-inline"></span>Photos, documents and voice notes</li>
+                <li><span class="dot-inline"></span>See when support is online and typing</li>
+            </ul>
+        </div>
+        <a href="/api/app/download-apk" style="display:inline-flex;align-items:center;gap:8px;font-size:14px">
+            <Icon Name="download" Size="18" /> Get the Android app
+        </a>
+    </div>
+
+    <div class="auth-main">
+        <form class="card auth-card" @onsubmit="SignInAsync" @onsubmit:preventDefault="true" novalidate>
+            <div>
+                <h1>Sign in</h1>
+                <p class="sub">Use the account you created in the app.</p>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_notice))
+            {
+                <div class="banner banner-warn"><Icon Name="alert" Size="18" /><span>@_notice</span></div>
+            }
+
+            <label class="field">Email, username or phone
+                <input type="text" @bind="_identifier" @bind:event="oninput" autocomplete="username" placeholder="name@company.com" disabled="@_busy" />
+            </label>
+
+            <label class="field">Password
+                <span class="pw-wrap">
+                    <input type="@(_showPassword ? "text" : "password")" @bind="_password" @bind:event="oninput" autocomplete="current-password" placeholder="••••••••" disabled="@_busy" />
+                    <button type="button" class="icon-btn" aria-label="@(_showPassword ? "Hide password" : "Show password")" @onclick="() => _showPassword = !_showPassword">
+                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" />
+                    </button>
+                </span>
+            </label>
+
+            <label class="check"><input type="checkbox" @bind="_keepSignedIn" /> Keep me signed in on this computer</label>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="banner banner-error" role="alert">@_error</div>
+            }
+
+            <button type="submit" class="btn btn-primary btn-block" style="height:48px;border-radius:24px;font-size:16px" disabled="@(_busy || !CanSubmit)">
+                @if (_busy) { <span class="spinner" style="width:18px;height:18px;border-width:2px;border-color:rgba(255,255,255,.4);border-top-color:#fff"></span> }
+                Sign in
+            </button>
+
+            <div class="foot">New here? <a href="/register" style="font-weight:600">Create an account</a></div>
+        </form>
+    </div>
+</div>
+
+@code {
+    private string _identifier = "";
+    private string _password = "";
+    private bool _showPassword;
+    private bool _keepSignedIn = true;
+    private bool _busy;
+    private string? _error;
+    private string? _notice;
+
+    private bool CanSubmit => !string.IsNullOrWhiteSpace(_identifier) && !string.IsNullOrEmpty(_password);
+
+    protected override void OnInitialized()
+    {
+        if (Auth.IsSignedIn)
+        {
+            Nav.NavigateTo("/chats", replace: true);
+            return;
+        }
+        _notice = Auth.SignOutReason;
+    }
+
+    private async Task SignInAsync()
+    {
+        if (!CanSubmit || _busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var response = await Api.LoginAsync(new LoginRequestDto(
+                _identifier.Trim(),
+                _password,
+                DeviceName: await Browser.DeviceNameAsync(),
+                DevicePlatform: "Web",
+                DeviceId: await Browser.DeviceIdAsync()));
+            await Auth.SignInAsync(response, _keepSignedIn);
+            Nav.NavigateTo("/chats", replace: true);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

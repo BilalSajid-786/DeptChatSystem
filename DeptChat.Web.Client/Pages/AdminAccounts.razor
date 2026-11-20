@@ -1,0 +1,191 @@
+@page "/admin/accounts"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>Accounts · DeptChat</PageTitle>
+
+@if (!Auth.IsSignedIn)
+{
+}
+else if (!Auth.IsAdmin)
+{
+    <NotAvailable Denied="true" />
+}
+else
+{
+    <div class="page">
+        <header class="page-bar">
+            <a href="/chats" class="icon-btn on-dark" aria-label="Back to chats"><Icon Name="back" /></a>
+            <h1>Accounts</h1>
+            <nav aria-label="Admin">
+                <a href="/admin/departments">Departments</a>
+                <a href="/admin/accounts" class="active">Accounts</a>
+            </nav>
+        </header>
+        <div class="page-body">
+            <div class="toolbar">
+                <div class="seg" role="tablist" aria-label="Account type">
+                    <button type="button" role="tab" class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">Customers · @Customers.Count()</button>
+                    <button type="button" role="tab" class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">Managers · @Managers.Count()</button>
+                    <button type="button" role="tab" class="@(_tab == 2 ? "on" : "")" @onclick="() => _tab = 2">Admins · @Admins.Count()</button>
+                </div>
+                <label class="search pill">
+                    <Icon Name="search" Size="16" />
+                    <input type="search" placeholder="Search name, email, phone or username" aria-label="Search accounts" @bind="_query" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn-primary" @onclick="() => _createOpen = true"><Icon Name="plus" Size="16" StrokeWidth="2.6" /> Add user</button>
+            </div>
+
+            @if (_loading)
+            {
+                <div class="state"><span class="spinner"></span>Loading accounts…</div>
+            }
+            else if (_error != null)
+            {
+                <div class="state"><strong>Couldn't load accounts</strong>@_error<button type="button" class="btn btn-outline btn-sm" @onclick="LoadAsync">Try again</button></div>
+            }
+            else
+            {
+                var rows = Visible.ToList();
+                @if (rows.Count == 0)
+                {
+                    <div class="state"><strong>No accounts found</strong>@(string.IsNullOrWhiteSpace(_query) ? "Nobody in this group yet." : "No account matches your search.")</div>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data">
+                            <thead><tr><th>Name</th><th>Email / phone</th><th>Username</th><th>Joined</th><th>Status</th><th>Actions</th></tr></thead>
+                            <tbody>
+                                @foreach (var u in rows)
+                                {
+                                    var isAdmin = u.Role == UserRole.Admin;
+                                    <tr @key="u.Id">
+                                        <td><div class="who"><div class="avatar xs" style="background:@Format.AvatarColor(u.Id)">@Format.Initials(u.FullName)</div>@u.FullName</div></td>
+                                        <td class="muted">@(u.Email ?? "—")<br />@(u.PhoneNumber ?? "—")</td>
+                                        <td class="muted">@(u.Username ?? "—")</td>
+                                        <td class="muted">@Format.ToLocal(u.CreatedAt).ToString("MMM dd, yyyy")</td>
+                                        <td>
+                                            @if (u.IsBlocked) { <span class="tag tag-blocked">BLOCKED</span> }
+                                            else { <span class="tag tag-online">ACTIVE</span> }
+                                        </td>
+                                        <td>
+                                            @if (isAdmin)
+                                            {
+                                                <span class="muted" style="font-size:13px">Read-only</span>
+                                            }
+                                            else
+                                            {
+                                                <div class="acts">
+                                                    <button type="button" class="btn btn-sm btn-outline" style="border-color:var(--input-border);color:var(--label)" @onclick="() => OpenReset(u)">Reset password</button>
+                                                    <button type="button" class="btn btn-sm @(u.IsBlocked ? "btn-outline" : "btn-danger-soft")" style="width:96px" @onclick="() => _toggling = u">@(u.IsBlocked ? "Unblock" : "Block")</button>
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+            <div style="font-size:13px;color:var(--text-2)">Admin accounts can't be blocked or reset. Blocking takes effect for new messages immediately; an already-open session may stay signed in for up to 10 minutes.</div>
+        </div>
+    </div>
+
+    <CreateUserModal Open="_createOpen" OnClose="() => _createOpen = false" OnCreated="u => _users.Add(u)" />
+
+    <ConfirmDialog Open="_toggling != null"
+                   Title="@($"{(_toggling?.IsBlocked == true ? "Unblock" : "Block")} {_toggling?.FullName}?")"
+                   Message="@(_toggling?.IsBlocked == true ? "They will be able to send messages again." : "They won't be able to send messages until unblocked.")"
+                   ConfirmText="@(_toggling?.IsBlocked == true ? "Unblock" : "Block")" Danger="@(_toggling?.IsBlocked != true)"
+                   OnConfirm="ToggleBlockAsync" OnClose="() => _toggling = null" />
+
+    <Modal Open="_resetFor != null" Title="@($"Reset password — {_resetFor?.FullName}")" Busy="_resetBusy" OnClose="() => _resetFor = null">
+        <ChildContent>
+            <div class="banner banner-warn"><Icon Name="alert" Size="18" />@_resetFor?.FullName will be signed out on all devices.</div>
+            <label class="field">New password *<input type="password" @bind="_newPw" @bind:event="oninput" autocomplete="new-password" /></label>
+            <label class="field @(_confirmPw.Length > 0 && _confirmPw != _newPw ? "invalid" : "")">Confirm *<input type="password" @bind="_confirmPw" @bind:event="oninput" autocomplete="new-password" /></label>
+            @if (_resetError != null) { <div class="banner banner-error">@_resetError</div> }
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn btn-ghost" @onclick="() => _resetFor = null" disabled="@_resetBusy">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="ResetAsync" disabled="@_resetBusy">Reset</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<UserSummaryDto> _users = new();
+    private bool _loading = true, _createOpen, _resetBusy;
+    private string? _error, _resetError;
+    private string _query = "", _newPw = "", _confirmPw = "";
+    private int _tab;
+    private UserSummaryDto? _toggling, _resetFor;
+
+    private IEnumerable<UserSummaryDto> Customers => _users.Where(u => u.Role == UserRole.User);
+    private IEnumerable<UserSummaryDto> Managers => _users.Where(u => u.Role == UserRole.Manager);
+    private IEnumerable<UserSummaryDto> Admins => _users.Where(u => u.Role == UserRole.Admin);
+
+    private IEnumerable<UserSummaryDto> Visible
+    {
+        get
+        {
+            var list = _tab switch { 1 => Managers, 2 => Admins, _ => Customers };
+            if (string.IsNullOrWhiteSpace(_query)) return list.OrderBy(u => u.FullName);
+            var q = _query.Trim();
+            return list.Where(u => $"{u.FullName} {u.Email} {u.PhoneNumber} {u.Username}".Contains(q, StringComparison.OrdinalIgnoreCase)).OrderBy(u => u.FullName);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn) { Nav.NavigateTo("/login", replace: true); return; }
+        if (Auth.IsAdmin) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _users = await Api.GetUsersAsync(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ToggleBlockAsync()
+    {
+        if (_toggling == null) return;
+        var u = _toggling;
+        var message = u.IsBlocked ? await Api.UnblockUserAsync(u.Id) : await Api.BlockUserAsync(u.Id);
+        var i = _users.FindIndex(x => x.Id == u.Id);
+        if (i >= 0) _users[i] = u with { IsBlocked = !u.IsBlocked };
+        ToastService.Success(message);
+    }
+
+    private void OpenReset(UserSummaryDto u)
+    {
+        _resetFor = u;
+        _newPw = _confirmPw = "";
+        _resetError = null;
+    }
+
+    private async Task ResetAsync()
+    {
+        if (_resetFor == null) return;
+        _resetError = null;
+        if (_newPw.Length < 6) { _resetError = "New password must be at least 6 characters long."; return; }
+        if (_newPw != _confirmPw) { _resetError = "Passwords don't match."; return; }
+        _resetBusy = true;
+        try
+        {
+            var message = await Api.ResetPasswordAsync(_resetFor.Id, _newPw);
+            ToastService.Success(message);
+            _resetFor = null;
+        }
+        catch (ApiException ex) { _resetError = ex.Message; }
+        finally { _resetBusy = false; }
+    }
+}

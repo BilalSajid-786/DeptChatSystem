@@ -1,0 +1,639 @@
+@page "/chats"
+@page "/chats/{DeptId:guid}"
+@page "/chats/{DeptId:guid}/{ConvId:guid}"
+@implements IDisposable
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ChatHubClient Hub
+@inject BrowserInterop Browser
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>@PageTitleText</PageTitle>
+
+@if (Auth.IsSignedIn)
+{
+    <div class="ws @(Auth.IsStaff ? "staff" : "")" data-view="@View">
+        <aside class="col col-depts" aria-label="Departments">
+            <div class="bar dark">
+                <div class="avatar sm" style="background:var(--tint);color:var(--primary-dark)">@Format.Initials(Auth.User!.FullName)</div>
+                <div class="titles">
+                    <span class="t1">@Auth.User!.FullName</span>
+                    <span class="t2">
+                        <span class="conn @ConnClass" title="@ConnTitle"></span>
+                        @if (Auth.IsStaff) { <span class="tag tag-role">@Format.RoleLabel(Auth.User!.Role).ToUpperInvariant()</span> }
+                        else { <span>Customer</span> }
+                        <span>· @Auth.User!.ClientName</span>
+                    </span>
+                </div>
+                <button type="button" class="icon-btn on-dark" aria-label="Menu" aria-haspopup="menu" @onclick="() => _menuOpen = !_menuOpen"><Icon Name="dots" StrokeWidth="2.4" /></button>
+            </div>
+
+            @if (_menuOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => _menuOpen = false"></div>
+                <div class="menu-pop" style="left:200px;top:56px" role="menu">
+                    <a href="/account" role="menuitem"><Icon Name="user" Size="16" /> My account</a>
+                    @if (Auth.IsAdmin)
+                    {
+                        <a href="/admin/departments" role="menuitem"><Icon Name="building" Size="16" /> Departments</a>
+                        <a href="/admin/accounts" role="menuitem"><Icon Name="users" Size="16" /> Accounts</a>
+                    }
+                    @if (Auth.IsStaff)
+                    {
+                        <button type="button" role="menuitem" @onclick="() => { _menuOpen = false; _createUserOpen = true; }"><Icon Name="plus" Size="16" /> Add user</button>
+                    }
+                    <button type="button" role="menuitem" @onclick="ToggleNotificationsAsync"><Icon Name="bell" Size="16" /> @NotifyLabel</button>
+                    <hr />
+                    <button type="button" role="menuitem" class="danger" @onclick="SignOutAsync"><Icon Name="logout" Size="16" /> Sign out</button>
+                </div>
+            }
+
+            @if (Auth.IsAdmin)
+            {
+                <div class="quick">
+                    <button type="button" @onclick="() => _addDeptOpen = true"><span class="qi"><Icon Name="plus" Size="16" StrokeWidth="2.4" /></span>Add department</button>
+                    <button type="button" @onclick="() => _createUserOpen = true"><span class="qi"><Icon Name="user" Size="16" /></span>Add user</button>
+                    <a href="/admin/accounts"><span class="qi"><Icon Name="users" Size="16" /></span>Manage accounts</a>
+                </div>
+            }
+            else if (Auth.IsManager)
+            {
+                <div class="quick" style="grid-template-columns:minmax(0,1fr)">
+                    <button type="button" @onclick="() => _createUserOpen = true" style="flex-direction:row;justify-content:center;padding:10px"><span class="qi"><Icon Name="plus" Size="16" StrokeWidth="2.4" /></span>Add customer user</button>
+                </div>
+            }
+
+            <div style="padding:10px 12px 0">
+                <label class="search">
+                    <Icon Name="search" Size="16" />
+                    <input type="search" placeholder="Search departments" aria-label="Search departments" @bind="_deptQuery" @bind:event="oninput" />
+                </label>
+            </div>
+            <div class="section-label">@(Auth.IsStaff ? "Departments" : "Support channels")</div>
+
+            <div class="list">
+                @if (_deptsLoading && _departments.Count == 0)
+                {
+                    @for (var i = 0; i < 5; i++)
+                    {
+                        <div class="skeleton"><div class="b" style="width:44px;height:44px;border-radius:22px"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px"><div class="b" style="height:12px;width:60%"></div><div class="b" style="height:10px;width:85%"></div></div></div>
+                    }
+                }
+                else if (_deptsError != null && _departments.Count == 0)
+                {
+                    <div class="state"><strong>Couldn't load departments</strong>@_deptsError<button type="button" class="btn btn-outline btn-sm" @onclick="LoadDepartmentsAsync">Try again</button></div>
+                }
+                else
+                {
+                    @if (_deptsError != null)
+                    {
+                        <div class="banner banner-warn" style="margin:8px 12px">Couldn't refresh. Showing the last list.</div>
+                    }
+                    var depts = FilteredDepartments.ToList();
+                    @if (depts.Count == 0)
+                    {
+                        <div class="state">
+                            <strong>@(_departments.Count == 0 ? "No departments yet" : "No match")</strong>
+                            @(_departments.Count == 0 ? (Auth.IsAdmin ? "Add a department to start receiving chats." : "Your organisation hasn't added any departments yet.") : "No department matches your search.")
+                        </div>
+                    }
+                    @foreach (var d in depts)
+                    {
+                        <button type="button" class="row @(d.Id == DeptId ? "selected" : "")" @onclick="() => SelectDepartment(d)" @key="d.Id">
+                            <div class="avatar dept">@Format.Initials(d.Name)</div>
+                            <span class="body">
+                                <span class="line">
+                                    <span class="name"><span>@d.Name</span></span>
+                                    <span class="time @(d.UnreadCount > 0 ? "unread" : "")">@Format.ListTime(d.LastMessageAt)</span>
+                                </span>
+                                <span class="line">
+                                    <span class="preview">@DeptPreview(d)</span>
+                                    @if (d.UnreadCount > 0) { <span class="badge-count">@Format.Badge(d.UnreadCount)</span> }
+                                </span>
+                            </span>
+                        </button>
+                    }
+                }
+            </div>
+        </aside>
+
+        @if (Auth.IsStaff)
+        {
+            <section class="col col-convs" aria-label="Customer conversations">
+                @if (SelectedDepartment == null)
+                {
+                    <div class="state" style="margin:auto"><Icon Name="chat" Size="34" /><strong>Select a department</strong>Its customer conversations appear here.</div>
+                }
+                else
+                {
+                    <div class="bar light">
+                        <button type="button" class="icon-btn back-btn" aria-label="Back to departments" @onclick='() => Nav.NavigateTo("/chats")'><Icon Name="back" /></button>
+                        <div class="titles">
+                            <span class="t1" style="font-size:16px;font-weight:700">@SelectedDepartment.Name</span>
+                            <span class="t2">@_conversations.Count customers · @_conversations.Count(c => c.IsOnline) online</span>
+                        </div>
+                        <button type="button" class="icon-btn" aria-label="Refresh" @onclick="() => LoadConversationsAsync(SelectedDepartment.Id)"><Icon Name="refresh" Size="18" /></button>
+                        <button type="button" class="btn btn-primary btn-sm" @onclick="() => _newChatOpen = true"><Icon Name="plus" Size="14" StrokeWidth="2.6" /> New chat</button>
+                    </div>
+                    <div style="padding:10px 12px">
+                        <label class="search">
+                            <Icon Name="search" Size="16" />
+                            <input type="search" placeholder="Search users or messages…" aria-label="Search conversations" @bind="_convQuery" @bind:event="oninput" />
+                        </label>
+                    </div>
+                    <div class="list">
+                        @if (_convsLoading && _conversations.Count == 0)
+                        {
+                            <div class="state"><span class="spinner"></span>Loading conversations…</div>
+                        }
+                        else if (_convsError != null && _conversations.Count == 0)
+                        {
+                            <div class="state"><strong>Couldn't load conversations</strong>@_convsError<button type="button" class="btn btn-outline btn-sm" @onclick="() => LoadConversationsAsync(SelectedDepartment.Id)">Try again</button></div>
+                        }
+                        else if (_conversations.Count == 0)
+                        {
+                            <div class="state"><strong>No customer conversations yet</strong>When users send inquiries to this department, their chat rooms will appear here live.</div>
+                        }
+                        else
+                        {
+                            var convs = FilteredConversations.ToList();
+                            @if (convs.Count == 0)
+                            {
+                                <div class="state"><strong>No users found</strong>No user conversations match your search.<button type="button" class="btn btn-ghost btn-sm" @onclick='() => _convQuery = ""'>Clear search</button></div>
+                            }
+                            @foreach (var c in convs)
+                            {
+                                <button type="button" class="row @(c.Id == ConvId ? "selected" : "")" @onclick="() => OpenConversation(c)" @key="c.Id">
+                                    <div class="avatar" style="background:@Format.AvatarColor(c.CreatedByUserId)">@Format.Initials(c.CreatedByUserName)@if (c.IsOnline) { <span class="dot"></span> }</div>
+                                    <span class="body">
+                                        <span class="line">
+                                            <span class="name"><span>@c.CreatedByUserName</span>@if (c.IsUserBlocked) { <span class="tag tag-blocked">BLOCKED</span> }</span>
+                                            <span class="time @(c.UnreadCount > 0 ? "unread" : "")">@Format.ListTime(c.LastMessageAt)</span>
+                                        </span>
+                                        <span class="line">
+                                            <span class="preview">@(c.LastMessagePreview ?? "")</span>
+                                            @if (c.UnreadCount > 0) { <span class="badge-count">@Format.Badge(c.UnreadCount)</span> }
+                                        </span>
+                                    </span>
+                                </button>
+                            }
+                        }
+                    </div>
+                }
+            </section>
+        }
+
+        @if (_conversation != null)
+        {
+            <ChatPane @key="_conversation.Id" Conversation="_conversation" PageVisible="_pageVisible"
+                      OnBack="BackFromChat" OnActivity="OnActivity" OnBlockChanged="OnBlockChanged" />
+        }
+        else if (_convLoading)
+        {
+            <div class="chat-empty"><span class="spinner"></span>Opening conversation…</div>
+        }
+        else
+        {
+            <div class="chat-empty">
+                <div class="mark"><Icon Name="chat" Size="34" /></div>
+                <strong style="color:var(--text);font-size:18px">@(Auth.IsStaff ? "Select a conversation" : "Select a department to start chatting")</strong>
+                <span>@(Auth.IsStaff ? "Pick a customer on the left, or start a new chat." : "Your messages sync with the DeptChat Android app.")</span>
+                @if (_convError != null) { <div class="banner banner-error">@_convError</div> }
+            </div>
+        }
+    </div>
+
+    <CreateUserModal Open="_createUserOpen" OnClose="() => _createUserOpen = false" />
+    <AddDepartmentModal Open="_addDeptOpen" OnClose="() => _addDeptOpen = false" OnCreated="OnDepartmentCreated" />
+    <NewChatModal Open="_newChatOpen" Department="SelectedDepartment" OnClose="() => _newChatOpen = false" OnStarted="OnChatStarted" />
+}
+
+@code {
+    [Parameter] public Guid? DeptId { get; set; }
+    [Parameter] public Guid? ConvId { get; set; }
+
+    private List<DepartmentDto> _departments = new();
+    private List<ConversationSummaryDto> _conversations = new();
+    private ConversationSummaryDto? _conversation;
+    private Guid? _loadedConvsFor;
+    private bool _deptsLoading, _convsLoading, _convLoading;
+    private string? _deptsError, _convsError, _convError;
+    private string _deptQuery = "", _convQuery = "";
+    private bool _menuOpen, _createUserOpen, _addDeptOpen, _newChatOpen;
+    private bool _pageVisible = true;
+    private string _notifyPermission = "default";
+    private DotNetObjectReference<Chats>? _ref;
+
+    private DepartmentDto? SelectedDepartment => _departments.FirstOrDefault(d => d.Id == DeptId);
+
+    private string View => ConvId.HasValue ? "chat" : (Auth.IsStaff && DeptId.HasValue ? "convs" : "depts");
+
+    private string PageTitleText
+    {
+        get
+        {
+            var unread = _departments.Sum(d => d.UnreadCount);
+            return unread > 0 ? $"({unread}) DeptChat" : "DeptChat";
+        }
+    }
+
+    private string ConnClass => Hub.State switch
+    {
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected => "ok",
+        Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Disconnected => "off",
+        _ => "wait"
+    };
+
+    private string ConnTitle => Hub.State == Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected ? "Connected" : "Connecting…";
+
+    private string NotifyLabel => _notifyPermission switch
+    {
+        "granted" => "Desktop notifications on",
+        "denied" => "Notifications blocked in browser",
+        "unsupported" => "Notifications not supported",
+        _ => "Turn on desktop notifications"
+    };
+
+    private IEnumerable<DepartmentDto> FilteredDepartments => string.IsNullOrWhiteSpace(_deptQuery)
+        ? _departments
+        : _departments.Where(d => d.Name.Contains(_deptQuery.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<ConversationSummaryDto> FilteredConversations
+    {
+        get
+        {
+            var ordered = _conversations.OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue);
+            if (string.IsNullOrWhiteSpace(_convQuery)) return ordered;
+            var q = _convQuery.Trim();
+            return ordered.Where(c => c.CreatedByUserName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                   || (c.LastMessagePreview ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn)
+        {
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+        Hub.InAppToast += OnInAppToast;
+        Hub.DepartmentAdded += OnDepartmentAdded;
+        Hub.DepartmentDeleted += OnDepartmentDeleted;
+        Hub.UserOnlineStatusChanged += OnOnlineStatus;
+        Hub.MessageForwarded += OnMessageForwarded;
+        Hub.ErrorMessage += OnHubError;
+        Hub.StateChanged += OnHubState;
+        Hub.Connected += OnHubConnectedAsync;
+
+        await LoadDepartmentsAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Auth.IsSignedIn)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            try
+            {
+                await Browser.WatchVisibilityAsync(_ref);
+                _pageVisible = await Browser.IsVisibleAsync();
+                _notifyPermission = await Browser.NotificationPermissionAsync();
+            }
+            catch { }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Auth.IsSignedIn) return;
+        _convError = null;
+
+        if (Auth.IsStaff && DeptId is { } deptId && _loadedConvsFor != deptId)
+        {
+            await LoadConversationsAsync(deptId);
+        }
+        if (!DeptId.HasValue)
+        {
+            _conversations.Clear();
+            _loadedConvsFor = null;
+        }
+
+        if (ConvId is { } convId)
+        {
+            if (_conversation?.Id != convId)
+            {
+                var known = _conversations.FirstOrDefault(c => c.Id == convId);
+                if (known != null)
+                {
+                    ShowConversation(known);
+                }
+                else
+                {
+                    _convLoading = true;
+                    _conversation = null;
+                    try { ShowConversation(await Api.GetConversationAsync(convId)); }
+                    catch (ApiException ex) { _convError = ex.Message; }
+                    finally { _convLoading = false; }
+                }
+            }
+        }
+        else
+        {
+            _conversation = null;
+            // A customer has exactly one conversation per department: open (or create) it.
+            if (!Auth.IsStaff && DeptId is { } customerDept)
+            {
+                _convLoading = true;
+                try
+                {
+                    var mine = await Api.GetDepartmentConversationsAsync(customerDept);
+                    var conv = mine.FirstOrDefault();
+                    if (conv != null)
+                    {
+                        Nav.NavigateTo($"/chats/{customerDept}/{conv.Id}", replace: true);
+                    }
+                }
+                catch (ApiException ex) { _convError = ex.Message; }
+                finally { _convLoading = false; }
+            }
+        }
+    }
+
+    // ---------------- loading ----------------
+    private async Task LoadDepartmentsAsync()
+    {
+        _deptsLoading = true;
+        try
+        {
+            _departments = await Api.GetDepartmentsAsync();
+            _deptsError = null;
+        }
+        catch (ApiException ex)
+        {
+            _deptsError = ex.Message;
+        }
+        finally
+        {
+            _deptsLoading = false;
+        }
+    }
+
+    private async Task LoadConversationsAsync(Guid deptId)
+    {
+        _convsLoading = true;
+        _loadedConvsFor = deptId;
+        try
+        {
+            var list = await Api.GetDepartmentConversationsAsync(deptId);
+            if (_loadedConvsFor != deptId) return;
+            _conversations = list;
+            _convsError = null;
+            RecountDepartmentUnread(deptId);
+        }
+        catch (ApiException ex)
+        {
+            _convsError = ex.Message;
+        }
+        finally
+        {
+            _convsLoading = false;
+        }
+    }
+
+    private async Task OnHubConnectedAsync()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadDepartmentsAsync();
+            if (Auth.IsStaff && DeptId is { } d) await LoadConversationsAsync(d);
+            StateHasChanged();
+        });
+    }
+
+    // ---------------- navigation ----------------
+    private void SelectDepartment(DepartmentDto d)
+    {
+        if (Auth.IsStaff) Nav.NavigateTo($"/chats/{d.Id}");
+        else if (d.Id != DeptId) Nav.NavigateTo($"/chats/{d.Id}");
+    }
+
+    private void OpenConversation(ConversationSummaryDto c) => Nav.NavigateTo($"/chats/{c.DepartmentId}/{c.Id}");
+
+    private void ShowConversation(ConversationSummaryDto c)
+    {
+        _conversation = c;
+        // Opening clears its unread count (the hub marks the messages read on EnterRoom).
+        if (c.UnreadCount > 0) ReplaceConversation(c with { UnreadCount = 0 });
+        RecountDepartmentUnread(c.DepartmentId);
+    }
+
+    /// <summary>
+    /// The department badge and the per-conversation counts come from different server queries,
+    /// so after opening a chat recompute the badge from what we know instead of subtracting.
+    /// </summary>
+    private void RecountDepartmentUnread(Guid departmentId)
+    {
+        var dept = _departments.FirstOrDefault(d => d.Id == departmentId);
+        if (dept == null) return;
+        var count = Auth.IsStaff && _loadedConvsFor == departmentId
+            ? _conversations.Where(c => c.Id != _conversation?.Id).Sum(c => c.UnreadCount)
+            : (Auth.IsStaff ? dept.UnreadCount : 0);
+        if (count != dept.UnreadCount) ReplaceDepartment(dept with { UnreadCount = count });
+    }
+
+    private void BackFromChat()
+    {
+        Nav.NavigateTo(Auth.IsStaff && DeptId.HasValue ? $"/chats/{DeptId}" : "/chats");
+    }
+
+    private void OnChatStarted(ConversationSummaryDto c)
+    {
+        _newChatOpen = false;
+        if (!_conversations.Any(x => x.Id == c.Id)) _conversations.Add(c);
+        OpenConversation(c);
+    }
+
+    private void OnDepartmentCreated(DepartmentDto d)
+    {
+        if (!_departments.Any(x => x.Id == d.Id)) _departments.Add(d);
+    }
+
+    // ---------------- updates from the chat pane ----------------
+    private void OnActivity(ChatActivity a)
+    {
+        var conv = _conversations.FirstOrDefault(c => c.Id == a.ConversationId);
+        if (conv != null) ReplaceConversation(conv with { LastMessagePreview = a.Preview, LastMessageAt = a.At });
+        var dept = _departments.FirstOrDefault(d => d.Id == a.DepartmentId);
+        if (dept != null) ReplaceDepartment(dept with { LastMessagePreview = a.Preview, LastMessageAt = a.At, LastMessageSenderName = null });
+    }
+
+    private void OnBlockChanged(bool blocked)
+    {
+        if (_conversation == null) return;
+        _conversation = _conversation with { IsUserBlocked = blocked };
+        var conv = _conversations.FirstOrDefault(c => c.Id == _conversation.Id);
+        if (conv != null) ReplaceConversation(conv with { IsUserBlocked = blocked });
+    }
+
+    // ---------------- hub events ----------------
+    private void OnInAppToast(InAppNotificationToastDto t)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            var isOpen = _conversation?.Id == t.ConversationId;
+            var preview = $"{t.SenderName}: {t.ContentPreview}";
+
+            var dept = _departments.FirstOrDefault(d => d.Id == t.DepartmentId);
+            if (dept != null)
+            {
+                ReplaceDepartment(dept with
+                {
+                    LastMessagePreview = preview,
+                    LastMessageAt = t.SentAt,
+                    LastMessageSenderName = null,
+                    UnreadCount = isOpen && _pageVisible ? dept.UnreadCount : dept.UnreadCount + 1
+                });
+            }
+
+            if (Auth.IsStaff && DeptId == t.DepartmentId)
+            {
+                var conv = _conversations.FirstOrDefault(c => c.Id == t.ConversationId);
+                if (conv != null)
+                {
+                    ReplaceConversation(conv with
+                    {
+                        LastMessagePreview = t.ContentPreview,
+                        LastMessageAt = t.SentAt,
+                        UnreadCount = isOpen && _pageVisible ? 0 : conv.UnreadCount + 1
+                    });
+                }
+                else
+                {
+                    await LoadConversationsAsync(t.DepartmentId); // a new customer wrote in
+                }
+                RecountDepartmentUnread(t.DepartmentId);
+            }
+
+            if (!isOpen || !_pageVisible)
+            {
+                var link = $"/chats/{t.DepartmentId}/{t.ConversationId}";
+                if (!isOpen) ToastService.Show(t.ContentPreview, ToastKind.Message, $"{t.DepartmentName} · {t.SenderName}", link, Format.Initials(t.DepartmentName));
+                try { await Browser.ShowNotificationAsync($"{t.DepartmentName} · {t.SenderName}", t.ContentPreview); } catch { }
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnDepartmentAdded(DepartmentDto d)
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (!_departments.Any(x => x.Id == d.Id)) _departments.Add(d);
+            StateHasChanged();
+        });
+    }
+
+    private void OnDepartmentDeleted(Guid id)
+    {
+        _ = InvokeAsync(() =>
+        {
+            var removed = _departments.RemoveAll(d => d.Id == id) > 0;
+            if (removed && DeptId == id)
+            {
+                ToastService.Show("This department was removed.");
+                Nav.NavigateTo("/chats");
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnOnlineStatus(Guid userId, bool online)
+    {
+        if (!Auth.IsStaff) return;
+        _ = InvokeAsync(() =>
+        {
+            foreach (var c in _conversations.Where(c => c.CreatedByUserId == userId).ToList())
+            {
+                ReplaceConversation(c with { IsOnline = online });
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnMessageForwarded(Guid sourceId, Guid targetConversationId, Guid forwardedId)
+        => _ = InvokeAsync(StateHasChanged);
+
+    private void OnHubError(string message) => ToastService.Error(message);
+
+    private void OnHubState() => _ = InvokeAsync(StateHasChanged);
+
+    [JSInvokable]
+    public Task OnVisibilityChanged(bool visible)
+    {
+        _pageVisible = visible;
+        if (visible && _conversation != null)
+        {
+            var conv = _conversations.FirstOrDefault(c => c.Id == _conversation.Id);
+            if (conv is { UnreadCount: > 0 }) ReplaceConversation(conv with { UnreadCount = 0 });
+            RecountDepartmentUnread(_conversation.DepartmentId);
+        }
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // ---------------- menu actions ----------------
+    private async Task ToggleNotificationsAsync()
+    {
+        _menuOpen = false;
+        if (_notifyPermission == "default")
+        {
+            _notifyPermission = await Browser.RequestNotificationPermissionAsync();
+            if (_notifyPermission == "granted") ToastService.Success("Desktop notifications are on while DeptChat is open in a tab.");
+        }
+        else if (_notifyPermission == "denied")
+        {
+            ToastService.Show("Notifications are blocked. Allow them in your browser's site settings.");
+        }
+    }
+
+    private async Task SignOutAsync()
+    {
+        _menuOpen = false;
+        // Phase 1: local sign-out only (see AuthSession). The phone stays signed in.
+        await Auth.SignOutAsync();
+    }
+
+    // ---------------- helpers ----------------
+    private string DeptPreview(DepartmentDto d)
+    {
+        if (string.IsNullOrWhiteSpace(d.LastMessagePreview)) return Auth.IsStaff ? (d.Description ?? "") : "Start a conversation";
+        return string.IsNullOrWhiteSpace(d.LastMessageSenderName) ? d.LastMessagePreview! : $"{d.LastMessageSenderName}: {d.LastMessagePreview}";
+    }
+
+    private void ReplaceDepartment(DepartmentDto updated)
+    {
+        var i = _departments.FindIndex(d => d.Id == updated.Id);
+        if (i >= 0) _departments[i] = updated;
+    }
+
+    private void ReplaceConversation(ConversationSummaryDto updated)
+    {
+        var i = _conversations.FindIndex(c => c.Id == updated.Id);
+        if (i >= 0) _conversations[i] = updated;
+        if (_conversation?.Id == updated.Id) _conversation = updated with { UnreadCount = 0 };
+    }
+
+    public void Dispose()
+    {
+        Hub.InAppToast -= OnInAppToast;
+        Hub.DepartmentAdded -= OnDepartmentAdded;
+        Hub.DepartmentDeleted -= OnDepartmentDeleted;
+        Hub.UserOnlineStatusChanged -= OnOnlineStatus;
+        Hub.MessageForwarded -= OnMessageForwarded;
+        Hub.ErrorMessage -= OnHubError;
+        Hub.StateChanged -= OnHubState;
+        Hub.Connected -= OnHubConnectedAsync;
+        _ref?.Dispose();
+    }
+}
