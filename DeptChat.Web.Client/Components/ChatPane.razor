@@ -92,7 +92,7 @@
                             @if (m.Failed)
                             {
                                 <span class="failed"><Icon Name="alert" Size="13" /> Not sent
-                                    @if (!m.LocalOnly) { <button type="button" @onclick="() => RetryAsync(m)">Retry</button> }
+                                    @if (!m.LocalOnly && _composerBlockedReason == null) { <button type="button" @onclick="() => RetryAsync(m)">Retry</button> }
                                 </span>
                             }
                             <span>@Format.Time(m.SentAt)</span>
