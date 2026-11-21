@@ -13,7 +13,8 @@ public record ConversationSummaryDto(
     int UnreadCount,
     ConversationStatus Status,
     bool IsOnline = false,
-    bool IsUserBlocked = false
+    bool IsUserBlocked = false,
+    bool IsPinned = false   // staff only: pinned by me at the top of my department chat list
 );
 
 public record ChatMessageDto(

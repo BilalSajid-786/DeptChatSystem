@@ -571,7 +571,9 @@ public class ChatHub : Hub
                             new Dictionary<string, string>
                             {
                                 { "conversationId", conversation.Id.ToString() },
-                                { "departmentId", conversation.DepartmentId.ToString() }
+                                { "departmentId", conversation.DepartmentId.ToString() },
+                                // When the message was sent (UTC): the notification shows this time, not when it arrived.
+                                { "sentAt", message.SentAt.ToString("o") }
                             }
                         );
                     }
@@ -607,7 +609,9 @@ public class ChatHub : Hub
                             new Dictionary<string, string>
                             {
                                 { "conversationId", conversation.Id.ToString() },
-                                { "departmentId", conversation.DepartmentId.ToString() }
+                                { "departmentId", conversation.DepartmentId.ToString() },
+                                // When the message was sent (UTC): the notification shows this time, not when it arrived.
+                                { "sentAt", message.SentAt.ToString("o") }
                             }
                         );
                     }

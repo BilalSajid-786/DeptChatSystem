@@ -140,6 +140,18 @@ public class ConversationsController : ControllerBase
                 .OrderByDescending(c => c.LastMessageAt ?? c.UpdatedAt)
                 .ToListAsync();
 
+            // My pinned chats first (latest pin on top); the rest keep the latest-message order.
+            var myPins = await _dbContext.ConversationPins
+                .Where(p => p.UserId == userId && _dbContext.Conversations.Any(c => c.Id == p.ConversationId && c.DepartmentId == departmentId))
+                .ToDictionaryAsync(p => p.ConversationId, p => p.PinnedAt);
+            if (myPins.Count > 0)
+            {
+                conversations = conversations
+                    .OrderByDescending(c => myPins.ContainsKey(c.Id))
+                    .ThenByDescending(c => myPins.TryGetValue(c.Id, out var pinnedAt) ? pinnedAt : DateTime.MinValue)
+                    .ToList();
+            }
+
             var convIds = conversations.Select(c => c.Id).ToList();
             var unreadCounts = await _dbContext.Messages
                 .Where(m => convIds.Contains(m.ConversationId) && m.SequenceNumber > m.Conversation.ClearedUpToSequence
@@ -163,7 +175,8 @@ public class ConversationsController : ControllerBase
                     unreadCounts.GetValueOrDefault(conv.Id, 0),
                     conv.Status,
                     isOnline,
-                    conv.CreatedByUser?.IsBlocked ?? false
+                    conv.CreatedByUser?.IsBlocked ?? false,
+                    myPins.ContainsKey(conv.Id)
                 ));
             }
 
@@ -466,6 +479,46 @@ public class ConversationsController : ControllerBase
         }
 
         return Ok(new { message = "Message unpinned." });
+    }
+
+    /// <summary>Admins/managers: pins a customer chat at the top of the caller's own department chat list (no limit).</summary>
+    [HttpPost("{id}/pin")]
+    public async Task<IActionResult> PinConversation(Guid id)
+    {
+        if (GetUserRole() == UserRole.User) return Forbid();
+        var userId = GetUserId();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        if (!await _dbContext.ConversationPins.AnyAsync(p => p.UserId == userId && p.ConversationId == id))
+        {
+            _dbContext.ConversationPins.Add(new ConversationPin { UserId = userId, ConversationId = id });
+            await _dbContext.SaveChangesAsync();
+        }
+
+        // The caller's other devices (and web) reorder their list.
+        await _hubContext.Clients.Group($"User_{userId}").SendAsync("ConversationPinsChanged", conv.DepartmentId);
+        return Ok(new { message = "Chat pinned." });
+    }
+
+    /// <summary>Admins/managers: removes the caller's own chat pin.</summary>
+    [HttpDelete("{id}/pin")]
+    public async Task<IActionResult> UnpinConversation(Guid id)
+    {
+        if (GetUserRole() == UserRole.User) return Forbid();
+        var userId = GetUserId();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        var pin = await _dbContext.ConversationPins.FirstOrDefaultAsync(p => p.UserId == userId && p.ConversationId == id);
+        if (pin != null)
+        {
+            _dbContext.ConversationPins.Remove(pin);
+            await _dbContext.SaveChangesAsync();
+        }
+
+        await _hubContext.Clients.Group($"User_{userId}").SendAsync("ConversationPinsChanged", conv.DepartmentId);
+        return Ok(new { message = "Chat unpinned." });
     }
 
     // =====================================================================

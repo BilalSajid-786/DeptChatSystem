@@ -46,6 +46,8 @@ public class SignalRService
     public event Action<Guid, long, bool>? OnConversationCleared;
     // My personal pins changed on another device: conversationId
     public event Action<Guid>? OnPinsChanged;
+    // My pinned customer chats changed (on any of my devices or the web): departmentId
+    public event Action<Guid>? OnConversationPinsChanged;
     public event Action<string>? OnErrorMessage;
     public event Action<string>? OnForceLogout;
 
@@ -171,6 +173,11 @@ public class SignalRService
         _hubConnection.On<Guid>("PinsChanged", (convId) =>
         {
             OnPinsChanged?.Invoke(convId);
+        });
+
+        _hubConnection.On<Guid>("ConversationPinsChanged", (deptId) =>
+        {
+            OnConversationPinsChanged?.Invoke(deptId);
         });
 
         _hubConnection.On<string>("ErrorMessage", (error) =>

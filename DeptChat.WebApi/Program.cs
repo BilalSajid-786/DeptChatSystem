@@ -296,6 +296,19 @@ using (var scope = app.Services.CreateScope())
                         CREATE UNIQUE INDEX IX_ConversationUserClears_ConversationId_UserId ON ConversationUserClears (ConversationId, UserId);
                     END
                 ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversationPins')
+                    BEGIN
+                        CREATE TABLE ConversationPins (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            PinnedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_ConversationPins_UserId_ConversationId ON ConversationPins (UserId, ConversationId);
+                    END
+                ");
             }
             catch (Exception migEx)
             {

@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<MessagePin> MessagePins => Set<MessagePin>();
+    public DbSet<ConversationPin> ConversationPins => Set<ConversationPin>();
     public DbSet<ConversationUserClear> ConversationUserClears => Set<ConversationUserClear>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -157,6 +158,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<ConversationUserClear>(entity =>
         {
             entity.HasIndex(c => new { c.ConversationId, c.UserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ConversationPin>(entity =>
+        {
+            entity.HasIndex(p => new { p.UserId, p.ConversationId }).IsUnique();
         });
 
         // =====================================================================

@@ -156,6 +156,25 @@ public class ChatApiService
         }
     }
 
+    /// <summary>Admins/managers: pins or unpins a customer chat at the top of my own department chat list.</summary>
+    public async Task<(bool Success, string? Message)> SetConversationPinnedAsync(Guid conversationId, bool pinned)
+    {
+        try
+        {
+            AttachBearerToken();
+            var url = BuildUrl($"api/conversations/{conversationId}/pin");
+            var response = pinned
+                ? await _httpClient.PostAsync(url, null)
+                : await _httpClient.DeleteAsync(url);
+            if (response.IsSuccessStatusCode) return (true, null);
+            return (false, await ReadServerMessageAsync(response) ?? (pinned ? "Couldn't pin the chat." : "Couldn't unpin the chat."));
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     /// <summary>
     /// Clears the chat. A user clears it only for themselves; an admin or manager clears it for everyone.
     /// </summary>

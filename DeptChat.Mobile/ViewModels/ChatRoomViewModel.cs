@@ -668,6 +668,10 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         var convId = await EnsureConversationIdAsync();
         if (convId == Guid.Empty) return;
 
+        // My personal pins for the pinned bar (in the background). Loaded on every open, reconnect
+        // and resume: messages often come from this phone's saved copy, which has no pins.
+        _ = LoadPinsAsync();
+
         await _syncLock.WaitAsync();
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -824,9 +828,6 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             // First page: 25 messages (same size as older pages) so the chat fills sooner;
             // scrolling up still loads older messages.
             var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
-
-            // My personal pins for the pinned bar (in the background).
-            _ = LoadPinsAsync();
 
             if (paged != null)
             {
@@ -3943,12 +3944,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         if (convId == Guid.Empty) return;
 
         var confirm = forEveryone
-            ? await page.DisplayAlertAsync("Clear chat for everyone?",
+            ? await AskConfirmAsync("🧹", "Clear chat for everyone?",
                 $"All messages in this chat will be removed for {CustomerName}, admins and managers. This can't be undone.",
-                "Clear for everyone", "Cancel")
-            : await page.DisplayAlertAsync("Clear this chat?",
+                "Clear for everyone")
+            : await AskConfirmAsync("🧹", "Clear this chat?",
                 "All messages in this chat will be removed from your view. The department still keeps them.",
-                "Clear chat", "Cancel");
+                "Clear chat");
         if (!confirm) return;
 
         var (result, error) = await _apiService.ClearChatAsync(convId);
@@ -3963,78 +3964,152 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         ShowShortNotice("Chat cleared");
     }
 
+    // ---- Chat options card (⋮) and confirmation card: same look as the message menu ----
+
+    [ObservableProperty]
+    private bool _isChatMenuVisible;
+
+    [ObservableProperty]
+    private string _chatMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private bool _isChatMenuStaff;
+
+    [ObservableProperty]
+    private string _clearMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _clearMenuSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuIcon = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private bool _isConfirmVisible;
+
+    [ObservableProperty]
+    private string _confirmIcon = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmButtonText = string.Empty;
+
+    private TaskCompletionSource<bool>? _confirmTcs;
+
+    /// <summary>Shows the confirmation card and waits for the answer (Cancel / tap outside = false).</summary>
+    private Task<bool> AskConfirmAsync(string icon, string title, string message, string confirmText)
+    {
+        _confirmTcs?.TrySetResult(false);
+        var tcs = new TaskCompletionSource<bool>();
+        _confirmTcs = tcs;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ConfirmIcon = icon;
+            ConfirmTitle = title;
+            ConfirmMessage = message;
+            ConfirmButtonText = confirmText;
+            IsConfirmVisible = true;
+        });
+        return tcs.Task;
+    }
+
     [RelayCommand]
-    private async Task ShowChatMenuOptionsAsync()
+    private void ConfirmAccept() => CloseConfirm(true);
+
+    [RelayCommand]
+    private void ConfirmCancel() => CloseConfirm(false);
+
+    private void CloseConfirm(bool result)
+    {
+        IsConfirmVisible = false;
+        var tcs = _confirmTcs;
+        _confirmTcs = null;
+        tcs?.TrySetResult(result);
+    }
+
+    [RelayCommand]
+    private void ShowChatMenuOptions()
     {
         var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
-        var isStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
+        IsChatMenuStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
 
-        const string clearForMe = "🧹 Clear chat";
-        const string clearForEveryone = "🧹 Clear chat for everyone";
-
-        if (!isStaff)
+        if (IsChatMenuStaff)
+        {
+            ChatMenuTitle = $"Chat options · {CustomerName}";
+            ClearMenuTitle = "Clear chat for everyone";
+            ClearMenuSubtitle = $"Removes all messages for {CustomerName} and all staff";
+            BlockMenuIcon = IsTargetUserBlocked ? "✅" : "🚫";
+            BlockMenuTitle = IsTargetUserBlocked ? "Unblock user" : "Block user";
+            BlockMenuSubtitle = IsTargetUserBlocked
+                ? $"Let {CustomerName} send messages again"
+                : $"Stop {CustomerName} from sending messages";
+        }
+        else
         {
             // Users: clear their own chat with this department, only for themselves.
-            var userChoice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
-                "Chat Options",
-                "Cancel",
-                null,
-                clearForMe
-            )!;
-            if (userChoice == clearForMe) await ClearChatAsync(forEveryone: false);
-            return;
+            ChatMenuTitle = "Chat options";
+            ClearMenuTitle = "Clear chat";
+            ClearMenuSubtitle = "Removes messages only from your view";
         }
 
-        var blockAction = IsTargetUserBlocked ? "✅ Unblock User" : "🚫 Block User";
-        var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
-            $"Chat Options ({CustomerName})",
-            "Cancel",
-            null,
-            clearForEveryone,
-            blockAction
-        )!;
+        IsChatMenuVisible = true;
+    }
 
-        if (choice == clearForEveryone)
-        {
-            await ClearChatAsync(forEveryone: true);
-        }
-        else if (choice == "🚫 Block User")
-        {
-            var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
-                "Block User",
-                $"Are you sure you want to block {CustomerName} from sending messages?",
-                "Block",
-                "Cancel"
-            )!;
+    [RelayCommand]
+    private void CloseChatMenu() => IsChatMenuVisible = false;
 
-            if (confirm && _apiService != null && OtherUserId != Guid.Empty)
+    [RelayCommand]
+    private async Task ClearChatFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        await ClearChatAsync(forEveryone: IsChatMenuStaff);
+    }
+
+    [RelayCommand]
+    private async Task ToggleBlockFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        if (!IsChatMenuStaff || _apiService == null || OtherUserId == Guid.Empty) return;
+
+        if (!IsTargetUserBlocked)
+        {
+            var confirm = await AskConfirmAsync("🚫", "Block user?",
+                $"{CustomerName} won't be able to send messages until you unblock them.", "Block");
+            if (!confirm) return;
+
+            var (success, msg) = await _apiService.BlockUserAsync(OtherUserId);
+            if (success)
             {
-                var (success, msg) = await _apiService.BlockUserAsync(OtherUserId);
-                if (success)
-                {
-                    IsTargetUserBlocked = true;
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Blocked", $"{CustomerName} has been blocked.", "OK")!;
-                }
-                else
-                {
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to block user.", "OK")!;
-                }
+                IsTargetUserBlocked = true;
+                ShowShortNotice($"{CustomerName} has been blocked");
+            }
+            else
+            {
+                await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to block user.", "OK")!;
             }
         }
-        else if (choice == "✅ Unblock User")
+        else
         {
-            if (_apiService != null && OtherUserId != Guid.Empty)
+            var (success, msg) = await _apiService.UnblockUserAsync(OtherUserId);
+            if (success)
             {
-                var (success, msg) = await _apiService.UnblockUserAsync(OtherUserId);
-                if (success)
-                {
-                    IsTargetUserBlocked = false;
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Unblocked", $"{CustomerName} has been unblocked.", "OK")!;
-                }
-                else
-                {
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to unblock user.", "OK")!;
-                }
+                IsTargetUserBlocked = false;
+                ShowShortNotice($"{CustomerName} has been unblocked");
+            }
+            else
+            {
+                await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to unblock user.", "OK")!;
             }
         }
     }

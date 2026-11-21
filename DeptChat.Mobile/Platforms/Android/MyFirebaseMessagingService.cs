@@ -52,7 +52,16 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         {
             tappedConversationId = dataConversationId;
         }
-        SendNotification(title, SanitizeNotificationBody(body), tappedConversationId);
+
+        // When the message was sent (from the server), so a late push still shows the right time.
+        long? sentAtMillis = null;
+        if (message.Data != null && message.Data.TryGetValue("sentAt", out var sentAtText) &&
+            DateTimeOffset.TryParse(sentAtText, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var sentAt))
+        {
+            sentAtMillis = sentAt.ToUnixTimeMilliseconds();
+        }
+        SendNotification(title, SanitizeNotificationBody(body), tappedConversationId, sentAtMillis);
     }
 
     private static string SanitizeNotificationBody(string body)
@@ -83,7 +92,7 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         return body;
     }
 
-    private void SendNotification(string title, string body, string? conversationId = null)
+    private void SendNotification(string title, string body, string? conversationId = null, long? sentAtMillis = null)
     {
         var notificationId = Random.Shared.Next(1000, 9999);
 
@@ -117,6 +126,11 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
             .SetPriority((int)NotificationPriority.High)
             .SetDefaults((int)NotificationDefaults.All)
             .SetContentIntent(pendingIntent);
+
+        if (sentAtMillis.HasValue)
+        {
+            builder.SetWhen(sentAtMillis.Value).SetShowWhen(true);
+        }
 
         notificationManager.Notify(notificationId, builder.Build());
     }
