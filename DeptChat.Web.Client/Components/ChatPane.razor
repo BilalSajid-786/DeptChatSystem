@@ -16,6 +16,9 @@
             <span class="t1">@Title</span>
             <span class="t2 @(_typingName != null ? "typing" : "")">@PresenceText</span>
         </div>
+        <button type="button" class="btn btn-sm btn-outline" title="@(Auth.IsStaff ? "Remove all messages for everyone" : "Remove all messages from your view")" @onclick="() => _confirmClear = true">
+            @(Auth.IsStaff ? "Clear for everyone" : "Clear chat")
+        </button>
         @if (Auth.IsStaff)
         {
             <button type="button" class="btn btn-sm @(_blocked ? "btn-outline" : "btn-danger-outline")" @onclick="() => _confirmBlock = true">
@@ -32,6 +35,18 @@
     @if (_blocked && Auth.IsStaff)
     {
         <div class="chat-banner error"><Icon Name="lock" Size="16" /> This user is blocked and can't send messages.</div>
+    }
+    @if (_pins.Count > 0)
+    {
+        var shownPin = _pins[Math.Min(_pinIndex, _pins.Count - 1)];
+        <button type="button" class="pinned-bar" aria-label="Pinned message, show in chat" @onclick="OpenPinnedAsync">
+            <span aria-hidden="true">📌</span>
+            <span class="pin-text">@PinPreview(shownPin)</span>
+            @if (_pins.Count > 1)
+            {
+                <span class="pin-count">@(Math.Min(_pinIndex, _pins.Count - 1) + 1)/@_pins.Count</span>
+            }
+        </button>
     }
 
     <div class="messages" @ref="_scroller">
@@ -72,7 +87,7 @@
                     <div class="unread-divider">Unread messages</div>
                 }
                 var outgoing = IsOutgoing(m);
-                <div class="msg @(outgoing ? "out" : "") @(_menuFor == m ? "highlight" : "")" @key="m.ClientGeneratedId">
+                <div class="msg @(outgoing ? "out" : "") @(_menuFor == m ? "highlight" : "")" @key="m.ClientGeneratedId" id="@(m.Id.HasValue ? $"msg-{m.Id:N}" : null)">
                     <div class="bubble" @oncontextmenu="() => OpenMenu(m)" @oncontextmenu:preventDefault="@CanShowMenu(m)">
                         @if (CanShowMenu(m))
                         {
@@ -200,6 +215,10 @@
         {
             <button type="button" role="menuitem" @onclick="CopyAsync"><Icon Name="copy" Size="16" /> Copy</button>
         }
+        @if (CanPin(_menuFor))
+        {
+            <button type="button" role="menuitem" @onclick="TogglePinAsync"><span aria-hidden="true" style="width:16px;text-align:center">📌</span> @(IsPinned(_menuFor) ? "Unpin" : "Pin (only you see it)")</button>
+        }
         @if (CanForward(_menuFor))
         {
             <button type="button" role="menuitem" @onclick="() => { _forwarding = _menuFor; _menuFor = null; }"><Icon Name="forward" Size="16" /> Forward…</button>
@@ -244,6 +263,12 @@
                Message="@(_blocked ? "They will be able to send messages again." : "They won't be able to send messages until they are unblocked.")"
                ConfirmText="@(_blocked ? "Unblock" : "Block")" Danger="@(!_blocked)"
                OnConfirm="ToggleBlockAsync" OnClose="() => _confirmBlock = false" />
+
+<ConfirmDialog Open="_confirmClear"
+               Title="@(Auth.IsStaff ? "Clear chat for everyone?" : "Clear this chat?")"
+               Message="@(Auth.IsStaff ? $"All messages in this chat will be removed for {Conversation.CreatedByUserName}, admins and managers. This can't be undone." : "All messages in this chat will be removed from your view. The department still keeps them.")"
+               ConfirmText="@(Auth.IsStaff ? "Clear for everyone" : "Clear chat")" Danger="true"
+               OnConfirm="ClearChatAsync" OnClose="() => _confirmClear = false" />
 
 <ConfirmDialog Open="_deleting != null" Title="Delete message?" Message="It will be replaced with “This message was deleted” for everyone."
                ConfirmText="Delete" Danger="true" OnConfirm="DeleteAsync" OnClose="() => _deleting = null" />
@@ -307,7 +332,11 @@
     // dialogs
     private MessageVm? _menuFor, _forwarding, _deleting;
     private string? _lightboxUrl;
-    private bool _showInfo, _confirmBlock, _blocked;
+    private bool _showInfo, _confirmBlock, _blocked, _confirmClear;
+
+    // personal pins (only I see mine), newest pin first; the bar shows _pins[_pinIndex]
+    private List<ChatMessageDto> _pins = new();
+    private int _pinIndex;
 
     private string Title => Auth.IsStaff ? Conversation.CreatedByUserName : Conversation.DepartmentName;
 
@@ -344,6 +373,8 @@
         Hub.DepartmentPresenceState += OnDepartmentPresence;
         Hub.UserOnlineStatusChanged += OnOnlineStatus;
         Hub.MessageDeleted += OnMessageDeleted;
+        Hub.ConversationCleared += OnConversationCleared;
+        Hub.PinsChanged += OnPinsChanged;
         Hub.ErrorMessage += OnHubError;
         Hub.StateChanged += OnHubStateChanged;
         Hub.Connected += OnHubConnectedAsync;
@@ -426,6 +457,7 @@
             _messages.Clear();
             _messages.AddRange(page.Messages.Select(MessageVm.From));
             _hasMore = page.HasMore;
+            _ = LoadPinsAsync();
 
             await Outbox.EnsureLoadedAsync();
             foreach (var pending in Outbox.ForConversation(Conversation.Id))
@@ -491,6 +523,7 @@
             try
             {
                 var sync = await Api.SyncAsync(Conversation.Id, since);
+                ApplyCleared(sync.ClearedUpToSequence); // a clear we missed while disconnected
                 foreach (var dto in sync.Messages) Upsert(dto);
             }
             catch (ApiException) { /* next reconnect will retry */ }
@@ -510,6 +543,7 @@
         try
         {
             var page = await Api.GetMessagesAsync(Conversation.Id, null, PageSize);
+            ApplyCleared(page.ClearedUpToSequence);
             foreach (var dto in page.Messages) Upsert(dto);
         }
         catch (ApiException) { /* keep what we have */ }
@@ -672,6 +706,100 @@
             vm.MarkDeleted();
             StateHasChanged();
         });
+    }
+
+    // ---------------- personal pins & clear chat ----------------
+    private async Task LoadPinsAsync()
+    {
+        try
+        {
+            var pins = await Api.GetPinsAsync(Conversation.Id);
+            await InvokeAsync(() =>
+            {
+                _pins = pins;
+                if (_pinIndex >= _pins.Count) _pinIndex = 0;
+                StateHasChanged();
+            });
+        }
+        catch (ApiException) { /* keep the bar as it is */ }
+    }
+
+    private void OnPinsChanged(Guid conversationId)
+    {
+        if (conversationId == Conversation.Id) _ = LoadPinsAsync();
+    }
+
+    private static string PinPreview(ChatMessageDto pin)
+    {
+        if (pin.IsDeleted) return MessageContent.DeletedText;
+        var c = pin.Content ?? "";
+        if (c.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase)) return "🎙️ Voice message";
+        if (c.StartsWith("[image:", StringComparison.OrdinalIgnoreCase)) return "📷 Photo";
+        if (c.StartsWith("[file:", StringComparison.OrdinalIgnoreCase)) return "📄 Document";
+        return c.Replace("\r", " ").Replace("\n", " ");
+    }
+
+    /// <summary>Click on the pinned bar: jump to the shown pin, then show the next pin (like WhatsApp).</summary>
+    private async Task OpenPinnedAsync()
+    {
+        if (_pins.Count == 0) return;
+        var pin = _pins[Math.Min(_pinIndex, _pins.Count - 1)];
+        _pinIndex = (_pinIndex + 1) % _pins.Count;
+
+        if (!await Browser.ScrollToElementAsync($"msg-{pin.Id:N}"))
+        {
+            // Older than the loaded messages.
+            ToastService.Success($"📌 {(pin.SenderId == Auth.UserId ? "You" : pin.SenderName)}, {Format.Time(pin.SentAt)}: {PinPreview(pin)}");
+        }
+    }
+
+    private async Task TogglePinAsync()
+    {
+        var m = _menuFor;
+        _menuFor = null;
+        if (m?.Id is not { } id) return;
+        var pin = !IsPinned(m);
+        try
+        {
+            if (pin) await Api.PinMessageAsync(Conversation.Id, id);
+            else await Api.UnpinMessageAsync(Conversation.Id, id);
+            await LoadPinsAsync();
+            ToastService.Success(pin ? "Message pinned" : "Message unpinned");
+        }
+        catch (ApiException ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+    }
+
+    /// <summary>User: clears the chat for themselves. Staff: clears it for everyone.</summary>
+    private async Task ClearChatAsync()
+    {
+        var result = await Api.ClearChatAsync(Conversation.Id);
+        _confirmClear = false;
+        ApplyCleared(result.ClearedUpToSequence);
+        ToastService.Success("Chat cleared");
+    }
+
+    private void OnConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone)
+    {
+        if (conversationId != Conversation.Id) return;
+        _ = InvokeAsync(() =>
+        {
+            ApplyCleared(clearedUpToSequence);
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>Removes messages up to <paramref name="clearedUpToSequence"/> (unsent ones stay) and their pins.</summary>
+    private void ApplyCleared(long clearedUpToSequence)
+    {
+        if (clearedUpToSequence <= 0) return;
+        _messages.RemoveAll(m => m.Seq > 0 && m.Seq <= clearedUpToSequence);
+        _pins = _pins.Where(p => p.SequenceNumber > clearedUpToSequence).ToList();
+        if (_pinIndex >= _pins.Count) _pinIndex = 0;
+        if (_unreadFromSeq > 0 && _unreadFromSeq <= clearedUpToSequence) _unreadFromSeq = 0;
+        if (!_messages.Any(m => m.Seq > 0)) _hasMore = false;
     }
 
     private void OnHubError(string message)
@@ -1015,7 +1143,9 @@
     }
 
     // ---------------- message actions ----------------
-    private bool CanShowMenu(MessageVm m) => !m.IsDeleted && !m.LocalOnly && (m.Parsed.Kind == ContentKind.Text || CanForward(m) || CanDelete(m));
+    private bool CanShowMenu(MessageVm m) => !m.IsDeleted && !m.LocalOnly && (m.Parsed.Kind == ContentKind.Text || CanPin(m) || CanForward(m) || CanDelete(m));
+    private bool CanPin(MessageVm m) => m.Id.HasValue && m.Seq > 0 && !m.IsDeleted;
+    private bool IsPinned(MessageVm m) => m.Id.HasValue && _pins.Any(p => p.Id == m.Id.Value);
     private bool CanForward(MessageVm m) => Auth.IsAdmin && m.Id.HasValue && !m.IsDeleted;
     private bool CanDelete(MessageVm m) => m.Id.HasValue && !m.IsDeleted && (Auth.IsAdmin || (Auth.IsManager && m.SenderId == Auth.UserId));
 
@@ -1219,6 +1349,8 @@
         Hub.DepartmentPresenceState -= OnDepartmentPresence;
         Hub.UserOnlineStatusChanged -= OnOnlineStatus;
         Hub.MessageDeleted -= OnMessageDeleted;
+        Hub.ConversationCleared -= OnConversationCleared;
+        Hub.PinsChanged -= OnPinsChanged;
         Hub.ErrorMessage -= OnHubError;
         Hub.StateChanged -= OnHubStateChanged;
         Hub.Connected -= OnHubConnectedAsync;

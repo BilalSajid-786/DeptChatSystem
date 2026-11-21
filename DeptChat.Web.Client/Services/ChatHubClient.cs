@@ -43,6 +43,10 @@ public sealed class ChatHubClient : IAsyncDisposable
     public event Action<Guid, Guid, string, bool>? UserTyping;
     public event Action<Guid, Guid>? MessageDeleted;
     public event Action<Guid, Guid, Guid>? MessageForwarded;
+    // Clear chat: conversationId, cleared up to this sequence number, for everyone (or only for me)
+    public event Action<Guid, long, bool>? ConversationCleared;
+    // My personal pins changed on another device: conversationId
+    public event Action<Guid>? PinsChanged;
     public event Action<string>? ErrorMessage;
     public event Action<Guid, bool>? UserOnlineStatusChanged;
     public event Action<string>? ForceLogout;
@@ -76,6 +80,8 @@ public sealed class ChatHubClient : IAsyncDisposable
         connection.On<Guid, Guid, string, bool>("UserTyping", (c, u, name, typing) => UserTyping?.Invoke(c, u, name, typing));
         connection.On<Guid, Guid>("MessageDeleted", (c, m) => MessageDeleted?.Invoke(c, m));
         connection.On<Guid, Guid, Guid>("MessageForwarded", (s, c, f) => MessageForwarded?.Invoke(s, c, f));
+        connection.On<Guid, long, bool>("ConversationCleared", (c, seq, all) => ConversationCleared?.Invoke(c, seq, all));
+        connection.On<Guid>("PinsChanged", c => PinsChanged?.Invoke(c));
         connection.On<string>("ErrorMessage", e => ErrorMessage?.Invoke(e));
         connection.On<Guid, bool>("UserOnlineStatusChanged", (u, online) => UserOnlineStatusChanged?.Invoke(u, online));
         connection.On<string>("ForceLogout", r => ForceLogout?.Invoke(r));

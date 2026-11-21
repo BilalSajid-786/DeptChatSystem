@@ -23,6 +23,7 @@ public sealed class BrowserInterop
     public ValueTask<string> DeviceNameAsync() => _js.InvokeAsync<string>("deptchat.deviceName");
 
     public ValueTask ScrollToBottomAsync(ElementReference el) => _js.InvokeVoidAsync("deptchat.scroll.toBottom", el);
+    public ValueTask<bool> ScrollToElementAsync(string elementId) => _js.InvokeAsync<bool>("deptchat.scroll.toElement", elementId);
     public ValueTask<bool> IsNearBottomAsync(ElementReference el) => _js.InvokeAsync<bool>("deptchat.scroll.isNearBottom", el);
     public ValueTask<double> ScrollHeightAsync(ElementReference el) => _js.InvokeAsync<double>("deptchat.scroll.height", el);
     public ValueTask KeepScrollPositionAsync(ElementReference el, double oldHeight) => _js.InvokeVoidAsync("deptchat.scroll.keepPosition", el, oldHeight);

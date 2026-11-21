@@ -71,6 +71,21 @@ public sealed class ApiClient
     public Task<ConversationSyncResponseDto> SyncAsync(Guid conversationId, long sinceSequenceNumber)
         => SendAsync<ConversationSyncResponseDto>(HttpMethod.Get, $"api/conversations/{conversationId}/sync?sinceSequenceNumber={sinceSequenceNumber}");
 
+    // ---------- personal pins & clear chat ----------
+    /// <summary>My own pinned messages in this chat (nobody else sees them), newest pin first.</summary>
+    public Task<List<ChatMessageDto>> GetPinsAsync(Guid conversationId)
+        => SendAsync<List<ChatMessageDto>>(HttpMethod.Get, $"api/conversations/{conversationId}/pins");
+
+    public Task<string> PinMessageAsync(Guid conversationId, Guid messageId)
+        => SendForMessageAsync(HttpMethod.Post, $"api/conversations/{conversationId}/messages/{messageId}/pin");
+
+    public Task<string> UnpinMessageAsync(Guid conversationId, Guid messageId)
+        => SendForMessageAsync(HttpMethod.Delete, $"api/conversations/{conversationId}/messages/{messageId}/pin");
+
+    /// <summary>User: clears the chat for themselves. Admin / Manager: clears it for everyone.</summary>
+    public Task<ClearChatResultDto> ClearChatAsync(Guid conversationId)
+        => SendAsync<ClearChatResultDto>(HttpMethod.Post, $"api/conversations/{conversationId}/clear");
+
     public Task<List<AvailableDepartmentUserDto>> GetAvailableUsersAsync(Guid departmentId)
         => SendAsync<List<AvailableDepartmentUserDto>>(HttpMethod.Get, $"api/conversations/department/{departmentId}/available-users");
 

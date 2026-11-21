@@ -283,6 +283,7 @@
         Hub.DepartmentDeleted += OnDepartmentDeleted;
         Hub.UserOnlineStatusChanged += OnOnlineStatus;
         Hub.MessageForwarded += OnMessageForwarded;
+        Hub.ConversationCleared += OnConversationCleared;
         Hub.ErrorMessage += OnHubError;
         Hub.StateChanged += OnHubState;
         Hub.Connected += OnHubConnectedAsync;
@@ -565,6 +566,15 @@
     private void OnMessageForwarded(Guid sourceId, Guid targetConversationId, Guid forwardedId)
         => _ = InvokeAsync(StateHasChanged);
 
+    // A chat was cleared (by me, or for everyone by staff): last-message previews and unread badges change.
+    private void OnConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone)
+        => _ = InvokeAsync(async () =>
+        {
+            await LoadDepartmentsAsync();
+            if (Auth.IsStaff && _loadedConvsFor is Guid deptId) await LoadConversationsAsync(deptId);
+            StateHasChanged();
+        });
+
     private void OnHubError(string message) => ToastService.Error(message);
 
     private void OnHubState() => _ = InvokeAsync(StateHasChanged);
@@ -631,6 +641,7 @@
         Hub.DepartmentDeleted -= OnDepartmentDeleted;
         Hub.UserOnlineStatusChanged -= OnOnlineStatus;
         Hub.MessageForwarded -= OnMessageForwarded;
+        Hub.ConversationCleared -= OnConversationCleared;
         Hub.ErrorMessage -= OnHubError;
         Hub.StateChanged -= OnHubState;
         Hub.Connected -= OnHubConnectedAsync;

@@ -64,6 +64,15 @@ window.deptchat = (function () {
 
     // ---------- scrolling ----------
     const scroll = {
+        // Pinned bar: bring one message into view and flash it briefly. Returns false if it isn't loaded.
+        toElement: (id) => {
+            const target = document.getElementById(id);
+            if (!target) return false;
+            target.scrollIntoView({ block: "center", behavior: "smooth" });
+            target.classList.add("flash");
+            setTimeout(() => target.classList.remove("flash"), 1600);
+            return true;
+        },
         // Photos finish loading after the first scroll and push the last message out of view,
         // so stay pinned to the bottom as each still-loading image arrives (unless the user scrolled up).
         toBottom: (el) => {
