@@ -200,7 +200,7 @@ h1, h2, h3 { margin: 0; }
 .chat-banner { flex: none; padding: 8px 16px; font-size: 13px; display: flex; gap: 8px; align-items: center; }
 .chat-banner.warn { background: var(--warn-tint); color: var(--warn-text); border-bottom: 1px solid var(--warn-border); }
 .chat-banner.error { background: var(--danger-tint); color: var(--danger-text); }
-.messages { flex: 1; overflow-y: auto; padding: 16px 6% 12px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+.messages { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 16px 6% 12px; display: flex; flex-direction: column; gap: 4px; position: relative; }
 .messages.drop-active { outline: 3px dashed var(--primary); outline-offset: -10px; }
 .day { align-self: center; font-size: 12px; color: var(--text-3); background: var(--surface); border-radius: 8px; padding: 5px 12px; margin: 8px 0; box-shadow: 0 1px 1px rgba(17,27,33,.08); }
 .unread-divider { align-self: stretch; text-align: center; font-size: 12px; font-weight: 600; color: var(--primary); background: rgba(255,255,255,.7); padding: 4px; margin: 6px 0; border-radius: 6px; }
@@ -217,12 +217,12 @@ h1, h2, h3 { margin: 0; }
 .bubble .meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 11px; color: var(--text-2); }
 .bubble .meta .failed { color: var(--danger); font-weight: 600; display: flex; align-items: center; gap: 4px; }
 .bubble .meta .failed button { border: none; background: none; color: var(--primary); font-weight: 700; font-size: 11px; padding: 0; text-decoration: underline; }
-.bubble .more { position: absolute; top: 2px; right: 2px; width: 26px; height: 26px; border-radius: 13px; border: none; background: rgba(255,255,255,.9); color: var(--text-3); display: none; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,27,33,.15); }
+.bubble .more { position: absolute; top: -10px; right: -10px; z-index: 2; width: 26px; height: 26px; border-radius: 13px; border: none; background: rgba(255,255,255,.9); color: var(--text-3); display: none; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(17,27,33,.15); }
 .bubble:hover .more, .bubble:focus-within .more { display: flex; }
 .bubble img.photo { display: block; max-width: 300px; width: 100%; max-height: 320px; object-fit: cover; border-radius: 8px; cursor: zoom-in; background: #CBD5E1; }
 .photo-btn { border: none; padding: 0; background: none; display: block; }
 .photo-placeholder { width: 260px; height: 160px; border-radius: 8px; background: #CBD5E1; display: flex; align-items: center; justify-content: center; gap: 8px; color: #475569; font-size: 13px; }
-.file-card { display: flex; align-items: center; gap: 10px; background: rgba(17,27,33,.05); border-radius: 8px; padding: 10px 12px; min-width: 240px; color: var(--text); text-decoration: none; }
+.file-card { display: flex; align-items: center; gap: 10px; background: rgba(17,27,33,.05); border-radius: 8px; padding: 10px 12px; width: 260px; max-width: 100%; box-sizing: border-box; color: var(--text); text-decoration: none; }
 .file-card:hover { background: rgba(17,27,33,.08); color: var(--text); }
 .file-card .ftype { width: 36px; height: 40px; border-radius: 6px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
 .file-card .ftype.doc { background: #1D4ED8; }
@@ -231,7 +231,7 @@ h1, h2, h3 { margin: 0; }
 .file-card .fbody { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .file-card .fname { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-card .fsize { font-size: 12px; color: var(--text-2); }
-.voice { display: flex; align-items: center; gap: 10px; min-width: 250px; }
+.voice { display: flex; align-items: center; gap: 10px; width: 250px; max-width: 100%; }
 .voice .play { width: 40px; height: 40px; border-radius: 20px; border: none; background: #0284C7; color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
 .msg.out .voice .play { background: #059669; }
 .voice .track { flex: 1; height: 4px; border-radius: 2px; background: #CBD5E1; position: relative; }

@@ -64,7 +64,18 @@ window.deptchat = (function () {
 
     // ---------- scrolling ----------
     const scroll = {
-        toBottom: (el) => { if (el) el.scrollTop = el.scrollHeight; },
+        // Photos finish loading after the first scroll and push the last message out of view,
+        // so stay pinned to the bottom as each still-loading image arrives (unless the user scrolled up).
+        toBottom: (el) => {
+            if (!el) return;
+            el.scrollTop = el.scrollHeight;
+            el.querySelectorAll("img").forEach((img) => {
+                if (img.complete) return;
+                img.addEventListener("load", () => {
+                    if ((el.scrollHeight - el.scrollTop - el.clientHeight) < img.clientHeight + 160) el.scrollTop = el.scrollHeight;
+                }, { once: true });
+            });
+        },
         isNearBottom: (el) => el ? (el.scrollHeight - el.scrollTop - el.clientHeight) < 120 : true,
         height: (el) => el ? el.scrollHeight : 0,
         // After older messages are prepended, keep the same messages in view.

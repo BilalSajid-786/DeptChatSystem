@@ -381,6 +381,7 @@
             {
                 _leftForHidden = false;
                 await Hub.EnterRoomAsync(Conversation.Id);
+                await RefreshLatestAsync();
             }
             await MarkLatestReadAsync();
         }
@@ -493,9 +494,25 @@
                 foreach (var dto in sync.Messages) Upsert(dto);
             }
             catch (ApiException) { /* next reconnect will retry */ }
+            await RefreshLatestAsync();
             await MarkLatestReadAsync();
             StateHasChanged();
         });
+    }
+
+    /// <summary>
+    /// Ticks and deletes that happened while we were out of the room (hidden tab, dropped connection)
+    /// are not replayed by the hub, and /sync only returns new messages. Re-read the latest page so
+    /// statuses (sent → delivered → read) and deletions catch up.
+    /// </summary>
+    private async Task RefreshLatestAsync()
+    {
+        try
+        {
+            var page = await Api.GetMessagesAsync(Conversation.Id, null, PageSize);
+            foreach (var dto in page.Messages) Upsert(dto);
+        }
+        catch (ApiException) { /* keep what we have */ }
     }
 
     private async Task MarkLatestReadAsync()
@@ -1028,6 +1045,10 @@
         {
             throw new ApiException("Not connected. Try again when the connection is back.", 0);
         }
+        // The hub only broadcasts MessageDeleted to the room; if this tab is outside it (e.g. hidden),
+        // that event never arrives. A refused delete comes back as ErrorMessage (shown as a toast),
+        // so confirm with the server's copy instead of assuming success.
+        await RefreshLatestAsync();
     }
 
     private async Task ToggleBlockAsync()

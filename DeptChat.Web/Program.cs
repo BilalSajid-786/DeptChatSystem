@@ -43,9 +43,29 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // index.html, js/deptchat.js and css/app.css keep the same names between releases, so make
+    // browsers re-check them (304 if unchanged) instead of running a stale copy after an update.
+    // _framework files are fingerprinted and handled by Blazor's own caching.
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        if (!path.StartsWith("/_framework/", StringComparison.OrdinalIgnoreCase) &&
+            (path.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ||
+             path.EndsWith(".js", StringComparison.OrdinalIgnoreCase) ||
+             path.EndsWith(".css", StringComparison.OrdinalIgnoreCase) ||
+             path == "/"))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    }
+});
 
 app.MapReverseProxy();
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 app.Run();

@@ -26,21 +26,27 @@ Result per line: ✅ pass · ❌ fail (note what happened) · — not tested.
 | A13 | Manager: only "Add customer user"; admin pages show "no access" | ✅ |
 | A14 | Accounts, Departments (add / delete / assign manager), My account pages load | ✅ |
 
-## B. Web ↔ Android app (needs a phone on the same backend)
+## B. Web ↔ Android app — round one, 2026-11-20/21 (test APK 1.0.10 build 12 → test backend on dev PC)
 
 | # | Check | Result |
 |---|---|---|
-| B1 | Customer on phone ↔ staff on web: messages arrive live both ways | |
-| B2 | Ticks update on both sides (sent → delivered → read) | |
-| B3 | Typing indicator shows on both sides | |
-| B4 | **Voice note recorded on the web plays on the phone** (Chrome/Edge/Safari) | |
-| B5 | **Voice note recorded on the phone plays on the web** | |
-| B6 | Photo / PDF sent from web opens on phone, and the other way round | |
-| B7 | Message deleted on web disappears on phone; forwarded message shows "Forwarded" | |
-| B8 | Web sign-out (menu › Sign out): phone stays signed in **and still gets push** | |
-| B9 | Change password on web: web and phone are both signed out | |
-| B10 | "Sign out all other devices" on web signs the phone out; web stays in | |
-| B11 | Same user on web and phone at once: both receive messages | |
+| B1 | Customer on phone ↔ staff on web: messages arrive live both ways | ✅ |
+| B2 | Ticks update on both sides (sent → delivered → read) | ✅ (web missed live ticks while its tab was hidden → fixed: refresh on rejoin) |
+| B3 | Typing indicator shows on both sides | ✅ web → phone; phone → web not observed |
+| B4 | **Voice note recorded on the web plays on the phone** (Chrome/Edge) | ✅ |
+| B5 | **Voice note recorded on the phone plays on the web** | ✅ |
+| B6 | Photo / PDF sent from web opens on phone, and the other way round | ✅ photo both ways, PDF web → phone; PDF phone → web not sent |
+| B7 | Message deleted on web disappears on phone; forwarded message shows "Forwarded" | ✅ live when the phone is in the chat — see finding F1 |
+| B8 | Web sign-out (menu › Sign out): phone stays signed in **and still gets push** | ✅ |
+| B9 | Change password on web: web and phone are both signed out | ✅ |
+| B10 | "Sign out all other devices" on web signs the phone out; web stays in | ✅ (phone signs out on its next contact; no instant signal) |
+| B11 | Same user on web and phone at once: both receive messages | ✅ (no push while inside the chat — correct) |
+
+### Findings (existing mobile/backend behaviour — recorded, not changed)
+
+- **F1 — Deletes don't reach phones that weren't in the chat.** The hub only sends `MessageDeleted` to the room, and the phone app shows its saved copy and syncs only *newer* messages, so a message deleted while the phone was elsewhere keeps showing on that phone. Same when an Admin deletes from the phone app. Needs a mobile change (refresh on open) and/or backend change.
+- **F2 — Stale "in chat" presence.** After the app is swiped away the server can still treat the phone as in the room: staff messages are stored as Read immediately and the web shows "in chat". Push is still sent. Backend presence behaviour (Phase 2 list).
+- **F3 — In-app browser blocks the microphone** (Claude browser pane only); recording works in Chrome/Edge on `http://localhost` or HTTPS. Not an app issue; HTTPS is required when hosted.
 
 ## C. Web only (not yet checked)
 
