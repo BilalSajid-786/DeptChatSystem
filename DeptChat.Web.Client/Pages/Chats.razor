@@ -164,12 +164,13 @@
                             }
                             @foreach (var c in convs)
                             {
-                                <button type="button" class="row @(c.Id == ConvId ? "selected" : "")" @onclick="() => OpenConversation(c)" @key="c.Id">
+                                <div class="row-wrap" @key="c.Id">
+                                <button type="button" class="row @(c.Id == ConvId ? "selected" : "")" @onclick="() => OpenConversation(c)">
                                     <div class="avatar" style="background:@Format.AvatarColor(c.CreatedByUserId)">@Format.Initials(c.CreatedByUserName)@if (c.IsOnline) { <span class="dot"></span> }</div>
                                     <span class="body">
                                         <span class="line">
                                             <span class="name"><span>@c.CreatedByUserName</span>@if (c.IsUserBlocked) { <span class="tag tag-blocked">BLOCKED</span> }</span>
-                                            <span class="time @(c.UnreadCount > 0 ? "unread" : "")">@Format.ListTime(c.LastMessageAt)</span>
+                                            <span class="time @(c.UnreadCount > 0 ? "unread" : "")">@if (c.IsPinned) { <span class="pin-ic" title="Pinned">📌</span> }@Format.ListTime(c.LastMessageAt)</span>
                                         </span>
                                         <span class="line">
                                             <span class="preview">@(c.LastMessagePreview ?? "")</span>
@@ -177,6 +178,10 @@
                                         </span>
                                     </span>
                                 </button>
+                                @* Pin / unpin this chat at the top of my own list (personal; shown on hover). *@
+                                <button type="button" class="row-pin @(c.IsPinned ? "on" : "")" title="@(c.IsPinned ? "Unpin chat" : "Pin chat")"
+                                        aria-label="@(c.IsPinned ? "Unpin chat" : "Pin chat")" @onclick="() => ToggleConversationPinAsync(c)">📌</button>
+                                </div>
                             }
                         }
                     </div>
@@ -263,7 +268,13 @@
     {
         get
         {
-            var ordered = _conversations.OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue);
+            // My pinned chats first, in the server's order (latest pin on top); the rest by latest message.
+            var ordered = _conversations
+                .Select((c, i) => (c, i))
+                .OrderByDescending(x => x.c.IsPinned)
+                .ThenBy(x => x.c.IsPinned ? x.i : 0)
+                .ThenByDescending(x => x.c.LastMessageAt ?? DateTime.MinValue)
+                .Select(x => x.c);
             if (string.IsNullOrWhiteSpace(_convQuery)) return ordered;
             var q = _convQuery.Trim();
             return ordered.Where(c => c.CreatedByUserName.Contains(q, StringComparison.OrdinalIgnoreCase)
@@ -284,6 +295,7 @@
         Hub.UserOnlineStatusChanged += OnOnlineStatus;
         Hub.MessageForwarded += OnMessageForwarded;
         Hub.ConversationCleared += OnConversationCleared;
+        Hub.ConversationPinsChanged += OnConversationPinsChanged;
         Hub.ErrorMessage += OnHubError;
         Hub.StateChanged += OnHubState;
         Hub.Connected += OnHubConnectedAsync;
@@ -575,6 +587,30 @@
             StateHasChanged();
         });
 
+    // I pinned / unpinned a chat (here, in the app or in another tab): reorder that department's list.
+    private void OnConversationPinsChanged(Guid departmentId)
+        => _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsStaff && _loadedConvsFor == departmentId) await LoadConversationsAsync(departmentId);
+            StateHasChanged();
+        });
+
+    private async Task ToggleConversationPinAsync(ConversationSummaryDto c)
+    {
+        var pin = !c.IsPinned;
+        try
+        {
+            if (pin) await Api.PinConversationAsync(c.Id);
+            else await Api.UnpinConversationAsync(c.Id);
+            ReplaceConversation(c with { IsPinned = pin });
+            if (_loadedConvsFor is Guid deptId) await LoadConversationsAsync(deptId);
+        }
+        catch (ApiException ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+    }
+
     private void OnHubError(string message) => ToastService.Error(message);
 
     private void OnHubState() => _ = InvokeAsync(StateHasChanged);
@@ -642,6 +678,7 @@
         Hub.UserOnlineStatusChanged -= OnOnlineStatus;
         Hub.MessageForwarded -= OnMessageForwarded;
         Hub.ConversationCleared -= OnConversationCleared;
+        Hub.ConversationPinsChanged -= OnConversationPinsChanged;
         Hub.ErrorMessage -= OnHubError;
         Hub.StateChanged -= OnHubState;
         Hub.Connected -= OnHubConnectedAsync;

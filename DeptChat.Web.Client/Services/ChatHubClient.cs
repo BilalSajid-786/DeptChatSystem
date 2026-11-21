@@ -47,6 +47,8 @@ public sealed class ChatHubClient : IAsyncDisposable
     public event Action<Guid, long, bool>? ConversationCleared;
     // My personal pins changed on another device: conversationId
     public event Action<Guid>? PinsChanged;
+    // My pinned customer chats changed (any of my devices or tabs): departmentId
+    public event Action<Guid>? ConversationPinsChanged;
     public event Action<string>? ErrorMessage;
     public event Action<Guid, bool>? UserOnlineStatusChanged;
     public event Action<string>? ForceLogout;
@@ -82,6 +84,7 @@ public sealed class ChatHubClient : IAsyncDisposable
         connection.On<Guid, Guid, Guid>("MessageForwarded", (s, c, f) => MessageForwarded?.Invoke(s, c, f));
         connection.On<Guid, long, bool>("ConversationCleared", (c, seq, all) => ConversationCleared?.Invoke(c, seq, all));
         connection.On<Guid>("PinsChanged", c => PinsChanged?.Invoke(c));
+        connection.On<Guid>("ConversationPinsChanged", d => ConversationPinsChanged?.Invoke(d));
         connection.On<string>("ErrorMessage", e => ErrorMessage?.Invoke(e));
         connection.On<Guid, bool>("UserOnlineStatusChanged", (u, online) => UserOnlineStatusChanged?.Invoke(u, online));
         connection.On<string>("ForceLogout", r => ForceLogout?.Invoke(r));

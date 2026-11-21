@@ -82,6 +82,13 @@ public sealed class ApiClient
     public Task<string> UnpinMessageAsync(Guid conversationId, Guid messageId)
         => SendForMessageAsync(HttpMethod.Delete, $"api/conversations/{conversationId}/messages/{messageId}/pin");
 
+    /// <summary>Admins/managers: pins a customer chat at the top of my own department chat list.</summary>
+    public Task<string> PinConversationAsync(Guid conversationId)
+        => SendForMessageAsync(HttpMethod.Post, $"api/conversations/{conversationId}/pin");
+
+    public Task<string> UnpinConversationAsync(Guid conversationId)
+        => SendForMessageAsync(HttpMethod.Delete, $"api/conversations/{conversationId}/pin");
+
     /// <summary>User: clears the chat for themselves. Admin / Manager: clears it for everyone.</summary>
     public Task<ClearChatResultDto> ClearChatAsync(Guid conversationId)
         => SendAsync<ClearChatResultDto>(HttpMethod.Post, $"api/conversations/{conversationId}/clear");
