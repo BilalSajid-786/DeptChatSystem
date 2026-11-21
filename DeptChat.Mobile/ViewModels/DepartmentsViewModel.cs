@@ -1069,6 +1069,12 @@ public partial class DepartmentsViewModel : ObservableObject
 
             };
 
+            // A chat was cleared (by me on another device, or for everyone by staff): previews and badges change.
+            _signalRService.OnConversationCleared += (cId, seq, forEveryone) =>
+            {
+                RequestDepartmentsReload();
+            };
+
             _signalRService.OnDepartmentAdded += (d) =>
 
             {

@@ -712,6 +712,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
             if (sync != null)
             {
+                // Chat cleared (here, on another device or by staff) while this phone missed it.
+                ApplyClearedUpTo(convId, sync.ClearedUpToSequence);
+
                 // If server reports 0 messages, but local device has confirmed server messages, clear only confirmed messages (protect pending outbox messages!)
                 if (sync.LastSequenceNumber == 0 && sync.Messages.Count == 0 && Messages.Any(m => m.SequenceNumber > 0))
                 {
@@ -821,8 +824,15 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             // First page: 25 messages (same size as older pages) so the chat fills sooner;
             // scrolling up still loads older messages.
             var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
+
+            // My personal pins for the pinned bar (in the background).
+            _ = LoadPinsAsync();
+
             if (paged != null)
             {
+                // Saved copies of cleared messages (shown from this phone's cache) go away.
+                ApplyClearedUpTo(convId, paged.ClearedUpToSequence);
+
                 HasMoreOlderMessages = paged.HasMore;
                 if (paged.EarliestSequenceNumber.HasValue)
                 {
@@ -1445,6 +1455,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDelivered += HandleMessageDelivered;
             _signalRService.OnMessagesRead += HandleMessagesRead;
             _signalRService.OnMessageDeleted += HandleMessageDeleted;
+            _signalRService.OnConversationCleared += HandleConversationCleared;
+            _signalRService.OnPinsChanged += HandlePinsChanged;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
@@ -1471,6 +1483,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDelivered -= HandleMessageDelivered;
             _signalRService.OnMessagesRead -= HandleMessagesRead;
             _signalRService.OnMessageDeleted -= HandleMessageDeleted;
+            _signalRService.OnConversationCleared -= HandleConversationCleared;
+            _signalRService.OnPinsChanged -= HandlePinsChanged;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
@@ -3446,6 +3460,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             (myRole == UserRole.Manager && (item.SenderId == myUserId || item.IsOutgoing))
         );
 
+        // Personal pin: everyone may pin messages the server already has (not unsent or deleted ones).
+        CanPinSelectedMessage = !item.IsDeleted && item.SequenceNumber > 0;
+        var pinned = IsPinnedByMe(item.Id);
+        PinMenuTitle = pinned ? "Unpin" : "Pin";
+        PinMenuSubtitle = pinned ? "Remove from your pinned messages" : "Keep at the top of this chat (only you see it)";
+
         IsMessageMenuVisible = true;
     }
 
@@ -3715,23 +3735,270 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         return "📁";
     }
 
+    // =====================================================================
+    // Personal pins (only I see my pins) and "clear chat"
+    // =====================================================================
+
+    // My pinned messages in this chat, newest pin first (from the server).
+    private List<ChatMessageDto> _pinnedMessages = new();
+    private int _pinnedBarIndex;
+    private long _appliedClearedUpToSequence;
+
+    [ObservableProperty]
+    private bool _hasPinnedMessages;
+
+    [ObservableProperty]
+    private string _pinnedBarText = string.Empty;
+
+    [ObservableProperty]
+    private string _pinnedBarCounter = string.Empty;
+
+    [ObservableProperty]
+    private bool _canPinSelectedMessage;
+
+    [ObservableProperty]
+    private string _pinMenuTitle = "Pin";
+
+    [ObservableProperty]
+    private string _pinMenuSubtitle = string.Empty;
+
+    private bool IsPinnedByMe(Guid messageId) => _pinnedMessages.Any(p => p.Id == messageId);
+
+    /// <summary>Loads my pins for this chat and refreshes the pinned bar. Never throws.</summary>
+    private async Task LoadPinsAsync()
+    {
+        if (_apiService == null || _conversationId == Guid.Empty) return;
+        var convId = _conversationId;
+        try
+        {
+            var pins = await _apiService.GetPinnedMessagesAsync(convId);
+            if (convId != _conversationId) return;
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _pinnedMessages = pins;
+                if (_pinnedBarIndex >= _pinnedMessages.Count) _pinnedBarIndex = 0;
+                UpdatePinnedBar();
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Pins] load failed: {ex.Message}");
+        }
+    }
+
+    private void UpdatePinnedBar()
+    {
+        HasPinnedMessages = _pinnedMessages.Count > 0;
+        if (!HasPinnedMessages)
+        {
+            PinnedBarText = string.Empty;
+            PinnedBarCounter = string.Empty;
+            return;
+        }
+
+        var pin = _pinnedMessages[_pinnedBarIndex];
+        PinnedBarText = DescribeForPreview(pin.Content, pin.IsDeleted);
+        PinnedBarCounter = _pinnedMessages.Count > 1 ? $"{_pinnedBarIndex + 1}/{_pinnedMessages.Count}" : string.Empty;
+    }
+
+    private static string DescribeForPreview(string? content, bool isDeleted)
+    {
+        if (isDeleted) return "🚫 This message was deleted";
+        if (string.IsNullOrWhiteSpace(content)) return "Message";
+        if (content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase)) return "🎙️ Voice message";
+        if (content.StartsWith("[image:", StringComparison.OrdinalIgnoreCase)) return "📷 Photo";
+        if (content.StartsWith("[file:", StringComparison.OrdinalIgnoreCase)) return "📄 Document";
+        // One line in the bar: line breaks become spaces.
+        return content.Replace("\r", " ").Replace("\n", " ");
+    }
+
+    /// <summary>Tap on the pinned bar: jump to the shown pin, then show the next pin (like WhatsApp).</summary>
+    [RelayCommand]
+    private async Task OpenPinnedMessageAsync()
+    {
+        if (_pinnedMessages.Count == 0) return;
+        var pin = _pinnedMessages[_pinnedBarIndex];
+
+        // Next tap shows the next pin.
+        _pinnedBarIndex = (_pinnedBarIndex + 1) % _pinnedMessages.Count;
+        UpdatePinnedBar();
+
+        var item = Messages.FirstOrDefault(m => m.Id == pin.Id);
+        if (item != null)
+        {
+            RequestScrollToItem?.Invoke(item);
+            return;
+        }
+
+        // Older than the loaded messages: show it instead of loading the whole history.
+        var page = Application.Current?.MainPage;
+        if (page != null)
+        {
+            var who = pin.SenderId == (_authService?.UserId ?? Guid.Empty) ? "You" : pin.SenderName;
+            await page.DisplayAlertAsync($"📌 {who} · {pin.SentAt.ToLocalTime():dd/MM/yyyy h:mm tt}",
+                DescribeForPreview(pin.Content, pin.IsDeleted), "OK");
+        }
+    }
+
+    [RelayCommand]
+    private async Task TogglePinFromMenuAsync()
+    {
+        var msg = SelectedMenuMessage;
+        IsMessageMenuVisible = false;
+        SelectedMenuMessage = null;
+        if (msg == null || _apiService == null || _conversationId == Guid.Empty) return;
+
+        var pin = !IsPinnedByMe(msg.Id);
+        var (success, error) = await _apiService.SetMessagePinnedAsync(_conversationId, msg.Id, pin);
+        if (success)
+        {
+            await LoadPinsAsync();
+            ShowShortNotice(pin ? "Message pinned" : "Message unpinned");
+        }
+        else if (Application.Current?.MainPage != null)
+        {
+            await Application.Current.MainPage.DisplayAlertAsync(pin ? "Pin" : "Unpin", error ?? "Please try again.", "OK");
+        }
+    }
+
+    private static void ShowShortNotice(string text)
+    {
+#if ANDROID
+        Android.Widget.Toast.MakeText(Android.App.Application.Context, text, Android.Widget.ToastLength.Short)?.Show();
+#endif
+    }
+
+    private void HandlePinsChanged(Guid convId)
+    {
+        if (convId != _conversationId) return;
+        _ = LoadPinsAsync();
+    }
+
+    /// <summary>
+    /// Removes messages up to <paramref name="clearedUpToSequence"/> from the screen and from the saved copy
+    /// on this phone (unsent messages are kept). Used after "clear chat" here, on another device or by staff,
+    /// and whenever the server reports a clear point (so a missed live event is caught up).
+    /// </summary>
+    private void ApplyClearedUpTo(Guid convId, long clearedUpToSequence)
+    {
+        if (clearedUpToSequence <= 0 || convId != _conversationId) return;
+        if (clearedUpToSequence <= _appliedClearedUpToSequence)
+        {
+            // Already applied on screen; still make sure no older cached copies remain.
+            if (_outboxService != null) _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+            return;
+        }
+        _appliedClearedUpToSequence = clearedUpToSequence;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var cleared = Messages.Where(m => m.SequenceNumber > 0 && m.SequenceNumber <= clearedUpToSequence).ToList();
+            if (cleared.Count > 0)
+            {
+                RunBulkUpdate(() =>
+                {
+                    foreach (var m in cleared) Messages.Remove(m);
+                });
+            }
+
+            // Pins on cleared messages are gone on the server too.
+            var before = _pinnedMessages.Count;
+            _pinnedMessages = _pinnedMessages.Where(p => p.SequenceNumber > clearedUpToSequence).ToList();
+            if (_pinnedMessages.Count != before)
+            {
+                _pinnedBarIndex = 0;
+                UpdatePinnedBar();
+            }
+
+            // Nothing older can be loaded any more.
+            if (!Messages.Any(m => m.SequenceNumber > 0)) HasMoreOlderMessages = false;
+        });
+
+        if (_outboxService != null) _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+    }
+
+    private void HandleConversationCleared(Guid convId, long clearedUpToSequence, bool forEveryone)
+    {
+        if (convId == _conversationId)
+        {
+            ApplyClearedUpTo(convId, clearedUpToSequence);
+        }
+        else if (_outboxService != null)
+        {
+            // Another chat: drop its saved copies so they never flash when it is opened.
+            _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+        }
+    }
+
+    /// <summary>
+    /// User: clears their own chat with this department (only for them).
+    /// Admin / Manager: clears this chat for everyone (the user and all staff).
+    /// </summary>
+    private async Task ClearChatAsync(bool forEveryone)
+    {
+        var page = Application.Current?.MainPage;
+        if (page == null || _apiService == null) return;
+
+        var convId = await EnsureConversationIdAsync();
+        if (convId == Guid.Empty) return;
+
+        var confirm = forEveryone
+            ? await page.DisplayAlertAsync("Clear chat for everyone?",
+                $"All messages in this chat will be removed for {CustomerName}, admins and managers. This can't be undone.",
+                "Clear for everyone", "Cancel")
+            : await page.DisplayAlertAsync("Clear this chat?",
+                "All messages in this chat will be removed from your view. The department still keeps them.",
+                "Clear chat", "Cancel");
+        if (!confirm) return;
+
+        var (result, error) = await _apiService.ClearChatAsync(convId);
+        if (result == null)
+        {
+            await page.DisplayAlertAsync("Clear chat", error ?? "Couldn't clear the chat. Please try again.", "OK");
+            return;
+        }
+
+        ApplyClearedUpTo(convId, result.ClearedUpToSequence);
+        ConversationListCache.Clear();
+        ShowShortNotice("Chat cleared");
+    }
+
     [RelayCommand]
     private async Task ShowChatMenuOptionsAsync()
     {
         var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
         var isStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
 
-        if (!isStaff) return;
+        const string clearForMe = "🧹 Clear chat";
+        const string clearForEveryone = "🧹 Clear chat for everyone";
+
+        if (!isStaff)
+        {
+            // Users: clear their own chat with this department, only for themselves.
+            var userChoice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
+                "Chat Options",
+                "Cancel",
+                null,
+                clearForMe
+            )!;
+            if (userChoice == clearForMe) await ClearChatAsync(forEveryone: false);
+            return;
+        }
 
         var blockAction = IsTargetUserBlocked ? "✅ Unblock User" : "🚫 Block User";
         var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
             $"Chat Options ({CustomerName})",
             "Cancel",
             null,
+            clearForEveryone,
             blockAction
         )!;
 
-        if (choice == "🚫 Block User")
+        if (choice == clearForEveryone)
+        {
+            await ClearChatAsync(forEveryone: true);
+        }
+        else if (choice == "🚫 Block User")
         {
             var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
                 "Block User",

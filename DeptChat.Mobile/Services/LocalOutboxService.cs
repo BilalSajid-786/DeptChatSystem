@@ -277,6 +277,28 @@ public class LocalOutboxService
         }
     }
 
+    /// <summary>
+    /// "Clear chat": removes the saved copies of messages up to and including <paramref name="clearedUpToSequence"/>.
+    /// Messages not yet confirmed by the server (sequence 0 / Pending) are never removed.
+    /// </summary>
+    public async Task DeleteMessagesUpToAsync(Guid conversationId, long clearedUpToSequence)
+    {
+        if (clearedUpToSequence <= 0) return;
+
+        await EnsureInitializedAsync();
+        var msgs = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == conversationId
+                        && m.SequenceNumber > 0
+                        && m.SequenceNumber <= clearedUpToSequence
+                        && m.Status != MessageDeliveryStatus.Pending)
+            .ToListAsync();
+
+        foreach (var m in msgs)
+        {
+            await _db.DeleteAsync(m);
+        }
+    }
+
     public async Task MigrateConversationIdAsync(Guid oldConversationId, Guid newConversationId)
     {
         if (oldConversationId == Guid.Empty || newConversationId == Guid.Empty || oldConversationId == newConversationId)

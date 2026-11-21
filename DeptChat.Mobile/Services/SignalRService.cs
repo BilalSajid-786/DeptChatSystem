@@ -42,6 +42,10 @@ public class SignalRService
     public event Action<Guid, Guid, bool>? OnDepartmentPresenceState;
     public event Action<Guid, Guid>? OnMessageDeleted;
     public event Action<Guid, Guid, Guid>? OnMessageForwarded;
+    // Clear chat: conversationId, cleared up to this sequence number, for everyone (or only for me)
+    public event Action<Guid, long, bool>? OnConversationCleared;
+    // My personal pins changed on another device: conversationId
+    public event Action<Guid>? OnPinsChanged;
     public event Action<string>? OnErrorMessage;
     public event Action<string>? OnForceLogout;
 
@@ -157,6 +161,16 @@ public class SignalRService
         _hubConnection.On<Guid, Guid, Guid>("MessageForwarded", (srcMsgId, targetConvId, fwdMsgId) =>
         {
             OnMessageForwarded?.Invoke(srcMsgId, targetConvId, fwdMsgId);
+        });
+
+        _hubConnection.On<Guid, long, bool>("ConversationCleared", (convId, clearedUpTo, forEveryone) =>
+        {
+            OnConversationCleared?.Invoke(convId, clearedUpTo, forEveryone);
+        });
+
+        _hubConnection.On<Guid>("PinsChanged", (convId) =>
+        {
+            OnPinsChanged?.Invoke(convId);
         });
 
         _hubConnection.On<string>("ErrorMessage", (error) =>

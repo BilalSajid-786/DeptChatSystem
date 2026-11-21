@@ -4,8 +4,10 @@ using DeptChat.Domain.Entities;
 using DeptChat.Infrastructure.Persistence;
 using DeptChat.Shared.DTOs;
 using DeptChat.Shared.Enums;
+using DeptChat.WebApi.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeptChat.WebApi.Controllers;
@@ -17,11 +19,16 @@ public class ConversationsController : ControllerBase
 {
     private readonly ApplicationDbContext _dbContext;
     private readonly IPresenceService _presenceService;
+    private readonly IHubContext<ChatHub> _hubContext;
 
-    public ConversationsController(ApplicationDbContext dbContext, IPresenceService presenceService)
+    // Personal pins per person per chat (like WhatsApp).
+    private const int MaxPinsPerChat = 3;
+
+    public ConversationsController(ApplicationDbContext dbContext, IPresenceService presenceService, IHubContext<ChatHub> hubContext)
     {
         _dbContext = dbContext;
         _presenceService = presenceService;
+        _hubContext = hubContext;
     }
 
     private Guid GetClientId()
@@ -82,9 +89,15 @@ public class ConversationsController : ControllerBase
                 conversation.Department = department;
             }
 
+            // Cleared messages (for everyone or by this user) are not counted and not previewed.
+            var clearedUpTo = await GetClearedUpToSequenceAsync(conversation, userId);
+
             var unreadCount = await _dbContext.Messages
-                .Where(m => m.ConversationId == conversation.Id && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
+                .Where(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
                 .CountAsync();
+
+            var hasVisibleMessages = await _dbContext.Messages
+                .AnyAsync(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo);
 
             var isUserOnline = await _presenceService.IsUserOnlineAsync(userId);
 
@@ -94,7 +107,7 @@ public class ConversationsController : ControllerBase
                 department.Name,
                 conversation.CreatedByUserId,
                 conversation.CreatedByUser.FullName,
-                SanitizePreview(conversation.LastMessagePreview),
+                SanitizePreview(hasVisibleMessages ? conversation.LastMessagePreview : null),
                 conversation.LastMessageAt,
                 unreadCount,
                 conversation.Status,
@@ -129,7 +142,8 @@ public class ConversationsController : ControllerBase
 
             var convIds = conversations.Select(c => c.Id).ToList();
             var unreadCounts = await _dbContext.Messages
-                .Where(m => convIds.Contains(m.ConversationId) && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read)
+                .Where(m => convIds.Contains(m.ConversationId) && m.SequenceNumber > m.Conversation.ClearedUpToSequence
+                            && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read)
                 .GroupBy(m => m.ConversationId)
                 .Select(g => new { ConversationId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ConversationId, x => x.Count);
@@ -211,9 +225,14 @@ public class ConversationsController : ControllerBase
             }
         }
 
+        var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
+
         var unreadCount = await _dbContext.Messages
-            .Where(m => m.ConversationId == conv.Id && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
+            .Where(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
             .CountAsync();
+
+        var hasVisibleMessages = await _dbContext.Messages
+            .AnyAsync(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo);
 
         var isOnline = await _presenceService.IsUserOnlineAsync(conv.CreatedByUserId);
 
@@ -223,7 +242,7 @@ public class ConversationsController : ControllerBase
             conv.Department.Name,
             conv.CreatedByUserId,
             conv.CreatedByUser.FullName,
-            conv.LastMessagePreview,
+            hasVisibleMessages ? conv.LastMessagePreview : null,
             conv.LastMessageAt,
             unreadCount,
             conv.Status,
@@ -274,9 +293,13 @@ public class ConversationsController : ControllerBase
 
         pageSize = Math.Clamp(pageSize, 5, 100);
 
+        // Messages cleared for everyone or by this user are never returned.
+        var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
+        var pinnedIds = await GetPinnedMessageIdsAsync(id, userId);
+
         IQueryable<Message> query = _dbContext.Messages
             .Include(m => m.Sender)
-            .Where(m => m.ConversationId == id);
+            .Where(m => m.ConversationId == id && m.SequenceNumber > clearedUpTo);
 
         if (beforeSequenceNumber.HasValue && beforeSequenceNumber.Value > 0)
         {
@@ -291,25 +314,12 @@ public class ConversationsController : ControllerBase
         var hasMore = rawMessages.Count > pageSize;
         var pagedList = rawMessages.Take(pageSize).OrderBy(m => m.SequenceNumber).ToList();
 
-        var messageDtos = pagedList.Select(m => new ChatMessageDto(
-            m.Id,
-            m.ConversationId,
-            m.SenderId,
-            m.Sender?.FullName ?? "Staff",
-            (m.Sender != null) ? m.Sender.Role : m.SenderRole,
-            m.ClientGeneratedId,
-            m.SequenceNumber,
-            m.Content,
-            m.Status,
-            m.SentAt,
-            m.IsDeleted,
-            m.IsForwarded
-        )).ToList();
+        var messageDtos = pagedList.Select(m => ToMessageDto(m, pinnedIds)).ToList();
 
         long? earliestSeq = messageDtos.Count > 0 ? messageDtos.Min(m => m.SequenceNumber) : null;
         long? latestSeq = messageDtos.Count > 0 ? messageDtos.Max(m => m.SequenceNumber) : null;
 
-        return Ok(new PaginatedMessagesDto(id, earliestSeq, latestSeq, hasMore, messageDtos));
+        return Ok(new PaginatedMessagesDto(id, earliestSeq, latestSeq, hasMore, messageDtos, clearedUpTo));
     }
 
     /// <summary>
@@ -349,9 +359,15 @@ public class ConversationsController : ControllerBase
             }
         }
 
+        // Messages cleared for everyone or by this user are never returned; the app removes
+        // its local copies up to ClearedUpToSequence (also when it missed the live event).
+        var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
+        var pinnedIds = await GetPinnedMessageIdsAsync(id, userId);
+        var fromSeq = Math.Max(sinceSequenceNumber, clearedUpTo);
+
         var messages = await _dbContext.Messages
             .Include(m => m.Sender)
-            .Where(m => m.ConversationId == id && m.SequenceNumber > sinceSequenceNumber)
+            .Where(m => m.ConversationId == id && m.SequenceNumber > fromSeq)
             .OrderBy(m => m.SequenceNumber)
             .ToListAsync();
 
@@ -361,23 +377,225 @@ public class ConversationsController : ControllerBase
 
         var lastSeq = messages.Count > 0 ? messages.Max(m => m.SequenceNumber) : serverMaxSeq;
 
-        var messageDtos = messages.Select(m => new ChatMessageDto(
-            m.Id,
-            m.ConversationId,
-            m.SenderId,
-            m.Sender?.FullName ?? "Staff",
-            (m.Sender != null) ? m.Sender.Role : m.SenderRole,
-            m.ClientGeneratedId,
-            m.SequenceNumber,
-            m.Content,
-            m.Status,
-            m.SentAt,
-            m.IsDeleted,
-            m.IsForwarded
-        )).ToList();
+        var messageDtos = messages.Select(m => ToMessageDto(m, pinnedIds)).ToList();
 
-        return Ok(new ConversationSyncResponseDto(id, lastSeq, messageDtos));
+        return Ok(new ConversationSyncResponseDto(id, lastSeq, messageDtos, clearedUpTo));
     }
+
+    // =====================================================================
+    // Personal pins
+    // =====================================================================
+
+    /// <summary>The caller's own pinned messages in this chat (newest pin first). Nobody else sees them.</summary>
+    [HttpGet("{id}/pins")]
+    public async Task<IActionResult> GetPins(Guid id)
+    {
+        var userId = GetUserId();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
+
+        var pins = await _dbContext.MessagePins
+            .Where(p => p.UserId == userId && p.ConversationId == id)
+            .OrderByDescending(p => p.PinnedAt)
+            .ToListAsync();
+        var messageIds = pins.Select(p => p.MessageId).ToList();
+
+        var messages = await _dbContext.Messages
+            .Include(m => m.Sender)
+            .Where(m => messageIds.Contains(m.Id) && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo)
+            .ToListAsync();
+
+        var pinnedIds = messageIds.ToHashSet();
+        var result = pins
+            .Select(p => messages.FirstOrDefault(m => m.Id == p.MessageId))
+            .Where(m => m != null)
+            .Select(m => ToMessageDto(m!, pinnedIds))
+            .ToList();
+
+        return Ok(result);
+    }
+
+    /// <summary>Pins a message for the caller only (up to 3 per chat).</summary>
+    [HttpPost("{id}/messages/{messageId}/pin")]
+    public async Task<IActionResult> PinMessage(Guid id, Guid messageId)
+    {
+        var userId = GetUserId();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
+        var message = await _dbContext.Messages
+            .FirstOrDefaultAsync(m => m.Id == messageId && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo);
+        if (message == null) return NotFound(new { message = "Message not found." });
+
+        if (await _dbContext.MessagePins.AnyAsync(p => p.UserId == userId && p.MessageId == messageId))
+        {
+            return Ok(new { message = "Message pinned." });
+        }
+
+        var pinCount = await _dbContext.MessagePins.CountAsync(p => p.UserId == userId && p.ConversationId == id);
+        if (pinCount >= MaxPinsPerChat)
+        {
+            return Conflict(new { message = $"You can pin up to {MaxPinsPerChat} messages in a chat. Unpin one first." });
+        }
+
+        _dbContext.MessagePins.Add(new MessagePin { UserId = userId, ConversationId = id, MessageId = messageId });
+        await _dbContext.SaveChangesAsync();
+
+        // The caller's other devices refresh their pins.
+        await _hubContext.Clients.Group($"User_{userId}").SendAsync("PinsChanged", id);
+        return Ok(new { message = "Message pinned." });
+    }
+
+    /// <summary>Removes the caller's own pin.</summary>
+    [HttpDelete("{id}/messages/{messageId}/pin")]
+    public async Task<IActionResult> UnpinMessage(Guid id, Guid messageId)
+    {
+        var userId = GetUserId();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        var pin = await _dbContext.MessagePins.FirstOrDefaultAsync(p => p.UserId == userId && p.ConversationId == id && p.MessageId == messageId);
+        if (pin != null)
+        {
+            _dbContext.MessagePins.Remove(pin);
+            await _dbContext.SaveChangesAsync();
+            await _hubContext.Clients.Group($"User_{userId}").SendAsync("PinsChanged", id);
+        }
+
+        return Ok(new { message = "Message unpinned." });
+    }
+
+    // =====================================================================
+    // Clear chat
+    // =====================================================================
+
+    /// <summary>
+    /// Clears the chat.
+    /// - User: only for themselves (their own chat with the department); staff still see everything.
+    /// - Admin / Manager (with access to the department): for everyone (the user, admins and managers).
+    /// Messages stay in the database (sequence numbers keep increasing) but are never shown again.
+    /// </summary>
+    [HttpPost("{id}/clear")]
+    public async Task<IActionResult> ClearChat(Guid id)
+    {
+        var userId = GetUserId();
+        var role = GetUserRole();
+        var conv = await GetAccessibleConversationAsync(id);
+        if (conv == null) return NotFound(new { message = "Conversation not found." });
+
+        var maxSeq = await _dbContext.Messages
+            .Where(m => m.ConversationId == id)
+            .MaxAsync(m => (long?)m.SequenceNumber) ?? 0;
+
+        if (role == UserRole.User)
+        {
+            var clear = await _dbContext.ConversationUserClears.FirstOrDefaultAsync(c => c.ConversationId == id && c.UserId == userId);
+            if (clear == null)
+            {
+                clear = new ConversationUserClear { ConversationId = id, UserId = userId };
+                _dbContext.ConversationUserClears.Add(clear);
+            }
+            clear.ClearedUpToSequence = Math.Max(clear.ClearedUpToSequence, maxSeq);
+            clear.ClearedAt = DateTime.UtcNow;
+            await _dbContext.SaveChangesAsync();
+
+            // The user's own pins on cleared messages go too.
+            await _dbContext.MessagePins
+                .Where(p => p.UserId == userId && p.ConversationId == id
+                            && _dbContext.Messages.Any(m => m.Id == p.MessageId && m.SequenceNumber <= clear.ClearedUpToSequence))
+                .ExecuteDeleteAsync();
+
+            // Only the user's own devices clear (staff are not told: nothing changes for them).
+            await _hubContext.Clients.Group($"User_{userId}").SendAsync("ConversationCleared", id, clear.ClearedUpToSequence, false);
+            return Ok(new ClearChatResultDto(id, clear.ClearedUpToSequence, false));
+        }
+
+        conv.ClearedUpToSequence = Math.Max(conv.ClearedUpToSequence, maxSeq);
+        conv.ClearedAt = DateTime.UtcNow;
+        conv.ClearedByUserId = userId;
+        conv.LastMessagePreview = null;
+        conv.UpdatedAt = DateTime.UtcNow;
+        await _dbContext.SaveChangesAsync();
+
+        // Everyone's pins on cleared messages go too.
+        var clearedSeq = conv.ClearedUpToSequence;
+        await _dbContext.MessagePins
+            .Where(p => p.ConversationId == id
+                        && _dbContext.Messages.Any(m => m.Id == p.MessageId && m.SequenceNumber <= clearedSeq))
+            .ExecuteDeleteAsync();
+
+        // Open chats (Room), the user's devices, and staff lists of this department.
+        await _hubContext.Clients.Groups($"Room_{id}", $"User_{conv.CreatedByUserId}", $"Dept_{conv.DepartmentId}")
+            .SendAsync("ConversationCleared", id, clearedSeq, true);
+        return Ok(new ClearChatResultDto(id, clearedSeq, true));
+    }
+
+    /// <summary>
+    /// Loads the conversation if the caller may open it (same rule as GetMessages):
+    /// own tenant; a user only their own chat; a manager only departments they may access.
+    /// </summary>
+    private async Task<Conversation?> GetAccessibleConversationAsync(Guid id)
+    {
+        var userId = GetUserId();
+        var role = GetUserRole();
+        var clientId = GetClientId();
+
+        var conv = await _dbContext.Conversations.FirstOrDefaultAsync(c => c.Id == id && c.ClientId == clientId);
+        if (conv == null) return null;
+
+        if (role == UserRole.User && conv.CreatedByUserId != userId) return null;
+
+        if (role == UserRole.Manager)
+        {
+            var hasExplicitManagers = await _dbContext.DepartmentManagers
+                .AnyAsync(dm => dm.DepartmentId == conv.DepartmentId);
+            if (hasExplicitManagers)
+            {
+                var isAssigned = await _dbContext.DepartmentManagers
+                    .AnyAsync(dm => dm.DepartmentId == conv.DepartmentId && dm.UserId == userId);
+                if (!isAssigned) return null;
+            }
+        }
+
+        return conv;
+    }
+
+    /// <summary>Highest sequence number hidden for this user: cleared for everyone, or cleared by the user.</summary>
+    private async Task<long> GetClearedUpToSequenceAsync(Conversation conv, Guid userId)
+    {
+        var ownClear = await _dbContext.ConversationUserClears
+            .Where(c => c.ConversationId == conv.Id && c.UserId == userId)
+            .Select(c => (long?)c.ClearedUpToSequence)
+            .FirstOrDefaultAsync() ?? 0;
+        return Math.Max(conv.ClearedUpToSequence, ownClear);
+    }
+
+    private async Task<HashSet<Guid>> GetPinnedMessageIdsAsync(Guid conversationId, Guid userId)
+    {
+        var ids = await _dbContext.MessagePins
+            .Where(p => p.UserId == userId && p.ConversationId == conversationId)
+            .Select(p => p.MessageId)
+            .ToListAsync();
+        return ids.ToHashSet();
+    }
+
+    private static ChatMessageDto ToMessageDto(Message m, HashSet<Guid> pinnedIds) => new(
+        m.Id,
+        m.ConversationId,
+        m.SenderId,
+        m.Sender?.FullName ?? "Staff",
+        (m.Sender != null) ? m.Sender.Role : m.SenderRole,
+        m.ClientGeneratedId,
+        m.SequenceNumber,
+        m.Content,
+        m.Status,
+        m.SentAt,
+        m.IsDeleted,
+        m.IsForwarded,
+        pinnedIds.Contains(m.Id));
 
     /// <summary>
     /// Registers or updates device token for FCM push notifications.

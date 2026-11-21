@@ -49,6 +49,15 @@
 		</AssemblyAttribute>
 	</ItemGroup>
 
+	<!-- Internal test builds against a test server: -p:DeptChatServerUrl=http://192.168.x.x:5051 makes the
+	     build always use that server (ServerConfigService). Never set for customer builds. -->
+	<ItemGroup Condition="'$(DeptChatServerUrl)' != ''">
+		<AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+			<_Parameter1>DeptChatServerUrl</_Parameter1>
+			<_Parameter2>$(DeptChatServerUrl)</_Parameter2>
+		</AssemblyAttribute>
+	</ItemGroup>
+
 	<!-- Platform Specific Code Exclusions -->
 	<ItemGroup Condition="$(TargetFramework.StartsWith('net10.0-android')) != true">
 		<Compile Remove="Platforms\Android\**" />

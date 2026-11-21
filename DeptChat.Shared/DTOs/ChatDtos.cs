@@ -28,7 +28,8 @@ public record ChatMessageDto(
     MessageDeliveryStatus Status,
     DateTime SentAt,
     bool IsDeleted = false,
-    bool IsForwarded = false
+    bool IsForwarded = false,
+    bool IsPinned = false // pinned by the caller (personal pin)
 );
 
 public record SendMessageDto(
@@ -40,7 +41,8 @@ public record SendMessageDto(
 public record ConversationSyncResponseDto(
     Guid ConversationId,
     long LastSequenceNumber,
-    List<ChatMessageDto> Messages
+    List<ChatMessageDto> Messages,
+    long ClearedUpToSequence = 0 // messages up to here are cleared for the caller: remove them locally
 );
 
 public record InAppNotificationToastDto(
@@ -64,7 +66,15 @@ public record PaginatedMessagesDto(
     long? EarliestSequenceNumber,
     long? LatestSequenceNumber,
     bool HasMore,
-    List<ChatMessageDto> Messages
+    List<ChatMessageDto> Messages,
+    long ClearedUpToSequence = 0 // messages up to here are cleared for the caller: remove them locally
+);
+
+/// <summary>Result of "clear chat": for the caller only, or for everyone (Admin/Manager).</summary>
+public record ClearChatResultDto(
+    Guid ConversationId,
+    long ClearedUpToSequence,
+    bool ForEveryone
 );
 
 public record AttachmentUploadResultDto(

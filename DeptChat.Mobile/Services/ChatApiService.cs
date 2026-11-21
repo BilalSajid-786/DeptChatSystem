@@ -127,6 +127,68 @@ public class ChatApiService
         }).ConfigureAwait(true);
     }
 
+    /// <summary>My own pinned messages in this chat (personal: nobody else sees them), newest pin first.</summary>
+    public async Task<List<ChatMessageDto>> GetPinnedMessagesAsync(Guid conversationId)
+    {
+        AttachBearerToken();
+        var response = await _httpClient.GetAsync(BuildUrl($"api/conversations/{conversationId}/pins"));
+        response.EnsureSuccessStatusCode();
+        var content = await response.Content.ReadAsStringAsync();
+        return JsonSerializer.Deserialize<List<ChatMessageDto>>(content, JsonOptions) ?? new();
+    }
+
+    /// <summary>Pins (or unpins) a message for me only.</summary>
+    public async Task<(bool Success, string? Message)> SetMessagePinnedAsync(Guid conversationId, Guid messageId, bool pinned)
+    {
+        try
+        {
+            AttachBearerToken();
+            var url = BuildUrl($"api/conversations/{conversationId}/messages/{messageId}/pin");
+            var response = pinned
+                ? await _httpClient.PostAsync(url, null)
+                : await _httpClient.DeleteAsync(url);
+            if (response.IsSuccessStatusCode) return (true, null);
+            return (false, await ReadServerMessageAsync(response) ?? (pinned ? "Couldn't pin the message." : "Couldn't unpin the message."));
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Clears the chat. A user clears it only for themselves; an admin or manager clears it for everyone.
+    /// </summary>
+    public async Task<(ClearChatResultDto? Result, string? Message)> ClearChatAsync(Guid conversationId)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PostAsync(BuildUrl($"api/conversations/{conversationId}/clear"), null);
+            if (response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                return (JsonSerializer.Deserialize<ClearChatResultDto>(content, JsonOptions), null);
+            }
+            return (null, await ReadServerMessageAsync(response) ?? "Couldn't clear the chat.");
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    private static async Task<string?> ReadServerMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (doc.RootElement.TryGetProperty("message", out var msgElement)) return msgElement.GetString();
+        }
+        catch { }
+        return null;
+    }
+
     public async Task<DepartmentDto?> CreateDepartmentAsync(string name, string description)
     {
         AttachBearerToken();

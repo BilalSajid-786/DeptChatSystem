@@ -223,6 +223,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived += HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead += HandleMessagesRead;
+        _signalRService.OnConversationCleared += HandleConversationCleared;
         _signalRService.OnReconnected += HandleCatchUp;
         Connectivity.ConnectivityChanged += HandleConnectivityChanged;
         App.AppResumed += HandleCatchUp;
@@ -239,6 +240,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived -= HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead -= HandleMessagesRead;
+        _signalRService.OnConversationCleared -= HandleConversationCleared;
         _signalRService.OnReconnected -= HandleCatchUp;
         Connectivity.ConnectivityChanged -= HandleConnectivityChanged;
         App.AppResumed -= HandleCatchUp;
@@ -257,6 +259,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     private CancellationTokenSource? _periodicRefreshCts;
 
     private void HandleCatchUp() => ScheduleReload();
+
+    // A chat was cleared for everyone: its last-message preview and unread badge change.
+    private void HandleConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone) => ScheduleReload();
 
     private void HandleConnectivityChanged(object? sender, ConnectivityChangedEventArgs e)
     {

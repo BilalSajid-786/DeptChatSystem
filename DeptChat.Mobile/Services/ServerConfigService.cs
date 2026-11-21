@@ -9,10 +9,29 @@ public class ServerConfigService
     public const string DefaultUrl = ProductionUrl;
     private const string PrefKey = "DeptChat_ServerUrl";
 
+    // Test builds only: -p:DeptChatServerUrl=http://192.168.x.x:5051 makes this build always use that
+    // server (a saved address from an earlier install is ignored). Not set for customer builds.
+    private static readonly string? BuildServerUrl = ReadBuildServerUrl();
+
+    private static string? ReadBuildServerUrl()
+    {
+        try
+        {
+            var value = typeof(ServerConfigService).Assembly
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+                .OfType<System.Reflection.AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "DeptChatServerUrl")?.Value;
+            return string.IsNullOrWhiteSpace(value) ? null : NormalizeUrl(value);
+        }
+        catch { return null; }
+    }
+
     public string CurrentUrl
     {
         get
         {
+            if (BuildServerUrl != null) return BuildServerUrl;
+
             var saved = Preferences.Default.Get(PrefKey, DefaultUrl);
             if (string.IsNullOrWhiteSpace(saved) || 
                 saved.Contains("trycloudflare.com") ||

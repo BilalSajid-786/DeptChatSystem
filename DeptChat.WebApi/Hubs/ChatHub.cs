@@ -793,7 +793,9 @@ public class ChatHub : Hub
         }
 
         var sourceMsg = await _dbContext.Messages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == messageId);
-        if (sourceMsg == null || sourceMsg.IsDeleted)
+        // A message cleared for everyone ("clear chat") counts as gone.
+        if (sourceMsg == null || sourceMsg.IsDeleted
+            || await _dbContext.Conversations.AnyAsync(c => c.Id == sourceMsg.ConversationId && c.ClearedUpToSequence >= sourceMsg.SequenceNumber))
         {
             await Clients.Caller.SendAsync("ErrorMessage", "Source message not found or has been deleted.");
             return;

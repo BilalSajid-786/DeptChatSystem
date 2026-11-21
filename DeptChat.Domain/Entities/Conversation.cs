@@ -22,5 +22,11 @@ public class Conversation
     public string? LastMessagePreview { get; set; }
     public DateTime? LastMessageAt { get; set; }
 
+    // "Clear chat for everyone" (Admin/Manager): messages up to and including this sequence number
+    // are hidden for everyone. They stay in the database so sequence numbers keep increasing.
+    public long ClearedUpToSequence { get; set; }
+    public DateTime? ClearedAt { get; set; }
+    public Guid? ClearedByUserId { get; set; }
+
     public ICollection<Message> Messages { get; set; } = new List<Message>();
 }

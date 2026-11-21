@@ -250,6 +250,52 @@ using (var scope = app.Services.CreateScope())
                         CREATE INDEX IX_UserSessions_UserId_IsActive ON UserSessions (UserId, IsActive);
                     END
                 ");
+
+                // Pin and clear chat: "clear for everyone" marker on the conversation,
+                // personal pins and personal clears.
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedUpToSequence')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedUpToSequence BIGINT NOT NULL CONSTRAINT DF_Conversations_ClearedUpToSequence DEFAULT 0;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedAt')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedAt DATETIME2 NULL;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedByUserId')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedByUserId UNIQUEIDENTIFIER NULL;
+                    END
+                ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MessagePins')
+                    BEGIN
+                        CREATE TABLE MessagePins (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            MessageId UNIQUEIDENTIFIER NOT NULL,
+                            PinnedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_MessagePins_UserId_MessageId ON MessagePins (UserId, MessageId);
+                        CREATE INDEX IX_MessagePins_UserId_ConversationId ON MessagePins (UserId, ConversationId);
+                    END
+                ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversationUserClears')
+                    BEGIN
+                        CREATE TABLE ConversationUserClears (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ClearedUpToSequence BIGINT NOT NULL,
+                            ClearedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_ConversationUserClears_ConversationId_UserId ON ConversationUserClears (ConversationId, UserId);
+                    END
+                ");
             }
             catch (Exception migEx)
             {
