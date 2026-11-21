@@ -85,7 +85,7 @@ public class DepartmentsController : ControllerBase
                         && m.Conversation.ClientId == clientId 
                         && !m.IsDeleted
                         // Cleared messages are never previewed: cleared for everyone, or (users) by themselves.
-                        && m.SequenceNumber > m.Conversation.ClearedUpToSequence);
+                        && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
         if (role == UserRole.User)
         {
@@ -118,7 +118,7 @@ public class DepartmentsController : ControllerBase
                             && m.Conversation.CreatedByUserId == userId 
                             && m.SenderId != userId 
                             && m.Status < MessageDeliveryStatus.Read
-                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence
+                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow)
                             && !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber))
                 .GroupBy(m => m.Conversation.DepartmentId)
                 .Select(g => new { DepartmentId = g.Key, Count = g.Count() })
@@ -131,7 +131,7 @@ public class DepartmentsController : ControllerBase
                             && m.Conversation.ClientId == clientId
                             && m.SenderRole == UserRole.User 
                             && m.Status < MessageDeliveryStatus.Read
-                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence)
+                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow))
                 .GroupBy(m => m.Conversation.DepartmentId)
                 .Select(g => new { DepartmentId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.DepartmentId, x => x.Count);

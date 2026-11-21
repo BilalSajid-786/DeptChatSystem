@@ -9,6 +9,10 @@ public class Client
     public bool IsActive { get; set; } = true;
     public bool IsBlocked { get; set; } = false;
     public DateTime? BlockedAt { get; set; }
+
+    // Disappearing messages for the whole company (admins set it): new messages disappear this many
+    // seconds after they are sent. 0 = off. Default 7 days. Messages sent earlier keep their own time.
+    public int DisappearingMessagesSeconds { get; set; } = 604800;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Department> Departments { get; set; } = new List<Department>();

@@ -182,6 +182,8 @@ else
     builder.Services.AddSingleton<IPresenceService, InMemoryPresenceService>();
 }
 builder.Services.AddSingleton<IPushNotificationService, FirebasePushNotificationService>();
+// Disappearing messages: empties messages after their disappear time (every 2 minutes).
+builder.Services.AddHostedService<DeptChat.WebApi.Services.DisappearingMessagesService>();
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
@@ -265,6 +267,25 @@ using (var scope = app.Services.CreateScope())
                     IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedByUserId')
                     BEGIN
                         ALTER TABLE Conversations ADD ClearedByUserId UNIQUEIDENTIFIER NULL;
+                    END
+                ");
+
+                // Disappearing messages: company setting (default 7 days) and each message's own disappear time.
+                // Existing messages get NULL (never disappear), so nothing sent before this release is removed.
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Clients') AND name = 'DisappearingMessagesSeconds')
+                    BEGIN
+                        ALTER TABLE Clients ADD DisappearingMessagesSeconds INT NOT NULL CONSTRAINT DF_Clients_DisappearingMessagesSeconds DEFAULT 604800;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Messages') AND name = 'ExpiresAt')
+                    BEGIN
+                        ALTER TABLE Messages ADD ExpiresAt DATETIME2 NULL;
+                    END
+                ");
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Messages_ExpiresAt' AND object_id = OBJECT_ID('Messages'))
+                    BEGIN
+                        CREATE INDEX IX_Messages_ExpiresAt ON Messages (ExpiresAt) WHERE ExpiresAt IS NOT NULL;
                     END
                 ");
 

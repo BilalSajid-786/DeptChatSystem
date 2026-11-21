@@ -26,6 +26,8 @@ public class LocalOutboxMessage
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     public bool IsDeleted { get; set; } = false;
     public bool IsForwarded { get; set; } = false;
+    // Disappearing messages: hidden after this time (UTC); its row stays (emptied) so sync knows it existed.
+    public DateTime? ExpiresAt { get; set; }
 }
 
 public class LocalOutboxService
@@ -149,7 +151,7 @@ public class LocalOutboxService
         }
     }
 
-    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, Guid senderId, UserRole senderRole, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt, bool isDeleted = false, bool isForwarded = false)
+    public async Task SaveServerMessageAsync(Guid conversationId, Guid serverMsgId, Guid senderId, UserRole senderRole, string clientGenId, string content, string senderName, bool isOutgoing, long sequenceNumber, MessageDeliveryStatus status, DateTime sentAt, bool isDeleted = false, bool isForwarded = false, DateTime? expiresAt = null)
     {
         await EnsureInitializedAsync();
         var existing = await _db.Table<LocalOutboxMessage>()
@@ -166,6 +168,7 @@ public class LocalOutboxService
             existing.IsOutgoing = isOutgoing;
             existing.IsDeleted = isDeleted;
             existing.IsForwarded = isForwarded;
+            existing.ExpiresAt = expiresAt;
             await _db.UpdateAsync(existing);
         }
         else
@@ -184,9 +187,26 @@ public class LocalOutboxService
                 Status = status,
                 Timestamp = sentAt,
                 IsDeleted = isDeleted,
-                IsForwarded = isForwarded
+                IsForwarded = isForwarded,
+                ExpiresAt = expiresAt
             };
             await _db.InsertAsync(msg);
+        }
+    }
+
+    /// <summary>Disappearing messages: empties this chat's saved messages whose time is up (rows stay, so sync
+    /// still counts them as present). Never touches pending messages (they have no ExpiresAt).</summary>
+    public async Task WipeExpiredMessagesAsync(Guid conversationId)
+    {
+        await EnsureInitializedAsync();
+        var now = DateTime.UtcNow;
+        var rows = await _db.Table<LocalOutboxMessage>()
+            .Where(m => m.ConversationId == conversationId && m.ExpiresAt != null && m.ExpiresAt <= now && m.Content != "")
+            .ToListAsync();
+        foreach (var row in rows)
+        {
+            row.Content = string.Empty;
+            await _db.UpdateAsync(row);
         }
     }
 

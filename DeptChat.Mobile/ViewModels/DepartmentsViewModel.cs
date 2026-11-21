@@ -1075,6 +1075,12 @@ public partial class DepartmentsViewModel : ObservableObject
                 RequestDepartmentsReload();
             };
 
+            // Disappearing messages: messages of a chat disappeared, so previews and badges change.
+            _signalRService.OnMessagesExpired += (cId) =>
+            {
+                RequestDepartmentsReload();
+            };
+
             _signalRService.OnDepartmentAdded += (d) =>
 
             {

@@ -93,11 +93,11 @@ public class ConversationsController : ControllerBase
             var clearedUpTo = await GetClearedUpToSequenceAsync(conversation, userId);
 
             var unreadCount = await _dbContext.Messages
-                .Where(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
+                .Where(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow) && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
                 .CountAsync();
 
             var hasVisibleMessages = await _dbContext.Messages
-                .AnyAsync(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo);
+                .AnyAsync(m => m.ConversationId == conversation.Id && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
             var isUserOnline = await _presenceService.IsUserOnlineAsync(userId);
 
@@ -154,7 +154,7 @@ public class ConversationsController : ControllerBase
 
             var convIds = conversations.Select(c => c.Id).ToList();
             var unreadCounts = await _dbContext.Messages
-                .Where(m => convIds.Contains(m.ConversationId) && m.SequenceNumber > m.Conversation.ClearedUpToSequence
+                .Where(m => convIds.Contains(m.ConversationId) && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow)
                             && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read)
                 .GroupBy(m => m.ConversationId)
                 .Select(g => new { ConversationId = g.Key, Count = g.Count() })
@@ -241,11 +241,11 @@ public class ConversationsController : ControllerBase
         var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
 
         var unreadCount = await _dbContext.Messages
-            .Where(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
+            .Where(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow) && m.SenderId != userId && m.Status < MessageDeliveryStatus.Read)
             .CountAsync();
 
         var hasVisibleMessages = await _dbContext.Messages
-            .AnyAsync(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo);
+            .AnyAsync(m => m.ConversationId == conv.Id && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
         var isOnline = await _presenceService.IsUserOnlineAsync(conv.CreatedByUserId);
 
@@ -312,7 +312,7 @@ public class ConversationsController : ControllerBase
 
         IQueryable<Message> query = _dbContext.Messages
             .Include(m => m.Sender)
-            .Where(m => m.ConversationId == id && m.SequenceNumber > clearedUpTo);
+            .Where(m => m.ConversationId == id && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
         if (beforeSequenceNumber.HasValue && beforeSequenceNumber.Value > 0)
         {
@@ -380,7 +380,7 @@ public class ConversationsController : ControllerBase
 
         var messages = await _dbContext.Messages
             .Include(m => m.Sender)
-            .Where(m => m.ConversationId == id && m.SequenceNumber > fromSeq)
+            .Where(m => m.ConversationId == id && m.SequenceNumber > fromSeq && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow))
             .OrderBy(m => m.SequenceNumber)
             .ToListAsync();
 
@@ -417,7 +417,7 @@ public class ConversationsController : ControllerBase
 
         var messages = await _dbContext.Messages
             .Include(m => m.Sender)
-            .Where(m => messageIds.Contains(m.Id) && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo)
+            .Where(m => messageIds.Contains(m.Id) && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow))
             .ToListAsync();
 
         var pinnedIds = messageIds.ToHashSet();
@@ -430,6 +430,46 @@ public class ConversationsController : ControllerBase
         return Ok(result);
     }
 
+    // =====================================================================
+    // Disappearing messages (one setting for the whole company)
+    // =====================================================================
+
+    // Off, 24 hours, 7, 14, 30 and 90 days.
+    private static readonly int[] AllowedDisappearingSeconds = { 0, 86400, 604800, 1209600, 2592000, 7776000 };
+
+    /// <summary>Everyone: the company's current disappearing-messages time (0 = off).</summary>
+    [HttpGet("disappearing-messages")]
+    public async Task<IActionResult> GetDisappearingMessages()
+    {
+        var clientId = GetClientId();
+        var seconds = await _dbContext.Clients.Where(c => c.Id == clientId)
+            .Select(c => (int?)c.DisappearingMessagesSeconds).FirstOrDefaultAsync();
+        if (seconds == null) return NotFound(new { message = "Company not found." });
+        return Ok(new DisappearingMessagesSettingDto(seconds.Value));
+    }
+
+    /// <summary>Admins only: changes it for every chat in the company. Only messages sent from now on use the new time.</summary>
+    [HttpPut("disappearing-messages")]
+    public async Task<IActionResult> SetDisappearingMessages([FromBody] DisappearingMessagesSettingDto dto)
+    {
+        if (GetUserRole() != UserRole.Admin) return Forbid();
+        if (dto == null || !AllowedDisappearingSeconds.Contains(dto.Seconds))
+        {
+            return BadRequest(new { message = "Choose Off, 24 hours, 7, 14, 30 or 90 days." });
+        }
+
+        var clientId = GetClientId();
+        var client = await _dbContext.Clients.FirstOrDefaultAsync(c => c.Id == clientId);
+        if (client == null) return NotFound(new { message = "Company not found." });
+
+        client.DisappearingMessagesSeconds = dto.Seconds;
+        await _dbContext.SaveChangesAsync();
+
+        // Every open app and web page of this company updates its chat banner.
+        await _hubContext.Clients.Group($"Client_{clientId}").SendAsync("DisappearingMessagesChanged", dto.Seconds);
+        return Ok(new DisappearingMessagesSettingDto(dto.Seconds));
+    }
+
     /// <summary>Pins a message for the caller only (up to 3 per chat).</summary>
     [HttpPost("{id}/messages/{messageId}/pin")]
     public async Task<IActionResult> PinMessage(Guid id, Guid messageId)
@@ -440,7 +480,7 @@ public class ConversationsController : ControllerBase
 
         var clearedUpTo = await GetClearedUpToSequenceAsync(conv, userId);
         var message = await _dbContext.Messages
-            .FirstOrDefaultAsync(m => m.Id == messageId && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo);
+            .FirstOrDefaultAsync(m => m.Id == messageId && m.ConversationId == id && !m.IsDeleted && m.SequenceNumber > clearedUpTo && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
         if (message == null) return NotFound(new { message = "Message not found." });
 
         if (await _dbContext.MessagePins.AnyAsync(p => p.UserId == userId && p.MessageId == messageId))
@@ -648,7 +688,8 @@ public class ConversationsController : ControllerBase
         m.SentAt,
         m.IsDeleted,
         m.IsForwarded,
-        pinnedIds.Contains(m.Id));
+        pinnedIds.Contains(m.Id),
+        m.ExpiresAt);
 
     /// <summary>
     /// Registers or updates device token for FCM push notifications.

@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using DeptChat.Shared.DTOs;
@@ -149,6 +150,40 @@ public class ChatApiService
                 : await _httpClient.DeleteAsync(url);
             if (response.IsSuccessStatusCode) return (true, null);
             return (false, await ReadServerMessageAsync(response) ?? (pinned ? "Couldn't pin the message." : "Couldn't unpin the message."));
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
+    /// <summary>The company's disappearing-messages time in seconds (0 = off); null when it can't be read.</summary>
+    public async Task<int?> GetDisappearingMessagesAsync()
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.GetAsync(BuildUrl("api/conversations/disappearing-messages"));
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync();
+            return JsonSerializer.Deserialize<DisappearingMessagesSettingDto>(content, JsonOptions)?.Seconds;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Admins only: sets the disappearing-messages time for the whole company.</summary>
+    public async Task<(bool Success, string? Message)> SetDisappearingMessagesAsync(int seconds)
+    {
+        try
+        {
+            AttachBearerToken();
+            var response = await _httpClient.PutAsJsonAsync(BuildUrl("api/conversations/disappearing-messages"),
+                new DisappearingMessagesSettingDto(seconds));
+            if (response.IsSuccessStatusCode) return (true, null);
+            return (false, await ReadServerMessageAsync(response) ?? "Couldn't change disappearing messages.");
         }
         catch (Exception ex)
         {

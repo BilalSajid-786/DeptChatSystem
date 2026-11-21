@@ -350,6 +350,16 @@
 
 
                 <VerticalStackLayout Grid.Row="0" Spacing="0">
+                <!-- Disappearing messages banner (company setting; hidden when Off) -->
+                <Grid IsVisible="{Binding IsDisappearingBannerVisible}"
+                      BackgroundColor="#FFF7E6"
+                      Padding="16,6">
+                    <Label Text="{Binding DisappearingBannerText}"
+                           TextColor="#92400E"
+                           FontSize="12"
+                           HorizontalOptions="Center"
+                           LineBreakMode="TailTruncation" />
+                </Grid>
 
                 <!-- Pinned Messages Bar (personal pins; tap = jump to it, then the next pin) -->
 
@@ -1536,9 +1546,78 @@
                             <Label Text="{Binding BlockMenuSubtitle}" FontSize="11" TextColor="#64748B" />
                         </VerticalStackLayout>
                     </Grid>
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding IsChatMenuAdmin}" />
+                    <Grid Padding="20,14" ColumnDefinitions="32, *" IsVisible="{Binding IsChatMenuAdmin}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenDisappearingPickerCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="⏱" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Disappearing messages" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+                            <Label Text="{Binding DisappearingMenuSubtitle}" FontSize="11" TextColor="#64748B" />
+                        </VerticalStackLayout>
+                    </Grid>
                     <BoxView HeightRequest="1" Color="#E2E8F0" />
                     <Button Text="Cancel"
                             Command="{Binding CloseChatMenuCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#64748B"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HeightRequest="44"
+                            Margin="16,4,16,12" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- Disappearing messages picker (admins): one time for every chat in the company. -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsDisappearingPickerVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="99">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseDisappearingPickerCommand}" />
+            </Grid.GestureRecognizers>
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="24,0"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="360">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="0">
+                    <VerticalStackLayout Padding="20,18,20,12" Spacing="4">
+                        <Label Text="⏱ Disappearing messages" FontSize="16" FontAttributes="Bold" TextColor="#008069" />
+                        <Label Text="New messages in every chat of your company disappear for everyone after this time. Messages already sent keep their time."
+                               FontSize="12" TextColor="#64748B" />
+                    </VerticalStackLayout>
+                    <BoxView HeightRequest="1" Color="#F1F5F9" />
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding DisappearingOptions}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DisappearingOption">
+                                <Grid Padding="20,12" ColumnDefinitions="*, Auto">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatRoomViewModel}}, Path=ChooseDisappearingCommand, x:DataType=vm:ChatRoomViewModel}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Grid.GestureRecognizers>
+                                    <Label Grid.Column="0" Text="{Binding Label}" FontSize="15" TextColor="#1E293B" VerticalOptions="Center" />
+                                    <Label Grid.Column="1" Text="✓" FontSize="17" FontAttributes="Bold" TextColor="#008069"
+                                           IsVisible="{Binding IsSelected}" VerticalOptions="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <BoxView HeightRequest="1" Color="#E2E8F0" />
+                    <Button Text="Cancel"
+                            Command="{Binding CloseDisappearingPickerCommand}"
                             BackgroundColor="Transparent"
                             TextColor="#64748B"
                             FontAttributes="Bold"

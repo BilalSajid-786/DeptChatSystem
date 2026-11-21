@@ -197,6 +197,13 @@
                         <!-- Tap opens the chat; long-press (admins/managers) opens the pin menu. Both wired in code-behind (OnRowHandlerChanged). -->
                         <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,4" Padding="14,12"
                                 HandlerChanged="OnRowHandlerChanged">
+                            <!-- Pinned by me: light green row -->
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsPinned}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="#E7F8F0" />
+                                    <Setter Property="Stroke" Value="#9EDFC0" />
+                                </DataTrigger>
+                            </Border.Triggers>
 
                             <Grid ColumnDefinitions="46, *, Auto, Auto" RowDefinitions="*, Auto, Auto, *" VerticalOptions="Center">
                                 <!-- User Avatar -->

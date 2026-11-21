@@ -487,6 +487,11 @@ public class ChatHub : Hub
             IsDeleted = false,
             IsForwarded = false
         };
+        // Disappearing messages: the company's setting at sending time decides when it disappears.
+        if (client != null && client.DisappearingMessagesSeconds > 0)
+        {
+            message.ExpiresAt = message.SentAt.AddSeconds(client.DisappearingMessagesSeconds);
+        }
 
         string previewText;
         if (message.Content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase))
@@ -527,7 +532,8 @@ public class ChatHub : Hub
             message.Status,
             message.SentAt,
             message.IsDeleted,
-            message.IsForwarded
+            message.IsForwarded,
+            ExpiresAt: message.ExpiresAt
         );
 
         // 5. Tier 1: Real-time SignalR sub-100ms broadcast to room
@@ -797,8 +803,9 @@ public class ChatHub : Hub
         }
 
         var sourceMsg = await _dbContext.Messages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == messageId);
-        // A message cleared for everyone ("clear chat") counts as gone.
+        // A message cleared for everyone ("clear chat") or disappeared counts as gone.
         if (sourceMsg == null || sourceMsg.IsDeleted
+            || (sourceMsg.ExpiresAt.HasValue && sourceMsg.ExpiresAt <= DateTime.UtcNow)
             || await _dbContext.Conversations.AnyAsync(c => c.Id == sourceMsg.ConversationId && c.ClearedUpToSequence >= sourceMsg.SequenceNumber))
         {
             await Clients.Caller.SendAsync("ErrorMessage", "Source message not found or has been deleted.");
@@ -858,6 +865,9 @@ public class ChatHub : Hub
             Status = MessageDeliveryStatus.Sent,
             SentAt = DateTime.UtcNow
         };
+        var forwardSeconds = await _dbContext.Clients.Where(c => c.Id == targetConv.ClientId)
+            .Select(c => c.DisappearingMessagesSeconds).FirstOrDefaultAsync();
+        if (forwardSeconds > 0) forwardedMsg.ExpiresAt = forwardedMsg.SentAt.AddSeconds(forwardSeconds);
 
         string previewText;
         if (forwardedMsg.Content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase))
@@ -898,7 +908,8 @@ public class ChatHub : Hub
             forwardedMsg.Status,
             forwardedMsg.SentAt,
             forwardedMsg.IsDeleted,
-            forwardedMsg.IsForwarded
+            forwardedMsg.IsForwarded,
+            ExpiresAt: forwardedMsg.ExpiresAt
         );
 
         // Broadcast to target room

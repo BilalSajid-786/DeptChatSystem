@@ -233,6 +233,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead += HandleMessagesRead;
         _signalRService.OnConversationCleared += HandleConversationCleared;
+        _signalRService.OnMessagesExpired += HandleMessagesExpired;
         _signalRService.OnConversationPinsChanged += HandleConversationPinsChanged;
         _signalRService.OnReconnected += HandleCatchUp;
         Connectivity.ConnectivityChanged += HandleConnectivityChanged;
@@ -251,6 +252,7 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead -= HandleMessagesRead;
         _signalRService.OnConversationCleared -= HandleConversationCleared;
+        _signalRService.OnMessagesExpired -= HandleMessagesExpired;
         _signalRService.OnConversationPinsChanged -= HandleConversationPinsChanged;
         _signalRService.OnReconnected -= HandleCatchUp;
         Connectivity.ConnectivityChanged -= HandleConnectivityChanged;
@@ -273,6 +275,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
 
     // A chat was cleared for everyone: its last-message preview and unread badge change.
     private void HandleConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone) => ScheduleReload();
+
+    // Disappearing messages: a chat's last message may have disappeared (preview changes).
+    private void HandleMessagesExpired(Guid conversationId) => ScheduleReload();
 
     // I pinned/unpinned a chat (here, on another device or on the web): reorder this department's list.
     private void HandleConversationPinsChanged(Guid departmentId)

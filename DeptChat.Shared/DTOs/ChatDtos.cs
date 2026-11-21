@@ -30,8 +30,12 @@ public record ChatMessageDto(
     DateTime SentAt,
     bool IsDeleted = false,
     bool IsForwarded = false,
-    bool IsPinned = false // pinned by the caller (personal pin)
+    bool IsPinned = false, // pinned by the caller (personal pin)
+    DateTime? ExpiresAt = null // disappearing messages: hide after this time (UTC); null = never
 );
+
+/// <summary>Disappearing messages for the whole company: seconds after sending (0 = off).</summary>
+public record DisappearingMessagesSettingDto(int Seconds);
 
 public record SendMessageDto(
     Guid ConversationId,

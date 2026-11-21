@@ -36,6 +36,9 @@ public partial class ChatMessageItem : ObservableObject
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SenderId { get; set; }
+    // Disappearing messages: hidden after this time (UTC); null = never.
+    public DateTime? ExpiresAt { get; set; }
+    public bool IsExpired => ExpiresAt.HasValue && ExpiresAt.Value <= DateTime.UtcNow;
     public UserRole SenderRole { get; set; } = UserRole.User;
     public string ClientGeneratedId { get; set; } = string.Empty;
     public string SenderName { get; set; } = string.Empty;
@@ -671,6 +674,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         // My personal pins for the pinned bar (in the background). Loaded on every open, reconnect
         // and resume: messages often come from this phone's saved copy, which has no pins.
         _ = LoadPinsAsync();
+        _ = LoadDisappearingSettingAsync();
 
         await _syncLock.WaitAsync();
         MainThread.BeginInvokeOnMainThread(() =>
@@ -685,7 +689,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             long syncFromSeq;
             lock (Messages)
             {
-                syncFromSeq = GetHighestContiguousSequence(Messages.Select(m => m.SequenceNumber));
+                // Disappeared messages count as present, so sync does not fetch everything after them again.
+                syncFromSeq = GetHighestContiguousSequence(Messages.Select(m => m.SequenceNumber).Concat(_expiredSeqs));
             }
 
             if (syncFromSeq == 0)
@@ -758,7 +763,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     m.Status,
                                     m.SentAt,
                                     m.IsDeleted,
-                                    m.IsForwarded
+                                    m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                 );
                             }
                         }
@@ -812,6 +818,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 IsSyncingMessages = false;
+                RemoveExpiredMessages();
             });
             _syncLock.Release();
         }
@@ -862,7 +869,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     m.Status,
                                     m.SentAt,
                                     m.IsDeleted,
-                                    m.IsForwarded
+                                    m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                 );
                             }
                         }
@@ -951,7 +959,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                         m.Status,
                                         m.SentAt,
                                         m.IsDeleted,
-                                        m.IsForwarded
+                                        m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                     );
                                 }
                             }
@@ -973,6 +982,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                 existing.SequenceNumber = m.SequenceNumber;
                                 existing.IsDeleted = m.IsDeleted;
                                 existing.IsForwarded = m.IsForwarded;
+                                existing.ExpiresAt = m.ExpiresAt;
                                 ApplyRoleAwareAlignment(existing, m.SenderId, m.SenderRole, m.SenderName);
                                 UpdateStatusVisuals(existing, m.Status);
                             }
@@ -987,7 +997,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     MessageDate = m.SentAt.ToLocalTime(),
                                     SequenceNumber = m.SequenceNumber,
                                     IsDeleted = m.IsDeleted,
-                                    IsForwarded = m.IsForwarded
+                                    IsForwarded = m.IsForwarded,
+                                    ExpiresAt = m.ExpiresAt
                                 };
                                 ApplyRoleAwareAlignment(newItem, m.SenderId, m.SenderRole, m.SenderName);
                                 ParseMessagePayload(newItem, m.Content);
@@ -1458,6 +1469,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDeleted += HandleMessageDeleted;
             _signalRService.OnConversationCleared += HandleConversationCleared;
             _signalRService.OnPinsChanged += HandlePinsChanged;
+            _signalRService.OnMessagesExpired += HandleMessagesExpired;
+            _signalRService.OnDisappearingMessagesChanged += HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
@@ -1471,6 +1484,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
         App.AppResumed += HandleAppResumed;
         _isSubscribed = true;
+        StartExpiryTimer();
     }
 
     public void UnsubscribeFromEvents()
@@ -1486,6 +1500,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDeleted -= HandleMessageDeleted;
             _signalRService.OnConversationCleared -= HandleConversationCleared;
             _signalRService.OnPinsChanged -= HandlePinsChanged;
+            _signalRService.OnMessagesExpired -= HandleMessagesExpired;
+            _signalRService.OnDisappearingMessagesChanged -= HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
@@ -1499,6 +1515,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
         App.AppResumed -= HandleAppResumed;
         _isSubscribed = false;
+        _expiryTimer?.Stop();
     }
 
     
@@ -1527,6 +1544,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var items = new List<ChatMessageItem>();
             foreach (var lm in ordered)
             {
+                // Disappeared: not shown, but remembered so sync treats it as present.
+                if (lm.ExpiresAt.HasValue && lm.ExpiresAt.Value <= DateTime.UtcNow)
+                {
+                    if (lm.SequenceNumber > 0) _expiredSeqs.Add(lm.SequenceNumber);
+                    continue;
+                }
                 var item = MapLocalToChatItem(lm);
                 items.Add(item);
                 if (lm.SequenceNumber > 0 && lm.SequenceNumber < _earliestLoadedSequenceNumber)
@@ -2915,7 +2938,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 msg.SenderId == (_authService?.UserId ?? Guid.Empty),
                 msg.SequenceNumber,
                 msg.Status,
-                msg.SentAt
+                msg.SentAt,
+                expiresAt: msg.ExpiresAt
             );
         }
     }
@@ -2974,6 +2998,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
+            existing.ExpiresAt = msg.ExpiresAt;
             ApplyRoleAwareAlignment(existing, msg.SenderId, msg.SenderRole, msg.SenderName);
             UpdateStatusVisuals(existing, msg.Status);
             if (reorder) ReorderMessageIfNeeded(existing);
@@ -2989,7 +3014,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 MessageDate = msg.SentAt.ToLocalTime(),
                 SequenceNumber = msg.SequenceNumber,
                 IsDeleted = msg.IsDeleted,
-                IsForwarded = msg.IsForwarded
+                IsForwarded = msg.IsForwarded,
+                ExpiresAt = msg.ExpiresAt
             };
 
             ApplyRoleAwareAlignment(newItem, msg.SenderId, msg.SenderRole, msg.SenderName);
@@ -3023,7 +3049,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             MessageDate = lm.Timestamp.ToLocalTime(),
             SequenceNumber = lm.SequenceNumber,
             IsDeleted = lm.IsDeleted,
-            IsForwarded = lm.IsForwarded
+            IsForwarded = lm.IsForwarded,
+            ExpiresAt = lm.ExpiresAt
         };
 
         ApplyRoleAwareAlignment(item, lm.SenderId, lm.SenderRole, lm.SenderName);
@@ -3964,6 +3991,147 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         ShowShortNotice("Chat cleared");
     }
 
+    // ---- Disappearing messages (one company setting; admins change it) ----
+
+    // Sequence numbers of messages that disappeared in this chat: sync counts them as present.
+    private readonly HashSet<long> _expiredSeqs = new();
+    private IDispatcherTimer? _expiryTimer;
+
+    private void StartExpiryTimer()
+    {
+        if (_expiryTimer == null)
+        {
+            _expiryTimer = Application.Current?.Dispatcher.CreateTimer();
+            if (_expiryTimer == null) return;
+            _expiryTimer.Interval = TimeSpan.FromSeconds(15);
+            _expiryTimer.Tick += (_, _) => RemoveExpiredMessages();
+        }
+        _expiryTimer.Start();
+    }
+
+    /// <summary>Removes messages whose time is up from the screen, the pinned bar and this phone. Main thread.</summary>
+    private void RemoveExpiredMessages()
+    {
+        List<ChatMessageItem> expired;
+        lock (Messages)
+        {
+            expired = Messages.Where(m => m.IsExpired).ToList();
+        }
+
+        if (expired.Count > 0)
+        {
+            RunBulkUpdate(() =>
+            {
+                foreach (var item in expired)
+                {
+                    if (item.SequenceNumber > 0) _expiredSeqs.Add(item.SequenceNumber);
+                    Messages.Remove(item);
+                }
+            });
+            UpdateDateHeaders();
+            if (_outboxService != null && _conversationId != Guid.Empty)
+            {
+                _ = _outboxService.WipeExpiredMessagesAsync(_conversationId);
+            }
+        }
+
+        var before = _pinnedMessages.Count;
+        _pinnedMessages = _pinnedMessages.Where(p => !(p.ExpiresAt.HasValue && p.ExpiresAt.Value <= DateTime.UtcNow)).ToList();
+        if (_pinnedMessages.Count != before)
+        {
+            _pinnedBarIndex = 0;
+            UpdatePinnedBar();
+        }
+    }
+
+    // The server emptied disappeared messages of a chat: drop them here now (normally the timer already did).
+    private void HandleMessagesExpired(Guid conversationId)
+    {
+        if (conversationId != _conversationId) return;
+        MainThread.BeginInvokeOnMainThread(RemoveExpiredMessages);
+    }
+
+    private int _disappearingSeconds;
+
+    [ObservableProperty]
+    private bool _isDisappearingBannerVisible;
+
+    [ObservableProperty]
+    private string _disappearingBannerText = string.Empty;
+
+    public static string DisappearingLabel(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        86400 => "24 hours",
+        604800 => "7 days",
+        1209600 => "14 days",
+        2592000 => "30 days",
+        7776000 => "90 days",
+        _ => $"{seconds / 86400} days"
+    };
+
+    private void ApplyDisappearingSetting(int seconds)
+    {
+        _disappearingSeconds = seconds;
+        IsDisappearingBannerVisible = seconds > 0;
+        DisappearingBannerText = seconds > 0 ? $"⏱ New messages disappear after {DisappearingLabel(seconds)}" : string.Empty;
+        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == seconds;
+    }
+
+    private async Task LoadDisappearingSettingAsync()
+    {
+        if (_apiService == null) return;
+        var seconds = await _apiService.GetDisappearingMessagesAsync();
+        if (seconds.HasValue) MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds.Value));
+    }
+
+    private void HandleDisappearingMessagesChanged(int seconds)
+        => MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds));
+
+    // Admin picker card.
+    public ObservableCollection<DisappearingOption> DisappearingOptions { get; } = new(
+        new[] { 0, 86400, 604800, 1209600, 2592000, 7776000 }.Select(s => new DisappearingOption(s, DisappearingLabel(s))));
+
+    [ObservableProperty]
+    private bool _isDisappearingPickerVisible;
+
+    [ObservableProperty]
+    private bool _isChatMenuAdmin;
+
+    [ObservableProperty]
+    private string _disappearingMenuSubtitle = string.Empty;
+
+    [RelayCommand]
+    private void OpenDisappearingPicker()
+    {
+        IsChatMenuVisible = false;
+        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == _disappearingSeconds;
+        IsDisappearingPickerVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseDisappearingPicker() => IsDisappearingPickerVisible = false;
+
+    [RelayCommand]
+    private async Task ChooseDisappearingAsync(DisappearingOption? option)
+    {
+        if (option == null || _apiService == null) return;
+        IsDisappearingPickerVisible = false;
+        if (option.Seconds == _disappearingSeconds) return;
+
+        var (ok, error) = await _apiService.SetDisappearingMessagesAsync(option.Seconds);
+        if (!ok)
+        {
+            await Application.Current?.MainPage?.DisplayAlertAsync("Disappearing messages", error ?? "Please try again.", "OK")!;
+            return;
+        }
+
+        ApplyDisappearingSetting(option.Seconds);
+        ShowShortNotice(option.Seconds > 0
+            ? $"New messages disappear after {option.Label}"
+            : "Disappearing messages turned off");
+    }
+
     // ---- Chat options card (⋮) and confirmation card: same look as the message menu ----
 
     [ObservableProperty]
@@ -4043,6 +4211,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     {
         var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
         IsChatMenuStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
+        IsChatMenuAdmin = myRole == UserRole.Admin;
+        DisappearingMenuSubtitle = $"{DisappearingLabel(_disappearingSeconds)} · applies to all chats in your company";
 
         if (IsChatMenuStaff)
         {
@@ -4113,4 +4283,20 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             }
         }
     }
+}
+
+/// <summary>One choice in the disappearing-messages picker.</summary>
+public partial class DisappearingOption : ObservableObject
+{
+    public DisappearingOption(int seconds, string label)
+    {
+        Seconds = seconds;
+        Label = label;
+    }
+
+    public int Seconds { get; }
+    public string Label { get; }
+
+    [ObservableProperty]
+    private bool _isSelected;
 }

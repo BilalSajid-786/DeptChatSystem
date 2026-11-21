@@ -48,6 +48,10 @@ public class SignalRService
     public event Action<Guid>? OnPinsChanged;
     // My pinned customer chats changed (on any of my devices or the web): departmentId
     public event Action<Guid>? OnConversationPinsChanged;
+    // Disappearing messages: the server emptied messages of a chat whose time was up (conversationId)
+    public event Action<Guid>? OnMessagesExpired;
+    // Disappearing messages: an admin changed the company's time (seconds, 0 = off)
+    public event Action<int>? OnDisappearingMessagesChanged;
     public event Action<string>? OnErrorMessage;
     public event Action<string>? OnForceLogout;
 
@@ -178,6 +182,16 @@ public class SignalRService
         _hubConnection.On<Guid>("ConversationPinsChanged", (deptId) =>
         {
             OnConversationPinsChanged?.Invoke(deptId);
+        });
+
+        _hubConnection.On<Guid>("MessagesExpired", (convId) =>
+        {
+            OnMessagesExpired?.Invoke(convId);
+        });
+
+        _hubConnection.On<int>("DisappearingMessagesChanged", (seconds) =>
+        {
+            OnDisappearingMessagesChanged?.Invoke(seconds);
         });
 
         _hubConnection.On<string>("ErrorMessage", (error) =>
