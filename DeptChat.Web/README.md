@@ -41,3 +41,9 @@ and the other at `http://127.0.0.1:5080` (different origins keep separate sign-i
 
 `[image:{url}]` / `[image:{url}:{caption}]`, `[file:{url}:{name}:{sizeBytes}]`,
 `[voice:data:audio/m4a;base64,{base64}:{seconds}]` — see `DeptChat.Web.Client/Services/MessageContent.cs`.
+
+## Deploy
+
+Hosted on the same VPS as the API at https://departmentchat.tech, as its own Docker stack
+(`docker-compose.web.yml`, `DeptChat.Web/Dockerfile`). Steps, update and rollback:
+[DEPLOYMENT.md](DEPLOYMENT.md).

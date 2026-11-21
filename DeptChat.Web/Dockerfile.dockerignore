@@ -1,0 +1,6 @@
+# Used only by DeptChat.Web/Dockerfile (does not affect the API image).
+**/bin/
+**/obj/
+**/.vs/
+.git/
+.claude/
