@@ -954,6 +954,29 @@ public partial class DepartmentsViewModel : ObservableObject
     // Background reloads from real-time events run only while the department screen is on screen.
     // When it is hidden (customer list or chat open on top), DepartmentsPage.OnAppearing reloads
     // anyway on return, so skipped events lose nothing. Bursts of events collapse into one reload.
+    /// <summary>
+    /// Shown on the departments screen, e.g. "v1.0.10 (build 12)". Internal test APKs built with
+    /// -p:DeptChatTestLabel=v25 add " · test v25", because test builds share the release version number.
+    /// </summary>
+    public string AppVersionText { get; } = BuildAppVersionText();
+
+    private static string BuildAppVersionText()
+    {
+        try
+        {
+            var text = $"v{AppInfo.Current.VersionString} (build {AppInfo.Current.BuildString})";
+            var label = typeof(DepartmentsViewModel).Assembly
+                .GetCustomAttributes(typeof(System.Reflection.AssemblyMetadataAttribute), false)
+                .OfType<System.Reflection.AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "DeptChatTestLabel")?.Value;
+            return string.IsNullOrWhiteSpace(label) ? text : $"{text} · test {label}";
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
     private bool _isPageVisible = true;
     public bool IsPageVisible
     {

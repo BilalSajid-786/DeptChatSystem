@@ -36,6 +36,9 @@
 
                         <Label Text="Select a department to start chatting directly" TextColor="#D1FAE5" FontSize="12" />
 
+                        <!-- App version (and the test build label on internal test builds) -->
+                        <Label Text="{Binding AppVersionText}" TextColor="#A7F3D0" FontSize="11" />
+
                     </VerticalStackLayout>
 
                     <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
