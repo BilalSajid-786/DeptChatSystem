@@ -661,7 +661,7 @@
 
                             Padding="6,0,8,0"
 
-                            HeightRequest="48"
+                            MinimumHeightRequest="48"
 
                             VerticalOptions="Center">
 
@@ -683,7 +683,7 @@
 
 
 
-                        <Grid ColumnDefinitions="Auto, *, Auto, Auto" ColumnSpacing="2" VerticalOptions="Center">
+                        <Grid ColumnDefinitions="Auto, *, Auto, Auto, Auto" ColumnSpacing="2" VerticalOptions="Center">
 
                             <!-- Emoji Button -->
 
@@ -711,9 +711,17 @@
 
                             <!-- Message Entry Box -->
 
-                            <Entry Grid.Column="1"
+                            <!-- Editor (not Entry) so a message can have several lines; grows up to ~5 lines, then scrolls -->
 
-                                   Text="{Binding InputMessage}" 
+                            <Editor Grid.Column="1"
+
+                                   x:Name="MessageEditor"
+
+                                   AutoSize="TextChanges"
+
+                                   MaximumHeightRequest="120"
+
+                                   Text="{Binding InputMessage}"
 
                                    Placeholder="Message" 
 
@@ -725,15 +733,41 @@
 
                                    VerticalOptions="Center"
 
-                                   HeightRequest="42"
+                                   MinimumHeightRequest="42"
 
                                    Focused="OnMessageEntryFocused" />
 
 
 
-                            <!-- Attachment Paperclip Button -->
+                            <!-- New Line Button: inserts a line break at the cursor -->
 
                             <Button Grid.Column="2"
+
+                                    Text="↵"
+
+                                    Clicked="OnNewLineClicked"
+
+                                    BackgroundColor="Transparent"
+
+                                    TextColor="#8696A0"
+
+                                    FontSize="20"
+
+                                    WidthRequest="32"
+
+                                    HeightRequest="40"
+
+                                    Padding="0"
+
+                                    VerticalOptions="Center"
+
+                                    SemanticProperties.Description="New line" />
+
+
+
+                            <!-- Attachment Paperclip Button -->
+
+                            <Button Grid.Column="3"
 
                                     Text="📎"
 
@@ -757,7 +791,7 @@
 
                             <!-- Camera Button -->
 
-                            <Button Grid.Column="3"
+                            <Button Grid.Column="4"
 
                                     Text="📷"
 

@@ -485,6 +485,21 @@ public partial class ChatRoomPage : ContentPage
         }
     }
 
+    // New line button: puts a line break where the cursor is (or replaces the selected text) and keeps typing there.
+    private void OnNewLineClicked(object? sender, EventArgs e)
+    {
+        var text = MessageEditor.Text ?? string.Empty;
+        // Not typing yet (keyboard closed): add the line break at the end of the message.
+        var start = MessageEditor.IsFocused ? Math.Clamp(MessageEditor.CursorPosition, 0, text.Length) : text.Length;
+        var length = MessageEditor.IsFocused ? Math.Clamp(MessageEditor.SelectionLength, 0, text.Length - start) : 0;
+
+        MessageEditor.Text = text.Remove(start, length).Insert(start, "\n");
+        MessageEditor.CursorPosition = start + 1;
+        MessageEditor.SelectionLength = 0;
+
+        if (!MessageEditor.IsFocused) MessageEditor.Focus();
+    }
+
     private void OnKeyboardHeightChanged(double keyboardDp)
     {
         MainThread.BeginInvokeOnMainThread(() =>
