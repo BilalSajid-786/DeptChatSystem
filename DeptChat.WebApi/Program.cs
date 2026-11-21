@@ -282,10 +282,16 @@ using (var scope = app.Services.CreateScope())
                         ALTER TABLE Messages ADD ExpiresAt DATETIME2 NULL;
                     END
                 ");
+                // Plain index (a filtered index would make INSERTs fail from tools without QUOTED_IDENTIFIER ON,
+                // e.g. sqlcmd scripts). Replaces the filtered one an early test build created.
                 dbContext.Database.ExecuteSqlRaw(@"
+                    IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Messages_ExpiresAt' AND object_id = OBJECT_ID('Messages') AND has_filter = 1)
+                    BEGIN
+                        DROP INDEX IX_Messages_ExpiresAt ON Messages;
+                    END
                     IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Messages_ExpiresAt' AND object_id = OBJECT_ID('Messages'))
                     BEGIN
-                        CREATE INDEX IX_Messages_ExpiresAt ON Messages (ExpiresAt) WHERE ExpiresAt IS NOT NULL;
+                        CREATE INDEX IX_Messages_ExpiresAt ON Messages (ExpiresAt);
                     END
                 ");
 
