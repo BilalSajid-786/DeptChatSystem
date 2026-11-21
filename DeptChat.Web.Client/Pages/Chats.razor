@@ -164,7 +164,7 @@
                             }
                             @foreach (var c in convs)
                             {
-                                <div class="row-wrap" @key="c.Id">
+                                <div class="row-wrap @(c.IsPinned ? "pinned" : "")" @key="c.Id">
                                 <button type="button" class="row @(c.Id == ConvId ? "selected" : "")" @onclick="() => OpenConversation(c)">
                                     <div class="avatar" style="background:@Format.AvatarColor(c.CreatedByUserId)">@Format.Initials(c.CreatedByUserName)@if (c.IsOnline) { <span class="dot"></span> }</div>
                                     <span class="body">
@@ -296,6 +296,7 @@
         Hub.MessageForwarded += OnMessageForwarded;
         Hub.ConversationCleared += OnConversationCleared;
         Hub.ConversationPinsChanged += OnConversationPinsChanged;
+        Hub.MessagesExpired += OnMessagesExpired;
         Hub.ErrorMessage += OnHubError;
         Hub.StateChanged += OnHubState;
         Hub.Connected += OnHubConnectedAsync;
@@ -579,6 +580,9 @@
         => _ = InvokeAsync(StateHasChanged);
 
     // A chat was cleared (by me, or for everyone by staff): last-message previews and unread badges change.
+    // Disappearing messages: a chat's last message may have disappeared (previews and badges change).
+    private void OnMessagesExpired(Guid conversationId) => OnConversationCleared(conversationId, 0, true);
+
     private void OnConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone)
         => _ = InvokeAsync(async () =>
         {
@@ -679,6 +683,7 @@
         Hub.MessageForwarded -= OnMessageForwarded;
         Hub.ConversationCleared -= OnConversationCleared;
         Hub.ConversationPinsChanged -= OnConversationPinsChanged;
+        Hub.MessagesExpired -= OnMessagesExpired;
         Hub.ErrorMessage -= OnHubError;
         Hub.StateChanged -= OnHubState;
         Hub.Connected -= OnHubConnectedAsync;

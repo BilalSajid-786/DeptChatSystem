@@ -93,6 +93,14 @@ public sealed class ApiClient
     public Task<ClearChatResultDto> ClearChatAsync(Guid conversationId)
         => SendAsync<ClearChatResultDto>(HttpMethod.Post, $"api/conversations/{conversationId}/clear");
 
+    /// <summary>The company's disappearing-messages time in seconds (0 = off).</summary>
+    public Task<DisappearingMessagesSettingDto> GetDisappearingMessagesAsync()
+        => SendAsync<DisappearingMessagesSettingDto>(HttpMethod.Get, "api/conversations/disappearing-messages");
+
+    /// <summary>Admins only: sets it for every chat in the company.</summary>
+    public Task<DisappearingMessagesSettingDto> SetDisappearingMessagesAsync(int seconds)
+        => SendAsync<DisappearingMessagesSettingDto>(HttpMethod.Put, "api/conversations/disappearing-messages", new DisappearingMessagesSettingDto(seconds));
+
     public Task<List<AvailableDepartmentUserDto>> GetAvailableUsersAsync(Guid departmentId)
         => SendAsync<List<AvailableDepartmentUserDto>>(HttpMethod.Get, $"api/conversations/department/{departmentId}/available-users");
 

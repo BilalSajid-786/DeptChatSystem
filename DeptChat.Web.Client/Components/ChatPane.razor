@@ -25,6 +25,10 @@
                 @(_blocked ? "Unblock user" : "Block user")
             </button>
         }
+        @if (Auth.IsAdmin)
+        {
+            <button type="button" class="icon-btn" title="Disappearing messages" aria-label="Disappearing messages" @onclick="() => _showDisappearing = true">⏱</button>
+        }
         <button type="button" class="icon-btn" aria-label="Contact info" @onclick="() => _showInfo = true"><Icon Name="info" /></button>
     </div>
 
@@ -35,6 +39,10 @@
     @if (_blocked && Auth.IsStaff)
     {
         <div class="chat-banner error"><Icon Name="lock" Size="16" /> This user is blocked and can't send messages.</div>
+    }
+    @if (_disappearingSeconds > 0)
+    {
+        <div class="chat-banner info">⏱ New messages disappear after @DisappearingLabel(_disappearingSeconds)</div>
     }
     @if (_pins.Count > 0)
     {
@@ -270,6 +278,18 @@
                ConfirmText="@(Auth.IsStaff ? "Clear for everyone" : "Clear chat")" Danger="true"
                OnConfirm="ClearChatAsync" OnClose="() => _confirmClear = false" />
 
+<Modal Open="_showDisappearing" Title="Disappearing messages" OnClose="() => _showDisappearing = false">
+    <p style="margin:0 0 12px;color:var(--text-2);font-size:13px">New messages in every chat of your company disappear for everyone after this time. Messages already sent keep their time.</p>
+    <div class="dm-options">
+        @foreach (var s in DisappearingChoices)
+        {
+            <button type="button" class="dm-option @(s == _disappearingSeconds ? "on" : "")" disabled="@_savingDisappearing" @onclick="() => SetDisappearingAsync(s)">
+                <span>@DisappearingLabel(s)</span>@if (s == _disappearingSeconds) { <span class="dm-check">✓</span> }
+            </button>
+        }
+    </div>
+</Modal>
+
 <ConfirmDialog Open="_deleting != null" Title="Delete message?" Message="It will be replaced with “This message was deleted” for everyone."
                ConfirmText="Delete" Danger="true" OnConfirm="DeleteAsync" OnClose="() => _deleting = null" />
 
@@ -375,6 +395,9 @@
         Hub.MessageDeleted += OnMessageDeleted;
         Hub.ConversationCleared += OnConversationCleared;
         Hub.PinsChanged += OnPinsChanged;
+        Hub.MessagesExpired += OnMessagesExpired;
+        Hub.DisappearingMessagesChanged += OnDisappearingMessagesChanged;
+        _expiryTimer = new System.Threading.Timer(_ => _ = InvokeAsync(RemoveExpired), null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
         Hub.ErrorMessage += OnHubError;
         Hub.StateChanged += OnHubStateChanged;
         Hub.Connected += OnHubConnectedAsync;
@@ -458,6 +481,7 @@
             _messages.AddRange(page.Messages.Select(MessageVm.From));
             _hasMore = page.HasMore;
             _ = LoadPinsAsync();
+            _ = LoadDisappearingAsync();
 
             await Outbox.EnsureLoadedAsync();
             foreach (var pending in Outbox.ForConversation(Conversation.Id))
@@ -727,6 +751,75 @@
     private void OnPinsChanged(Guid conversationId)
     {
         if (conversationId == Conversation.Id) _ = LoadPinsAsync();
+    }
+
+    // ---------------- disappearing messages (company setting; admins change it) ----------------
+    private static readonly int[] DisappearingChoices = { 0, 86400, 604800, 1209600, 2592000, 7776000 };
+    private int _disappearingSeconds;
+    private bool _showDisappearing;
+    private bool _savingDisappearing;
+    private System.Threading.Timer? _expiryTimer;
+
+    private static string DisappearingLabel(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        86400 => "24 hours",
+        604800 => "7 days",
+        1209600 => "14 days",
+        2592000 => "30 days",
+        7776000 => "90 days",
+        _ => $"{seconds / 86400} days"
+    };
+
+    private async Task LoadDisappearingAsync()
+    {
+        try
+        {
+            _disappearingSeconds = (await Api.GetDisappearingMessagesAsync()).Seconds;
+            if (!_disposed) StateHasChanged();
+        }
+        catch (ApiException) { }
+    }
+
+    private async Task SetDisappearingAsync(int seconds)
+    {
+        if (seconds == _disappearingSeconds) { _showDisappearing = false; return; }
+        _savingDisappearing = true;
+        try
+        {
+            _disappearingSeconds = (await Api.SetDisappearingMessagesAsync(seconds)).Seconds;
+            _showDisappearing = false;
+            ToastService.Success(seconds > 0 ? $"New messages disappear after {DisappearingLabel(seconds)}" : "Disappearing messages turned off");
+        }
+        catch (ApiException ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+        finally
+        {
+            _savingDisappearing = false;
+        }
+    }
+
+    private void OnDisappearingMessagesChanged(int seconds)
+        => _ = InvokeAsync(() => { _disappearingSeconds = seconds; StateHasChanged(); });
+
+    private void OnMessagesExpired(Guid conversationId)
+    {
+        if (conversationId == Conversation.Id) _ = InvokeAsync(RemoveExpired);
+    }
+
+    /// <summary>Drops messages (and pins) whose disappear time has passed.</summary>
+    private void RemoveExpired()
+    {
+        if (_disposed) return;
+        var removed = _messages.RemoveAll(m => m.IsExpired);
+        removed += _pins.RemoveAll(p => p.ExpiresAt.HasValue && p.ExpiresAt.Value <= DateTime.UtcNow);
+        if (removed > 0)
+        {
+            _pinIndex = 0;
+            StateHasChanged();
+        }
     }
 
     private static string PinPreview(ChatMessageDto pin)
@@ -1351,6 +1444,9 @@
         Hub.MessageDeleted -= OnMessageDeleted;
         Hub.ConversationCleared -= OnConversationCleared;
         Hub.PinsChanged -= OnPinsChanged;
+        Hub.MessagesExpired -= OnMessagesExpired;
+        Hub.DisappearingMessagesChanged -= OnDisappearingMessagesChanged;
+        _expiryTimer?.Dispose();
         Hub.ErrorMessage -= OnHubError;
         Hub.StateChanged -= OnHubStateChanged;
         Hub.Connected -= OnHubConnectedAsync;

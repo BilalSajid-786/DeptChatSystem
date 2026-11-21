@@ -18,6 +18,9 @@ public sealed class MessageVm
     public DateTime SentAt { get; set; }
     public bool IsDeleted { get; private set; }
     public bool IsForwarded { get; set; }
+    /// <summary>Disappearing messages: hidden after this time (UTC); null = never.</summary>
+    public DateTime? ExpiresAt { get; set; }
+    public bool IsExpired => ExpiresAt.HasValue && ExpiresAt.Value <= DateTime.UtcNow;
     /// <summary>No ack within the timeout, or the server refused it.</summary>
     public bool Failed { get; set; }
     /// <summary>Upload placeholder that is never sent as-is.</summary>
@@ -49,7 +52,8 @@ public sealed class MessageVm
             SenderRole = dto.SenderRole,
             Status = dto.Status,
             SentAt = dto.SentAt,
-            IsForwarded = dto.IsForwarded
+            IsForwarded = dto.IsForwarded,
+            ExpiresAt = dto.ExpiresAt
         };
         vm.SetContent(dto.Content, dto.IsDeleted);
         return vm;
@@ -64,6 +68,7 @@ public sealed class MessageVm
         SenderRole = dto.SenderRole;
         SentAt = dto.SentAt;
         IsForwarded = dto.IsForwarded;
+        ExpiresAt = dto.ExpiresAt;
         Failed = false;
         LocalOnly = false;
         Raise(dto.Status);
