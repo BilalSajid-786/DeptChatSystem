@@ -28,14 +28,14 @@ public partial class App : Application
                 await Task.Delay(400);
                 await CheckAndEnforceUpdateAsync();
             });
-#if DEPTCHAT_DIAG
-            _ = FreezeReport.CheckAndOfferAsync();
-#endif
+            // Problem reports are sent automatically (no popup); 4 s so the first screen comes first.
+            _ = FreezeReport.CheckAndSendAsync(delayMs: 4000);
         };
 
         window.Resumed += (s, e) =>
         {
             _ = CheckAndEnforceUpdateAsync();
+            _ = FreezeReport.CheckAndSendAsync(delayMs: 3000, throttle: true);
         };
 
         window.Destroying += (s, e) =>

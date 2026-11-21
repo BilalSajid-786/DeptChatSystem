@@ -8,6 +8,15 @@ public static class MauiProgram
 {
     public static MauiApp CreateMauiApp()
     {
+        // Save the stack trace of any crash, so the next automatic problem report contains it.
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            if (e.ExceptionObject is Exception ex) FreezeReport.RecordCrash(ex);
+        };
+#if ANDROID
+        Android.Runtime.AndroidEnvironment.UnhandledExceptionRaiser += (s, e) => FreezeReport.RecordCrash(e.Exception);
+#endif
+
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()

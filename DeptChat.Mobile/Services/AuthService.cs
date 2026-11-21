@@ -93,6 +93,8 @@ public class AuthService
             if (CurrentUser != null)
             {
                 Preferences.Default.Set(AuthStorageKey, content);
+                // Reports saved while logged out can be sent now.
+                _ = FreezeReport.CheckAndSendAsync(delayMs: 3000);
                 return true;
             }
             LastError = "Invalid server response.";
@@ -125,6 +127,8 @@ public class AuthService
             if (CurrentUser != null)
             {
                 Preferences.Default.Set(AuthStorageKey, content);
+                // Reports saved while logged out can be sent now.
+                _ = FreezeReport.CheckAndSendAsync(delayMs: 3000);
                 return true;
             }
             LastError = "Invalid server response.";
