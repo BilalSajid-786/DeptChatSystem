@@ -82,9 +82,26 @@ www.departmentchat.tech {
     redir https://departmentchat.tech{uri} permanent
 }
 EOF
+md5sum /opt/deptchat/Caddyfile; docker exec deptchat_caddy md5sum /etc/caddy/Caddyfile
+```
+
+**The two checksums must match.** If an earlier `git checkout`/`pull` replaced the host file
+after Caddy started, the container still reads the old one (this happened on the first
+deployment, 2026-11-21). Then copy the new lines into the container's copy as well, instead of
+restarting Caddy (a restart briefly takes HTTPS down for the phones):
+
+```bash
+tail -n +12 /opt/deptchat/Caddyfile | docker exec -i deptchat_caddy sh -c "cat >> /etc/caddy/Caddyfile"
+```
+
+(`+12` = first line after the original 11-line file; check the checksums match again.) Then:
+
+```bash
 docker exec deptchat_caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 docker exec deptchat_caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
+
+The same applies to the rollback below: write the backup into both copies before reloading.
 
 Caddy then gets the HTTPS certificate for both names by itself (watch with
 `docker logs -f deptchat_caddy`, look for "certificate obtained successfully").
@@ -115,6 +132,7 @@ Nothing here touches the API, so rolling back never needs an API rollback.
 
 ```bash
 cat /root/backups/Caddyfile.pre-web > /opt/deptchat/Caddyfile
+docker exec -i deptchat_caddy sh -c "cat > /etc/caddy/Caddyfile" < /root/backups/Caddyfile.pre-web
 docker exec deptchat_caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 cd /opt/deptchat-web && docker compose -f docker-compose.web.yml down
 ```
