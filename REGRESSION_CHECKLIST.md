@@ -196,8 +196,11 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 - Web: favicon, sign-in logo, loading-screen logo and the empty chat placeholders use the same headset (`Icon Name="headset"` in `Components/Icon.razor`, inline SVG in `wwwroot/index.html`).
 - **Do not break**: BF-06 (icon inside the adaptive safe zone, title "DeptChat"); notification icons must stay one-colour white silhouettes. When changing icons, clear the resizetizer cache first (Part 3 item 12).
 
-### 24. Web App Loading Progress (web, not live yet)
-- The loading screen shows Blazor's own progress (`--blazor-load-percentage`, CSS only, no extra script under the CSP) and "The first visit can take up to a minute on a slow connection." The first visit downloads ~1.7 MB; later visits load from the browser cache.
+### 24. Web App: Loading Progress, Esc to Close a Chat, Drafts (web, not live yet)
+- **Loading progress**: the loading screen shows Blazor's own progress (`--blazor-load-percentage`, CSS only, no extra script under the CSP) and "The first visit can take up to a minute on a slow connection." The first visit downloads ~1.7 MB; later visits load from the browser cache.
+- **Esc closes the open chat** like the Back button (`deptchat.escape` in `wwwroot/js/deptchat.js`, one document listener per open chat, removed when the chat closes). Only the top-most thing closes: a dialog (`[role="dialog"]`: Modal, ConfirmDialog, forward panel, photo viewer) handles Esc itself and the chat stays; an open menu (`.menu-backdrop`: message menu, Clear chat menu, main menu) closes first; otherwise the chat closes. Ignored while recording a voice message. Esc on a list does nothing.
+- **Drafts**: unsent text is kept per user and chat (`Services/DraftStore.cs`, in memory): leaving a chat (Back, Esc, another chat) and coming back restores it. Cleared when sent and on sign-out; not kept across a page reload.
+- **Do not break**: Enter sends / Shift+Enter new line in the composer; a draft never shows in another chat or for another user; dialogs still close with Esc when focused; the photo viewer's own Esc.
 
 ### 25. Password Reset by Admins and Managers (release 1.0.12, not live yet)
 - `POST /api/users/{id}/reset-password`: admins reset customers and managers (never admins); managers reset **customers only** (403 otherwise), the same rule as blocking. `GET /api/users` returns all users to admins and only customers to managers.
