@@ -39,6 +39,10 @@
                         <a href="/admin/departments" role="menuitem"><Icon Name="building" Size="16" /> Departments</a>
                         <a href="/admin/accounts" role="menuitem"><Icon Name="users" Size="16" /> Accounts</a>
                         <button type="button" role="menuitem" @onclick="OpenDisappearingAsync">⏱ Disappearing messages</button>
+                        @if (Auth.IsPlatformAdmin)
+                        {
+                            <a href="/admin/companies" role="menuitem"><Icon Name="shield" Size="16" /> Companies</a>
+                        }
                     }
                     @if (Auth.IsStaff)
                     {

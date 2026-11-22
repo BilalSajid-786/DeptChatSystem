@@ -32,7 +32,8 @@ public record AuthResponseDto(
     string? PhoneNumber = null,
     string? Address = null,
     string? Username = null,
-    Guid? SessionId = null
+    Guid? SessionId = null,
+    bool IsPlatformAdmin = false // admin of the platform-owner company: may manage companies (web Companies page)
 );
 
 public record UserSessionDto(

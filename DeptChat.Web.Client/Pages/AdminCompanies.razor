@@ -1,0 +1,120 @@
+@page "/admin/companies"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>Companies · DeptChat</PageTitle>
+
+@* Platform admins only (admins of the platform-owner company). Everyone else gets 403 from the server too. *@
+@if (!Auth.IsSignedIn)
+{
+}
+else if (!Auth.IsPlatformAdmin)
+{
+    <NotAvailable Denied="true" />
+}
+else
+{
+    <div class="page">
+        <header class="page-bar">
+            <a href="/chats" class="icon-btn on-dark" aria-label="Back to chats"><Icon Name="back" /></a>
+            <h1>Companies</h1>
+            <nav aria-label="Admin">
+                <a href="/admin/departments">Departments</a>
+                <a href="/admin/accounts">Accounts</a>
+                <a href="/admin/companies" class="active">Companies</a>
+            </nav>
+        </header>
+        <div class="page-body">
+            @if (_loading)
+            {
+                <div class="state"><span class="spinner"></span>Loading companies…</div>
+            }
+            else if (_error != null)
+            {
+                <div class="state"><strong>Couldn't load companies</strong>@_error<button type="button" class="btn btn-outline btn-sm" @onclick="LoadAsync">Try again</button></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead><tr><th>Company</th><th>Code</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in _clients)
+                            {
+                                var isOwn = c.Id == Auth.User?.ClientId;
+                                <tr @key="c.Id">
+                                    <td><strong>@c.Name</strong>@if (!string.IsNullOrWhiteSpace(c.Description)) { <br /><span class="muted">@c.Description</span> }</td>
+                                    <td class="muted">@c.Code</td>
+                                    <td class="muted">@Format.ToLocal(c.CreatedAt).ToString("MMM dd, yyyy")</td>
+                                    <td>
+                                        @if (c.IsBlocked || !c.IsActive) { <span class="tag tag-blocked">BLOCKED</span> }
+                                        else { <span class="tag tag-online">ACTIVE</span> }
+                                    </td>
+                                    <td>
+                                        @if (isOwn)
+                                        {
+                                            <span class="muted" style="font-size:13px">Platform company</span>
+                                        }
+                                        else
+                                        {
+                                            var blocked = c.IsBlocked || !c.IsActive;
+                                            <button type="button" class="btn btn-sm @(blocked ? "btn-outline" : "btn-danger-soft")" style="width:96px" @onclick="() => _toggling = c">@(blocked ? "Unblock" : "Block")</button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            <div style="font-size:13px;color:var(--text-2)">Blocking a company signs out all of its users on every device. They can't log in or send messages until it is unblocked.</div>
+        </div>
+    </div>
+
+    <ConfirmDialog Open="_toggling != null"
+                   Title="@($"{(IsBlocked(_toggling) ? "Unblock" : "Block")} {_toggling?.Name}?")"
+                   Message="@(IsBlocked(_toggling) ? "Its users will be able to log in and send messages again." : "All of its users will be signed out at once and can't log in or send messages until you unblock it.")"
+                   ConfirmText="@(IsBlocked(_toggling) ? "Unblock" : "Block")" Danger="@(!IsBlocked(_toggling))"
+                   OnConfirm="ToggleBlockAsync" OnClose="() => _toggling = null" />
+}
+
+@code {
+    private List<ClientSummaryDto> _clients = new();
+    private bool _loading = true;
+    private string? _error;
+    private ClientSummaryDto? _toggling;
+
+    private static bool IsBlocked(ClientSummaryDto? c) => c != null && (c.IsBlocked || !c.IsActive);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn) { Nav.NavigateTo("/login", replace: true); return; }
+        if (Auth.IsPlatformAdmin) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _clients = await Api.GetClientsAsync(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ToggleBlockAsync()
+    {
+        if (_toggling == null) return;
+        var c = _toggling;
+        var blocked = IsBlocked(c);
+        try
+        {
+            var message = blocked ? await Api.UnblockClientAsync(c.Id) : await Api.BlockClientAsync(c.Id);
+            ToastService.Success(message);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { ToastService.Error(ex.Message); }
+        finally { _toggling = null; }
+    }
+}

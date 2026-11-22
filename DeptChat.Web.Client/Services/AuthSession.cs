@@ -25,6 +25,8 @@ public sealed class AuthSession : IDisposable
     public AuthResponseDto? User { get; private set; }
     public bool IsSignedIn => User != null;
     public bool IsAdmin => User?.Role == UserRole.Admin;
+    /// <summary>Admin of the platform-owner company: may manage companies (Companies page).</summary>
+    public bool IsPlatformAdmin => IsAdmin && User?.IsPlatformAdmin == true;
     public bool IsManager => User?.Role == UserRole.Manager;
     public bool IsStaff => User?.Role is UserRole.Admin or UserRole.Manager;
     public Guid UserId => User?.UserId ?? Guid.Empty;

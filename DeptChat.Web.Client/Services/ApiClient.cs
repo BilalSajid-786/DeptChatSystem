@@ -124,6 +124,11 @@ public sealed class ApiClient
     public Task<UserSummaryDto> CreateUserAsync(CreateUserRequestDto dto) => SendAsync<UserSummaryDto>(HttpMethod.Post, "api/users", dto);
     public Task<string> BlockUserAsync(Guid id) => SendForMessageAsync(HttpMethod.Post, $"api/users/{id}/block", new BlockUserRequestDto());
     public Task<string> UnblockUserAsync(Guid id) => SendForMessageAsync(HttpMethod.Post, $"api/users/{id}/unblock");
+    // Companies (platform admins only; the server returns 403 to everyone else)
+    public Task<List<ClientSummaryDto>> GetClientsAsync() => SendAsync<List<ClientSummaryDto>>(HttpMethod.Get, "api/clients");
+    public Task<string> BlockClientAsync(Guid id) => SendForMessageAsync(HttpMethod.Post, $"api/clients/{id}/block");
+    public Task<string> UnblockClientAsync(Guid id) => SendForMessageAsync(HttpMethod.Post, $"api/clients/{id}/unblock");
+
     public Task<string> ResetPasswordAsync(Guid id, string newPassword)
         => SendForMessageAsync(HttpMethod.Post, $"api/users/{id}/reset-password", new AdminResetPasswordRequestDto(newPassword));
 

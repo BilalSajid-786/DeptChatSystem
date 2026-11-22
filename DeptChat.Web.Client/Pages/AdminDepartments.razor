@@ -22,6 +22,7 @@ else
             <nav aria-label="Admin">
                 <a href="/admin/departments" class="active">Departments</a>
                 <a href="/admin/accounts">Accounts</a>
+                @if (Auth.IsPlatformAdmin) { <a href="/admin/companies">Companies</a> }
             </nav>
         </header>
         <div class="page-body">
