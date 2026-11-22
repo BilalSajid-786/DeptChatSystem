@@ -55,7 +55,7 @@ h1, h2, h3 { margin: 0; }
 
 /* ---------- boot & error ---------- */
 .boot { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--text-2); }
-.boot-logo { width: 56px; height: 56px; border-radius: 16px; background: var(--primary); }
+.boot-logo { width: 56px; height: 56px; border-radius: 16px; background: var(--primary); display: flex; align-items: center; justify-content: center; }
 .boot-pct::after { content: var(--blazor-load-percentage-text, ""); }
 .boot-progress { width: 220px; height: 6px; border-radius: 3px; background: #E2E8F0; overflow: hidden; }
 .boot-progress-bar { height: 100%; width: var(--blazor-load-percentage, 0%); background: var(--primary); transition: width .2s ease-out; }

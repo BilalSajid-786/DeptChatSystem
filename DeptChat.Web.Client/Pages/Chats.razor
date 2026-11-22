@@ -42,6 +42,10 @@
                     }
                     @if (Auth.IsStaff)
                     {
+                        @if (Auth.IsManager)
+                        {
+                            <a href="/admin/accounts" role="menuitem"><Icon Name="users" Size="16" /> Customer accounts</a>
+                        }
                         <button type="button" role="menuitem" @onclick="() => { _menuOpen = false; _createUserOpen = true; }"><Icon Name="plus" Size="16" /> Add user</button>
                     }
                     <button type="button" role="menuitem" @onclick="ToggleNotificationsAsync"><Icon Name="bell" Size="16" /> @NotifyLabel</button>
@@ -124,7 +128,7 @@
             <section class="col col-convs" aria-label="Customer conversations">
                 @if (SelectedDepartment == null)
                 {
-                    <div class="state" style="margin:auto"><Icon Name="chat" Size="34" /><strong>Select a department</strong>Its customer conversations appear here.</div>
+                    <div class="state" style="margin:auto"><Icon Name="headset" Size="34" /><strong>Select a department</strong>Its customer conversations appear here.</div>
                 }
                 else
                 {
@@ -202,7 +206,7 @@
         else
         {
             <div class="chat-empty">
-                <div class="mark"><Icon Name="chat" Size="34" /></div>
+                <div class="mark"><Icon Name="headset" Size="34" /></div>
                 <strong style="color:var(--text);font-size:18px">@(Auth.IsStaff ? "Select a conversation" : "Select a department to start chatting")</strong>
                 <span>@(Auth.IsStaff ? "Pick a customer on the left, or start a new chat." : "Your messages sync with the DeptChat Android app.")</span>
                 @if (_convError != null) { <div class="banner banner-error">@_convError</div> }

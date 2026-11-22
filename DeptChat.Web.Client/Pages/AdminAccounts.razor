@@ -9,7 +9,7 @@
 @if (!Auth.IsSignedIn)
 {
 }
-else if (!Auth.IsAdmin)
+else if (!Auth.IsStaff)
 {
     <NotAvailable Denied="true" />
 }
@@ -18,19 +18,32 @@ else
     <div class="page">
         <header class="page-bar">
             <a href="/chats" class="icon-btn on-dark" aria-label="Back to chats"><Icon Name="back" /></a>
-            <h1>Accounts</h1>
-            <nav aria-label="Admin">
-                <a href="/admin/departments">Departments</a>
-                <a href="/admin/accounts" class="active">Accounts</a>
-            </nav>
+            <h1>@(Auth.IsAdmin ? "Accounts" : "Customer accounts")</h1>
+            @if (Auth.IsAdmin)
+            {
+                <nav aria-label="Admin">
+                    <a href="/admin/departments">Departments</a>
+                    <a href="/admin/accounts" class="active">Accounts</a>
+                </nav>
+            }
         </header>
         <div class="page-body">
             <div class="toolbar">
-                <div class="seg" role="tablist" aria-label="Account type">
-                    <button type="button" role="tab" class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">Customers · @Customers.Count()</button>
-                    <button type="button" role="tab" class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">Managers · @Managers.Count()</button>
-                    <button type="button" role="tab" class="@(_tab == 2 ? "on" : "")" @onclick="() => _tab = 2">Admins · @Admins.Count()</button>
-                </div>
+                @if (Auth.IsAdmin)
+                {
+                    <div class="seg" role="tablist" aria-label="Account type">
+                        <button type="button" role="tab" class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">Customers · @Customers.Count()</button>
+                        <button type="button" role="tab" class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">Managers · @Managers.Count()</button>
+                        <button type="button" role="tab" class="@(_tab == 2 ? "on" : "")" @onclick="() => _tab = 2">Admins · @Admins.Count()</button>
+                    </div>
+                }
+                else
+                {
+                    @* Managers: customers only (the server returns only customers to them). *@
+                    <div class="seg" role="tablist" aria-label="Account type">
+                        <button type="button" role="tab" class="on">Customers · @Customers.Count()</button>
+                    </div>
+                }
                 <label class="search pill">
                     <Icon Name="search" Size="16" />
                     <input type="search" placeholder="Search name, email, phone or username" aria-label="Search accounts" @bind="_query" @bind:event="oninput" />
@@ -91,7 +104,7 @@ else
                     </div>
                 }
             }
-            <div style="font-size:13px;color:var(--text-2)">Admin accounts can't be blocked or reset. Blocking takes effect for new messages immediately; an already-open session may stay signed in for up to 10 minutes.</div>
+            <div style="font-size:13px;color:var(--text-2)">@(Auth.IsAdmin ? "Admin accounts can't be blocked or reset. " : "")Resetting a password or blocking signs the person out on all devices at once.</div>
         </div>
     </div>
 
@@ -133,7 +146,7 @@ else
     {
         get
         {
-            var list = _tab switch { 1 => Managers, 2 => Admins, _ => Customers };
+            var list = !Auth.IsAdmin ? Customers : _tab switch { 1 => Managers, 2 => Admins, _ => Customers };
             if (string.IsNullOrWhiteSpace(_query)) return list.OrderBy(u => u.FullName);
             var q = _query.Trim();
             return list.Where(u => $"{u.FullName} {u.Email} {u.PhoneNumber} {u.Username}".Contains(q, StringComparison.OrdinalIgnoreCase)).OrderBy(u => u.FullName);
@@ -143,7 +156,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!Auth.IsSignedIn) { Nav.NavigateTo("/login", replace: true); return; }
-        if (Auth.IsAdmin) await LoadAsync();
+        if (Auth.IsStaff) await LoadAsync();
     }
 
     private async Task LoadAsync()
