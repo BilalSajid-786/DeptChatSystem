@@ -3,6 +3,7 @@
 @inject AuthSession Auth
 @inject ChatHubClient Hub
 @inject OutboxStore Outbox
+@inject DraftStore Drafts
 @inject BrowserInterop Browser
 @inject ToastService ToastService
 
@@ -379,6 +380,7 @@
     protected override async Task OnInitializedAsync()
     {
         _fileInputId = $"file-{Conversation.Id:N}";
+        _draft = Drafts.Get(Conversation.Id); // unsent text from the last visit to this chat
         _blocked = Conversation.IsUserBlocked;
         _otherOnline = Conversation.IsOnline;
         _ref = DotNetObjectReference.Create(this);
@@ -917,6 +919,7 @@
         if (_attachment == null && text.Length == 0) return;
 
         _draft = "";
+        Drafts.Set(Conversation.Id, null);
         await Browser.ResetComposerAsync(_textarea);
         await StopTypingAsync();
 
@@ -1050,6 +1053,7 @@
     // ---------------- typing ----------------
     private async Task OnDraftChangedAsync()
     {
+        Drafts.Set(Conversation.Id, _draft);
         if (string.IsNullOrEmpty(_draft)) { await StopTypingAsync(); return; }
         if ((DateTime.UtcNow - _lastTypingSent).TotalSeconds > 2.5)
         {

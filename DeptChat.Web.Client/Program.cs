@@ -15,6 +15,7 @@ builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ChatHubClient>();
 builder.Services.AddScoped<OutboxStore>();
+builder.Services.AddScoped<DraftStore>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<BrowserInterop>();
 
