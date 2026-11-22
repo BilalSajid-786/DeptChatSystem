@@ -107,13 +107,13 @@ public sealed class ApiClient
     public Task<ConversationSummaryDto> StartConversationWithUserAsync(Guid departmentId, Guid userId)
         => SendAsync<ConversationSummaryDto>(HttpMethod.Post, "api/conversations/start-with-user", new StartConversationWithUserRequest(departmentId, userId));
 
-    public async Task<AttachmentUploadResultDto> UploadAsync(IBrowserFile file, CancellationToken cancellationToken = default)
+    public async Task<AttachmentUploadResultDto> UploadAsync(IBrowserFile file, CancellationToken cancellationToken = default, string? fileName = null)
     {
         using var content = new MultipartFormDataContent();
         var stream = file.OpenReadStream(MaxUploadBytes, cancellationToken);
         var part = new StreamContent(stream);
         part.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
-        content.Add(part, "file", file.Name);
+        content.Add(part, "file", fileName ?? file.Name);
         using var response = await SendRawAsync(HttpMethod.Post, "api/attachments/upload", content, signOutOn401: true, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<AttachmentUploadResultDto>(JsonOptions, cancellationToken))!;
     }

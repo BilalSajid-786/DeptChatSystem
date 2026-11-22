@@ -999,6 +999,26 @@
         StateHasChanged();
     }
 
+    // Same as the mobile app: pictures are sent at most 1280 px as JPEG, so phones on slow networks can
+    // load them (a full-size 2.8 MB picture missed the app's 30 s download limit and stayed a dark box).
+    // GIFs (animation) and small pictures are sent unchanged; if shrinking fails the original is sent.
+    private const int ImageMaxSidePx = 1280;
+    private const long ImageShrinkAboveBytes = 300 * 1024;
+
+    private static async Task<(IBrowserFile File, string Name)> ShrinkImageAsync(IBrowserFile file)
+    {
+        if (file.Size <= ImageShrinkAboveBytes || Path.GetExtension(file.Name).Equals(".gif", StringComparison.OrdinalIgnoreCase))
+            return (file, file.Name);
+        try
+        {
+            var small = await file.RequestImageFileAsync("image/jpeg", ImageMaxSidePx, ImageMaxSidePx);
+            if (small.Size > 0 && small.Size < file.Size)
+                return (small, Path.ChangeExtension(file.Name, ".jpg"));
+        }
+        catch { }
+        return (file, file.Name);
+    }
+
     private void ClearAttachment()
     {
         _attachment = null;
@@ -1019,7 +1039,8 @@
 
         try
         {
-            var result = await Api.UploadAsync(file);
+            var (uploadFile, uploadName) = isImage ? await ShrinkImageAsync(file) : (file, file.Name);
+            var result = await Api.UploadAsync(uploadFile, fileName: uploadName);
             _messages.Remove(placeholder);
             ClearAttachment();
             if (isImage)
