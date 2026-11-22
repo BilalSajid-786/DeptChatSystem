@@ -16,7 +16,10 @@
     <div id="app">
         <div class="boot">
             <div class="boot-logo" aria-hidden="true"></div>
-            <div>Loading DeptChat…</div>
+            <div>Loading DeptChat… <span class="boot-pct"></span></div>
+            <!-- Filled by Blazor's loader (--blazor-load-percentage), so the first visit never looks stuck. -->
+            <div class="boot-progress" role="progressbar" aria-label="Loading DeptChat"><div class="boot-progress-bar"></div></div>
+            <div class="boot-hint">The first visit can take up to a minute on a slow connection.</div>
         </div>
     </div>
 
