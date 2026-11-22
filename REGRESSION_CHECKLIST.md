@@ -226,9 +226,14 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 - **Live setup with the 1.0.12 release** (with user approval, after the DB backup): create DevPlatformCompany (code `DEVPLATFORM`) and its admin (full name `Platform Admin`, username `platform.admin`; user decision 2026-11-22) with the new-client SQL script (password hash from `make-password-hash.ps1`, typed by the user), set `PLATFORM_OWNER_COMPANY_CODE` in `/opt/deptchat/.env` and the `Platform__OwnerCompanyCode` line in the live compose, rebuild the API, then check: platform admin sees Companies, Main Organization admin gets 403, `/swagger` is 404.
 
 ### 28. Chat Hub Access Checks (release 1.0.12, log-only first)
+- Code is complete (server only). No mobile app or web app change is needed; switching from log-only to enforcing is a settings change, not a code change. Code changes again only if the live log shows a real user wrongly marked "would deny".
+- Rollout in three steps: (1) release with 1.0.12 in log-only mode, (2) watch the live log for a few days, (3) with user approval switch enforcing on.
 - Ships with `Hub:EnforceAccessChecks=false`: the hub only logs who would be denied (BF-36). Live compose needs the `Hub__EnforceAccessChecks=${HUB_ENFORCE_ACCESS_CHECKS:-false}` line.
 - After release, watch for a few days: `docker logs deptchat_api 2>&1 | grep "HUB ACCESS would deny"`. Every line names user, role, company, method and reason (`other-company`, `not-own-conversation`, `department-not-assigned`, `not-found`). `not-found` alone is harmless. Any line for a real customer or staff member in their own chat means the rule is wrong: fix it before enforcing.
 - No wrong lines → with user approval set `HUB_ENFORCE_ACCESS_CHECKS=true` in `/opt/deptchat/.env` and `docker compose up -d --no-deps api` (~20 s). Back to log-only = set it to false and restart the same way.
+
+### 29. Open Security Check for the User (S5)
+- Check whether the live `manager` account still uses the project's default password. If it does, change it: sign in as `manager` on the live web app → My account → Change password (already live), or from 1.0.12 an admin can reset it (§25). No code change needed; changing the password signs the account out on its other devices (BF-18). The user does this, not Claude.
 
 ---
 
