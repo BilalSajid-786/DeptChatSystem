@@ -155,16 +155,18 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Admin-only: Retrieves all users belonging to the Admin's client organization.
+    /// Admins: all users of their organization. Managers: only customers (User role), for the
+    /// web Accounts page where they can reset a customer's password or block them.
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> GetUsers()
     {
         var clientId = GetClientId();
+        var isManager = User.FindFirstValue(ClaimTypes.Role) == UserRole.Manager.ToString();
 
         var users = await _dbContext.Users
-            .Where(u => u.ClientId == clientId)
+            .Where(u => u.ClientId == clientId && (!isManager || u.Role == UserRole.User))
             .OrderByDescending(u => u.CreatedAt)
             .Select(u => new UserSummaryDto(
                 u.Id,
@@ -303,10 +305,11 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Admin-only: Resets the password of any Manager or User (Customer) in their organization.
+    /// Admins: reset the password of any Manager or User (Customer) in their organization.
+    /// Managers: only of Users (Customers), same rule as blocking.
     /// </summary>
     [HttpPost("{id}/reset-password")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ResetPassword(Guid id, [FromBody] AdminResetPasswordRequestDto dto)
     {
         if (dto == null || string.IsNullOrWhiteSpace(dto.NewPassword))
@@ -330,6 +333,12 @@ public class UsersController : ControllerBase
         if (targetUser.Role == UserRole.Admin)
         {
             return BadRequest(new { message = "Cannot reset the password of an administrator account." });
+        }
+
+        // Managers can only reset customers' passwords
+        if (User.FindFirstValue(ClaimTypes.Role) == UserRole.Manager.ToString() && targetUser.Role != UserRole.User)
+        {
+            return Forbid();
         }
 
         targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
