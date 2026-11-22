@@ -282,9 +282,10 @@
                 </Border>
             </VerticalStackLayout>
 
-            <!-- Manager Quick Actions: Add User Only -->
-            <Grid Grid.Row="0"
+            <!-- Manager Quick Actions: Add User and Customer Accounts -->
+            <VerticalStackLayout Grid.Row="0"
                   IsVisible="{Binding IsManagerOnly}"
+                  Spacing="8"
                   Margin="16,12,16,4">
                 <Border BackgroundColor="White"
                         Stroke="#C8E6C9"
@@ -305,7 +306,27 @@
                         <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
                     </Grid>
                 </Border>
-            </Grid>
+                <!-- Customer accounts: reset a customer's password or block them (managers: customers only) -->
+                <Border BackgroundColor="White"
+                        Stroke="#C8E6C9"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,10">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenManageAccountsModalCommand}" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                        <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                            <Label Text="🛡️" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Customer Accounts" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+                            <Label Text="Reset a customer's password or block them" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
 
             <!-- Department Cards List -->
 
@@ -1270,7 +1291,7 @@
 
                                FontSize="16" />
 
-                        <Label Text="Manage and block/unblock managers and clients"
+                        <Label Text="{Binding AccountsModalSubtitle}"
 
                                TextColor="#D1FAE5"
 
@@ -1302,7 +1323,7 @@
 
                 <!-- Tabs: Managers | Clients -->
 
-                <Grid Grid.Row="1"
+                <Grid Grid.Row="1" IsVisible="{Binding IsAdmin}"
 
                       ColumnDefinitions="*, *"
 

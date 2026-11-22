@@ -353,7 +353,7 @@ public class UsersController : ControllerBase
         {
             s.IsActive = false;
             s.RevokedAt = DateTime.UtcNow;
-            s.RevokedReason = "Admin Reset Password";
+            s.RevokedReason = "Password Reset By Staff";
             _memoryCache.Remove($"user_session_active_{s.Id}");
         }
 
@@ -365,7 +365,7 @@ public class UsersController : ControllerBase
         // Broadcast real-time ForceLogout to all connected devices for this target user
         try
         {
-            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", "An administrator has reset your password. Please log in again with your new password.");
+            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", "Your password has been reset by your admin or manager. Please log in again with your new password.");
         }
         catch { }
 

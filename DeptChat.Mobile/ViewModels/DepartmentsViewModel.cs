@@ -252,6 +252,8 @@ public partial class DepartmentsViewModel : ObservableObject
     public bool CanAddUsers => IsAdmin || IsManager;
     public bool CanSelectRole => IsAdmin;
     public bool IsManagerOnly => !IsAdmin && IsManager;
+    // Accounts screen: admins manage managers and customers; managers only customers.
+    public string AccountsModalSubtitle => IsAdmin ? "Manage and block/unblock managers and clients" : "Reset passwords and block customers";
 
 
 
@@ -650,10 +652,9 @@ public partial class DepartmentsViewModel : ObservableObject
         if (_apiService == null) return;
 
         IsManageAccountsModalVisible = true;
-
         IsLoadingAccounts = true;
-
-        ManageAccountsTab = 0;
+        // Managers only manage customers (Users tab); admins start on Managers.
+        ManageAccountsTab = IsAdmin ? 0 : 1;
 
         OnPropertyChanged(nameof(IsManagersTabActive));
 
@@ -683,7 +684,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
 
-            var managers = await _apiService.GetManagersAsync();
+            var managers = IsAdmin ? await _apiService.GetManagersAsync() : new List<UserSummaryDto>(); // managers list is admin-only
 
             foreach (var m in managers)
 
@@ -1160,6 +1161,7 @@ public partial class DepartmentsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddUsers));
         OnPropertyChanged(nameof(CanSelectRole));
         OnPropertyChanged(nameof(IsManagerOnly));
+        OnPropertyChanged(nameof(AccountsModalSubtitle));
     }
 
 
