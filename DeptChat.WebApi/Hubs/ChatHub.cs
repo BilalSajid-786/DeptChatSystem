@@ -7,6 +7,7 @@ using DeptChat.Shared.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace DeptChat.WebApi.Hubs;
 
@@ -17,17 +18,86 @@ public class ChatHub : Hub
     private readonly IPresenceService _presenceService;
     private readonly IPushNotificationService _pushNotificationService;
     private readonly ILogger<ChatHub> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly IMemoryCache _memoryCache;
 
     public ChatHub(
         ApplicationDbContext dbContext,
         IPresenceService presenceService,
         IPushNotificationService pushNotificationService,
-        ILogger<ChatHub> logger)
+        ILogger<ChatHub> logger,
+        IConfiguration configuration,
+        IMemoryCache memoryCache)
     {
         _dbContext = dbContext;
         _presenceService = presenceService;
         _pushNotificationService = pushNotificationService;
         _logger = logger;
+        _configuration = configuration;
+        _memoryCache = memoryCache;
+    }
+
+    /// <summary>
+    /// G1: may the caller use this conversation? Same rule as ConversationsController.GetMessages:
+    /// customer = own conversation; manager = same company and the department is assigned to them or has
+    /// no assigned managers; admin = same company.
+    /// Setting Hub:EnforceAccessChecks (default false): while false the check only LOGS "would deny" and
+    /// always returns true (nothing changes for users); when true a denied call is stopped.
+    /// Results are cached for 60 s per user + conversation (typing events are frequent).
+    /// </summary>
+    private async Task<bool> CheckConversationAccessAsync(Guid conversationId, string method)
+    {
+        var enforce = _configuration.GetValue<bool>("Hub:EnforceAccessChecks");
+        var userId = GetUserId();
+        var role = GetUserRole();
+        string? denyReason;
+        try
+        {
+            var cacheKey = $"hub_access_{userId}_{conversationId}";
+            if (!_memoryCache.TryGetValue(cacheKey, out denyReason))
+            {
+                denyReason = await GetConversationDenyReasonAsync(conversationId, userId, role);
+                _memoryCache.Set(cacheKey, denyReason, TimeSpan.FromSeconds(60));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HUB ACCESS check failed: user {UserId} ({Role}) {Method} conversation {ConversationId}", userId, role, method, conversationId);
+            return !enforce;
+        }
+
+        if (denyReason == null) return true;
+
+        _logger.LogWarning("HUB ACCESS {Outcome}: user {UserId} ({Role}, company {ClientId}) {Method} conversation {ConversationId}: {Reason}",
+            enforce ? "denied" : "would deny", userId, role, GetClientId(), method, conversationId, denyReason);
+        if (!enforce) return true;
+
+        // A conversation that doesn't exist needs no popup; a real denial tells the caller like the blocked-user path.
+        if (denyReason != "not-found")
+        {
+            await Clients.Caller.SendAsync("ErrorMessage", "You don't have access to this conversation.");
+        }
+        return false;
+    }
+
+    /// <summary>Null when allowed, else a short reason for the log.</summary>
+    private async Task<string?> GetConversationDenyReasonAsync(Guid conversationId, Guid userId, UserRole role)
+    {
+        var clientId = GetClientId();
+        var conv = await _dbContext.Conversations.AsNoTracking()
+            .Where(c => c.Id == conversationId)
+            .Select(c => new { c.ClientId, c.CreatedByUserId, c.DepartmentId })
+            .FirstOrDefaultAsync();
+        if (conv == null) return "not-found";
+        if (conv.ClientId != clientId) return "other-company";
+        if (role == UserRole.User && conv.CreatedByUserId != userId) return "not-own-conversation";
+        if (role == UserRole.Manager)
+        {
+            var hasExplicitManagers = await _dbContext.DepartmentManagers.AnyAsync(dm => dm.DepartmentId == conv.DepartmentId);
+            if (hasExplicitManagers && !await _dbContext.DepartmentManagers.AnyAsync(dm => dm.DepartmentId == conv.DepartmentId && dm.UserId == userId))
+                return "department-not-assigned";
+        }
+        return null;
     }
 
     public override async Task OnConnectedAsync()
@@ -154,6 +224,7 @@ public class ChatHub : Hub
     /// </summary>
     public async Task EnterRoom(Guid conversationId)
     {
+        if (!await CheckConversationAccessAsync(conversationId, nameof(EnterRoom))) return;
         var userId = GetUserId();
         var role = GetUserRole();
         await Groups.AddToGroupAsync(Context.ConnectionId, $"Room_{conversationId}");
@@ -337,6 +408,7 @@ public class ChatHub : Hub
     /// </summary>
     public async Task SendTyping(Guid conversationId, bool isTyping)
     {
+        if (!await CheckConversationAccessAsync(conversationId, nameof(SendTyping))) return;
         var userId = GetUserId();
         var senderName = Context.User?.Identity?.Name ?? "Someone";
         await Clients.OthersInGroup($"Room_{conversationId}").SendAsync("UserTyping", conversationId, userId, senderName, isTyping);
@@ -355,7 +427,7 @@ public class ChatHub : Hub
             lastSeen = user?.LastSeenAt ?? user?.CreatedAt ?? DateTime.UtcNow;
         }
         bool isInRoom = false;
-        if (conversationId.HasValue)
+        if (conversationId.HasValue && await CheckConversationAccessAsync(conversationId.Value, nameof(GetPresence)))
         {
             var currentPresence = await _presenceService.GetPresenceAsync(targetUserId);
             isInRoom = string.Equals(currentPresence, $"room:{conversationId.Value}", StringComparison.OrdinalIgnoreCase);
@@ -391,6 +463,8 @@ public class ChatHub : Hub
         {
             return;
         }
+
+        if (!await CheckConversationAccessAsync(dto.ConversationId, nameof(SendMessage))) return;
 
         // 1. Idempotency Check: prevent duplicate messages on network retries
         var existingMessage = await _dbContext.Messages
@@ -638,6 +712,7 @@ public class ChatHub : Hub
         var role = GetUserRole();
         var msg = await _dbContext.Messages.FindAsync(messageId);
         if (msg == null || msg.Status >= MessageDeliveryStatus.Delivered) return;
+        if (!await CheckConversationAccessAsync(msg.ConversationId, nameof(AcknowledgeDelivery))) return;
 
         // Staff can only acknowledge delivery for Customer messages.
         // Customer can only acknowledge delivery for Staff messages.
@@ -656,6 +731,7 @@ public class ChatHub : Hub
     /// </summary>
     public async Task MarkAsRead(Guid conversationId, long maxSequenceNumber)
     {
+        if (!await CheckConversationAccessAsync(conversationId, nameof(MarkAsRead))) return;
         var userId = GetUserId();
         var role = GetUserRole();
 
@@ -760,6 +836,7 @@ public class ChatHub : Hub
 
         var message = await _dbContext.Messages.FirstOrDefaultAsync(m => m.Id == messageId);
         if (message == null || message.IsDeleted) return;
+        if (!await CheckConversationAccessAsync(message.ConversationId, nameof(DeleteMessage))) return;
 
         // Manager can only delete their own messages
         if (role == UserRole.Manager && message.SenderId != userId)
@@ -811,6 +888,7 @@ public class ChatHub : Hub
             await Clients.Caller.SendAsync("ErrorMessage", "Source message not found or has been deleted.");
             return;
         }
+        if (!await CheckConversationAccessAsync(sourceMsg.ConversationId, nameof(ForwardMessage))) return;
 
         var department = await _dbContext.Departments.FirstOrDefaultAsync(d => d.Id == targetDepartmentId && d.ClientId == clientId);
         var targetUser = await _dbContext.Users.FirstOrDefaultAsync(u => u.Id == targetUserId && u.ClientId == clientId);
