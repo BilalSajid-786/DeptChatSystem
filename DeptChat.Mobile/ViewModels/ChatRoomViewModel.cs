@@ -2322,6 +2322,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             CurrentPlaybackTime = isVoice ? $"0:{duration:D2}" : string.Empty,
             LocalAudioPath = localPath
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, myName);
 
         Messages.Add(pendingItem);
@@ -2696,6 +2697,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             ImageUrl = compressedPath,
             ImageCaption = caption ?? string.Empty
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
@@ -2775,6 +2777,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             DocumentFileSizeText = FormatFileSize(sizeBytes),
             DocumentUrl = localPath
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
@@ -2998,10 +3001,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             // "Message sent" sound: the server echoes my message to the chat before the ack arrives, so
             // the ack would find it already sent. Play it on whichever turns it ✓ first (once per second).
-            if (existing.Status < MessageDeliveryStatus.Sent && msg.Status >= MessageDeliveryStatus.Sent
-                && msg.SenderId == (_authService?.UserId ?? Guid.Empty))
+            if (msg.Status >= MessageDeliveryStatus.Sent)
             {
-                PlaySentSound();
+                PlaySentSound(existing.ClientGeneratedId);
             }
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
@@ -3167,9 +3169,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == clientGenId);
             if (existing != null)
             {
-                if (existing.Status < MessageDeliveryStatus.Sent && status >= MessageDeliveryStatus.Sent)
+                if (status >= MessageDeliveryStatus.Sent)
                 {
-                    PlaySentSound();
+                    PlaySentSound(clientGenId);
                 }
 
                 existing.Id = serverMsgId;
@@ -3191,8 +3193,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     /// "Message sent" sound when the server confirms a message (single tick). Several messages
     /// confirmed together (e.g. queued while offline) play it once.
     /// </summary>
-    private void PlaySentSound()
+    // ClientGeneratedIds of messages sent from this chat screen that have not played the sound yet.
+    private readonly HashSet<string> _awaitingSentSound = new();
+
+    private void PlaySentSound(string clientGeneratedId)
     {
+        // Only for a message I just sent here, and only once (the echo and the ack both confirm it).
+        if (string.IsNullOrEmpty(clientGeneratedId) || !_awaitingSentSound.Remove(clientGeneratedId)) return;
         if (!App.IsInForeground) return;
         var now = DateTime.UtcNow;
         if ((now - _lastSentSoundUtc).TotalMilliseconds < 1000) return;
