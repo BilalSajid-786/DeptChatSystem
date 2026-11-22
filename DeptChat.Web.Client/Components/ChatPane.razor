@@ -449,6 +449,7 @@
             _jsAttached = true;
             await Browser.WatchScrollAsync(_scroller, _ref);
             await Browser.AttachDropAsync(_scroller, _fileInputId);
+            try { _escWatchId = await Browser.WatchEscapeAsync(_ref); } catch { }
         }
         if (_rec == RecState.None && _composerBlockedReason == null && _ref != null)
         {
@@ -1448,6 +1449,20 @@
             await Hub.LeaveRoomAsync(Conversation.Id);
         }
         catch { /* leaving the page while disconnected */ }
+        if (_escWatchId > 0)
+        {
+            try { await Browser.UnwatchEscapeAsync(_escWatchId); } catch { }
+        }
         _ref?.Dispose();
+    }
+
+    private int _escWatchId;
+
+    /// <summary>Esc with no dialog or menu open: close the chat like the Back button (never while recording).</summary>
+    [JSInvokable]
+    public Task OnEscapePressed()
+    {
+        if (_disposed || _rec != RecState.None) return Task.CompletedTask;
+        return InvokeAsync(() => OnBack.InvokeAsync());
     }
 }

@@ -34,6 +34,11 @@ public sealed class BrowserInterop
     public ValueTask WatchVisibilityAsync<T>(DotNetObjectReference<T> reference) where T : class
         => _js.InvokeVoidAsync("deptchat.visibility.watch", reference);
 
+    /// <summary>Esc closes the open chat (after any dialog or menu). Returns an id for <see cref="UnwatchEscapeAsync"/>.</summary>
+    public ValueTask<int> WatchEscapeAsync<T>(DotNetObjectReference<T> reference) where T : class
+        => _js.InvokeAsync<int>("deptchat.escape.watch", reference);
+    public ValueTask UnwatchEscapeAsync(int id) => _js.InvokeVoidAsync("deptchat.escape.unwatch", id);
+
     public ValueTask AttachComposerAsync<T>(ElementReference el, DotNetObjectReference<T> reference) where T : class
         => _js.InvokeVoidAsync("deptchat.composer.attach", el, reference);
     public ValueTask ResetComposerAsync(ElementReference el) => _js.InvokeVoidAsync("deptchat.composer.reset", el);

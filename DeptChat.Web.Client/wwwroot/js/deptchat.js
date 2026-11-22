@@ -115,6 +115,32 @@ window.deptchat = (function () {
         }
     };
 
+    // ---------- Esc key ----------
+    // Esc closes the top-most thing only: a dialog / photo viewer handles Esc itself (nothing else
+    // happens), an open menu closes, otherwise the chat is asked to close (OnEscapePressed).
+    const escHandlers = new Map();
+    let escNextId = 1;
+    const escape = {
+        watch: (ref) => {
+            const handler = (e) => {
+                if (e.key !== "Escape" || e.defaultPrevented || e.isComposing) return;
+                if (document.querySelector('[role="dialog"]')) return;
+                const backdrop = document.querySelector(".menu-backdrop");
+                if (backdrop) { e.preventDefault(); backdrop.click(); return; }
+                e.preventDefault();
+                ref.invokeMethodAsync("OnEscapePressed");
+            };
+            const id = escNextId++;
+            escHandlers.set(id, handler);
+            document.addEventListener("keydown", handler);
+            return id;
+        },
+        unwatch: (id) => {
+            const handler = escHandlers.get(id);
+            if (handler) { document.removeEventListener("keydown", handler); escHandlers.delete(id); }
+        }
+    };
+
     // ---------- composer ----------
     const composer = {
         // Enter sends, Shift+Enter makes a new line; the textarea grows with its content.
@@ -280,5 +306,5 @@ window.deptchat = (function () {
         }
     };
 
-    return { storage, deviceId, deviceName, scroll, visibility, composer, attachDrop, copy, notify, voice, audio };
+    return { storage, deviceId, deviceName, scroll, visibility, escape, composer, attachDrop, copy, notify, voice, audio };
 })();
