@@ -311,7 +311,7 @@ public class AuthController : ControllerBase
 
         {
 
-            return Unauthorized(new { message = "Your account has been blocked by an administrator. Please contact support." });
+            return Unauthorized(new { message = UsersController.BlockedMessage });
 
         }
 

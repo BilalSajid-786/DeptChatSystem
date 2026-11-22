@@ -2996,6 +2996,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == msg.ClientGeneratedId || m.Id == msg.Id);
         if (existing != null)
         {
+            // "Message sent" sound: the server echoes my message to the chat before the ack arrives, so
+            // the ack would find it already sent. Play it on whichever turns it ✓ first (once per second).
+            if (existing.Status < MessageDeliveryStatus.Sent && msg.Status >= MessageDeliveryStatus.Sent
+                && msg.SenderId == (_authService?.UserId ?? Guid.Empty))
+            {
+                PlaySentSound();
+            }
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
             existing.ExpiresAt = msg.ExpiresAt;
@@ -3975,11 +3982,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 $"All messages in this chat will be removed for {CustomerName}, admins and managers. This can't be undone.",
                 "Clear for everyone")
             : await AskConfirmAsync("🧹", "Clear this chat?",
-                "All messages in this chat will be removed from your view. The department still keeps them.",
+                IsChatMenuStaff
+                    ? $"All messages in this chat will be removed from your view only. {CustomerName} and other staff still see them."
+                    : "All messages in this chat will be removed from your view. The department still keeps them.",
                 "Clear chat");
         if (!confirm) return;
 
-        var (result, error) = await _apiService.ClearChatAsync(convId);
+        var (result, error) = await _apiService.ClearChatAsync(convId, forEveryone);
         if (result == null)
         {
             await page.DisplayAlertAsync("Clear chat", error ?? "Couldn't clear the chat. Please try again.", "OK");
@@ -3988,7 +3997,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         ApplyClearedUpTo(convId, result.ClearedUpToSequence);
         ConversationListCache.Clear();
-        ShowShortNotice("Chat cleared");
+        ShowShortNotice(result.ForEveryone ? "Chat cleared for everyone" : "Chat cleared");
     }
 
     // ---- Disappearing messages (one company setting; admins change it) ----
@@ -4075,7 +4084,6 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         _disappearingSeconds = seconds;
         IsDisappearingBannerVisible = seconds > 0;
         DisappearingBannerText = seconds > 0 ? $"⏱ New messages disappear after {DisappearingLabel(seconds)}" : string.Empty;
-        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == seconds;
     }
 
     private async Task LoadDisappearingSettingAsync()
@@ -4087,50 +4095,6 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
     private void HandleDisappearingMessagesChanged(int seconds)
         => MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds));
-
-    // Admin picker card.
-    public ObservableCollection<DisappearingOption> DisappearingOptions { get; } = new(
-        new[] { 0, 86400, 604800, 1209600, 2592000, 7776000 }.Select(s => new DisappearingOption(s, DisappearingLabel(s))));
-
-    [ObservableProperty]
-    private bool _isDisappearingPickerVisible;
-
-    [ObservableProperty]
-    private bool _isChatMenuAdmin;
-
-    [ObservableProperty]
-    private string _disappearingMenuSubtitle = string.Empty;
-
-    [RelayCommand]
-    private void OpenDisappearingPicker()
-    {
-        IsChatMenuVisible = false;
-        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == _disappearingSeconds;
-        IsDisappearingPickerVisible = true;
-    }
-
-    [RelayCommand]
-    private void CloseDisappearingPicker() => IsDisappearingPickerVisible = false;
-
-    [RelayCommand]
-    private async Task ChooseDisappearingAsync(DisappearingOption? option)
-    {
-        if (option == null || _apiService == null) return;
-        IsDisappearingPickerVisible = false;
-        if (option.Seconds == _disappearingSeconds) return;
-
-        var (ok, error) = await _apiService.SetDisappearingMessagesAsync(option.Seconds);
-        if (!ok)
-        {
-            await Application.Current?.MainPage?.DisplayAlertAsync("Disappearing messages", error ?? "Please try again.", "OK")!;
-            return;
-        }
-
-        ApplyDisappearingSetting(option.Seconds);
-        ShowShortNotice(option.Seconds > 0
-            ? $"New messages disappear after {option.Label}"
-            : "Disappearing messages turned off");
-    }
 
     // ---- Chat options card (⋮) and confirmation card: same look as the message menu ----
 
@@ -4148,6 +4112,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
     [ObservableProperty]
     private string _clearMenuSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private string _clearForEveryoneSubtitle = string.Empty;
 
     [ObservableProperty]
     private string _blockMenuIcon = string.Empty;
@@ -4211,14 +4178,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     {
         var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
         IsChatMenuStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
-        IsChatMenuAdmin = myRole == UserRole.Admin;
-        DisappearingMenuSubtitle = $"{DisappearingLabel(_disappearingSeconds)} · applies to all chats in your company";
 
         if (IsChatMenuStaff)
         {
             ChatMenuTitle = $"Chat options · {CustomerName}";
-            ClearMenuTitle = "Clear chat for everyone";
-            ClearMenuSubtitle = $"Removes all messages for {CustomerName} and all staff";
+            ClearMenuTitle = "Clear chat for me";
+            ClearMenuSubtitle = "Removes messages only from your view";
+            ClearForEveryoneSubtitle = $"Removes all messages for {CustomerName} and all staff";
             BlockMenuIcon = IsTargetUserBlocked ? "✅" : "🚫";
             BlockMenuTitle = IsTargetUserBlocked ? "Unblock user" : "Block user";
             BlockMenuSubtitle = IsTargetUserBlocked
@@ -4243,7 +4209,16 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     private async Task ClearChatFromMenuAsync()
     {
         IsChatMenuVisible = false;
-        await ClearChatAsync(forEveryone: IsChatMenuStaff);
+        await ClearChatAsync(forEveryone: false);
+    }
+
+    // Staff only: the second clear option.
+    [RelayCommand]
+    private async Task ClearChatForEveryoneFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        if (!IsChatMenuStaff) return;
+        await ClearChatAsync(forEveryone: true);
     }
 
     [RelayCommand]

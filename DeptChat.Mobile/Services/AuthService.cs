@@ -79,7 +79,18 @@ public class AuthService
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || 
                     response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
-                    LastError = "Invalid email or password.";
+                    // Blocked account or company: show the server's reason ("You are blocked. Contact your admin to log in.").
+                    string? serverMessage = null;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                        if (doc.RootElement.TryGetProperty("message", out var m)) serverMessage = m.GetString();
+                    }
+                    catch { }
+                    LastError = serverMessage != null && (serverMessage.Contains("blocked", StringComparison.OrdinalIgnoreCase)
+                                                          || serverMessage.Contains("suspended", StringComparison.OrdinalIgnoreCase))
+                        ? serverMessage
+                        : "Invalid email or password.";
                 }
                 else
                 {

@@ -183,6 +183,9 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    // Shown at login and on forced logout when an account is blocked (same text in AuthController).
+    public const string BlockedMessage = "You are blocked. Contact your admin to log in.";
+
     /// Blocks a user.
     /// Admin can block Users and Managers.
     /// Manager can ONLY block Users.
@@ -216,7 +219,31 @@ public class UsersController : ControllerBase
         targetUser.IsBlocked = true;
         targetUser.BlockedAt = DateTime.UtcNow;
         targetUser.BlockedByUserId = callerId;
+
+        // Log them out everywhere at once (same as a password reset): new security stamp, sessions
+        // revoked, cached checks dropped, no more pushes to their phones.
+        targetUser.SecurityStamp = Guid.NewGuid().ToString("N");
+        var activeSessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == targetUser.Id && s.IsActive)
+            .ToListAsync();
+        foreach (var s in activeSessions)
+        {
+            s.IsActive = false;
+            s.RevokedAt = DateTime.UtcNow;
+            s.RevokedReason = "Blocked";
+            _memoryCache.Remove($"user_session_active_{s.Id}");
+        }
+        var deviceTokens = await _dbContext.DeviceTokens.Where(dt => dt.UserId == targetUser.Id).ToListAsync();
+        _dbContext.DeviceTokens.RemoveRange(deviceTokens);
         await _dbContext.SaveChangesAsync();
+        _memoryCache.Remove($"user_security_stamp_{targetUser.Id}");
+
+        // Open apps and web pages log out now and show the reason.
+        try
+        {
+            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", BlockedMessage);
+        }
+        catch { }
 
         return Ok(new { message = $"User '{targetUser.FullName}' has been blocked successfully." });
     }

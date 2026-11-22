@@ -213,12 +213,13 @@ public class ChatApiService
     /// <summary>
     /// Clears the chat. A user clears it only for themselves; an admin or manager clears it for everyone.
     /// </summary>
-    public async Task<(ClearChatResultDto? Result, string? Message)> ClearChatAsync(Guid conversationId)
+    public async Task<(ClearChatResultDto? Result, string? Message)> ClearChatAsync(Guid conversationId, bool forEveryone = true)
     {
         try
         {
             AttachBearerToken();
-            var response = await _httpClient.PostAsync(BuildUrl($"api/conversations/{conversationId}/clear"), null);
+            // Users always clear only for themselves (the server decides); staff choose.
+            var response = await _httpClient.PostAsync(BuildUrl($"api/conversations/{conversationId}/clear?forEveryone={(forEveryone ? "true" : "false")}"), null);
             if (response.IsSuccessStatusCode)
             {
                 var content = await response.Content.ReadAsStringAsync();

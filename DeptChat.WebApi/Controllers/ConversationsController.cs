@@ -155,10 +155,23 @@ public class ConversationsController : ControllerBase
             var convIds = conversations.Select(c => c.Id).ToList();
             var unreadCounts = await _dbContext.Messages
                 .Where(m => convIds.Contains(m.ConversationId) && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow)
-                            && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read)
+                            && m.SenderRole == UserRole.User && m.Status < MessageDeliveryStatus.Read
+                            && !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber))
                 .GroupBy(m => m.ConversationId)
                 .Select(g => new { ConversationId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.ConversationId, x => x.Count);
+
+            // Chats I cleared only for myself: no preview unless something newer is visible.
+            var myClears = await _dbContext.ConversationUserClears
+                .Where(c => c.UserId == userId && convIds.Contains(c.ConversationId))
+                .ToDictionaryAsync(c => c.ConversationId, c => c.ClearedUpToSequence);
+            var hiddenPreview = new HashSet<Guid>();
+            foreach (var (convId, mySeq) in myClears)
+            {
+                var visibleAfter = await _dbContext.Messages.AnyAsync(m => m.ConversationId == convId && m.SequenceNumber > mySeq
+                                                                          && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
+                if (!visibleAfter) hiddenPreview.Add(convId);
+            }
 
             var list = new List<ConversationSummaryDto>();
             foreach (var conv in conversations)
@@ -170,7 +183,7 @@ public class ConversationsController : ControllerBase
                     conv.Department.Name,
                     conv.CreatedByUserId,
                     conv.CreatedByUser.FullName,
-                    SanitizePreview(conv.LastMessagePreview),
+                    SanitizePreview(hiddenPreview.Contains(conv.Id) ? null : conv.LastMessagePreview),
                     conv.LastMessageAt,
                     unreadCounts.GetValueOrDefault(conv.Id, 0),
                     conv.Status,
@@ -568,11 +581,12 @@ public class ConversationsController : ControllerBase
     /// <summary>
     /// Clears the chat.
     /// - User: only for themselves (their own chat with the department); staff still see everything.
-    /// - Admin / Manager (with access to the department): for everyone (the user, admins and managers).
+    /// - Admin / Manager (with access to the department): for themselves (?forEveryone=false) or for
+    ///   everyone (default: the user, admins and managers).
     /// Messages stay in the database (sequence numbers keep increasing) but are never shown again.
     /// </summary>
     [HttpPost("{id}/clear")]
-    public async Task<IActionResult> ClearChat(Guid id)
+    public async Task<IActionResult> ClearChat(Guid id, [FromQuery] bool? forEveryone = null)
     {
         var userId = GetUserId();
         var role = GetUserRole();
@@ -583,7 +597,8 @@ public class ConversationsController : ControllerBase
             .Where(m => m.ConversationId == id)
             .MaxAsync(m => (long?)m.SequenceNumber) ?? 0;
 
-        if (role == UserRole.User)
+        // Users always clear only for themselves; staff choose (for everyone when not said).
+        if (role == UserRole.User || forEveryone == false)
         {
             var clear = await _dbContext.ConversationUserClears.FirstOrDefaultAsync(c => c.ConversationId == id && c.UserId == userId);
             if (clear == null)
@@ -601,7 +616,7 @@ public class ConversationsController : ControllerBase
                             && _dbContext.Messages.Any(m => m.Id == p.MessageId && m.SequenceNumber <= clear.ClearedUpToSequence))
                 .ExecuteDeleteAsync();
 
-            // Only the user's own devices clear (staff are not told: nothing changes for them).
+            // Only the caller's own devices clear (nobody else is told: nothing changes for them).
             await _hubContext.Clients.Group($"User_{userId}").SendAsync("ConversationCleared", id, clear.ClearedUpToSequence, false);
             return Ok(new ClearChatResultDto(id, clear.ClearedUpToSequence, false));
         }
