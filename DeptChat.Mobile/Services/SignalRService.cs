@@ -35,6 +35,9 @@ public class SignalRService
     public event Action<DepartmentDto>? OnDepartmentAdded;
     public event Action<Guid>? OnDepartmentDeleted;
     public event Action? OnReconnected;
+    // The connection came back by a fresh start (not the automatic reconnect), e.g. after the phone
+    // was locked. The open chat screen re-enters its room so others see us online again.
+    public event Action? OnConnectionRestored;
     public event Action<Guid, Guid, bool>? OnUserPresenceChanged;
     public event Action<Guid, Guid, string, bool>? OnUserTyping;
     public event Action<Guid, bool>? OnUserOnlineStatusChanged;
@@ -222,6 +225,7 @@ public class SignalRService
         try
         {
             await _hubConnection.StartAsync();
+            OnConnectionRestored?.Invoke();
         }
         catch (Exception ex)
         {
@@ -278,6 +282,7 @@ public class SignalRService
             try
             {
                 await _hubConnection.StartAsync();
+                OnConnectionRestored?.Invoke();
                 return true;
             }
             catch

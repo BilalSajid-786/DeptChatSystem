@@ -1486,6 +1486,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnDisappearingMessagesChanged += HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
+            _signalRService.OnConnectionRestored += HandleConnectionRestored;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
             _signalRService.OnUserTyping += HandleUserTyping;
             _signalRService.OnUserPresenceState += HandleUserPresenceState;
@@ -1517,6 +1518,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnDisappearingMessagesChanged -= HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
+            _signalRService.OnConnectionRestored -= HandleConnectionRestored;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
             _signalRService.OnUserTyping -= HandleUserTyping;
             _signalRService.OnUserPresenceState -= HandleUserPresenceState;
@@ -3272,6 +3274,25 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         });
     }
 
+    // The connection was started again (e.g. by a send after unlocking the phone). The server no
+    // longer has us in this room, so enter it again; otherwise the other side keeps showing us offline.
+    // Only in the foreground, and no outbox flush here (sending keeps its own path, so no duplicates).
+    private void HandleConnectionRestored()
+    {
+        if (_conversationId == Guid.Empty || !App.IsInForeground) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (_signalRService != null)
+                    await _signalRService.EnterRoomAsync(_conversationId);
+                await SyncMissedMessagesAsync();
+            }
+            catch { }
+        });
+    }
+
     // Back from the background with this chat open: the connection may have stayed up (so no
     // reconnect), but updates sent meanwhile can still be missing. Catch up, including ticks.
     private void HandleAppResumed()
@@ -3282,6 +3303,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             try
             {
+                // Re-enter the room too: the server may have dropped us while the phone was locked.
+                if (_signalRService != null)
+                    await _signalRService.EnterRoomAsync(_conversationId);
                 await SyncMissedMessagesAsync();
             }
             catch { }
