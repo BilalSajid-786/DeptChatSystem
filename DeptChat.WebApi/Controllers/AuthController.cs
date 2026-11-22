@@ -385,7 +385,9 @@ public class AuthController : ControllerBase
             PhoneNumber: user.PhoneNumber,
             Address: user.Address,
             Username: user.Username,
-            SessionId: session.Id
+            SessionId: session.Id,
+            IsPlatformAdmin: user.Role == UserRole.Admin
+                && ClientsController.IsPlatformOwnerCompany(HttpContext.RequestServices.GetRequiredService<IConfiguration>(), user.Client?.Code)
         );
 
         return Ok(response);

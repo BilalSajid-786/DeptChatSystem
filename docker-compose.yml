@@ -39,6 +39,8 @@ services:
       # Token signing key: only in the server's .env (chmod 600), never in the repository.
       - JwtSettings__Secret=${JWT_SECRET:?JWT_SECRET is not set in the server .env}
       - JwtSettings__PreviousSecret=${JWT_PREVIOUS_SECRET:-}
+      # Company whose admins may list / block companies (code from the server .env). Empty = nobody.
+      - Platform__OwnerCompanyCode=${PLATFORM_OWNER_COMPANY_CODE:-}
       - ASPNETCORE_ENVIRONMENT=Production
     volumes:
       - uploads_data:/app/wwwroot/uploads

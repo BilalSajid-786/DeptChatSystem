@@ -378,12 +378,17 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger (API explorer): development and the test server only (Swagger__Enabled=true there). Off on live,
+// so the full list of requests isn't public.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeptChat API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeptChat API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseHttpsRedirection();
 
