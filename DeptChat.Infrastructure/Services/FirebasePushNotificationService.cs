@@ -108,6 +108,12 @@ public class FirebasePushNotificationService : IPushNotificationService
                     }
                 };
                 if (eventTime.HasValue) message.Android.Notification.EventTimestamp = eventTime.Value;
+                // One notification per chat: a new message replaces the chat's previous one, and the app
+                // removes it when the chat is opened (same tag), so the launcher badge drops after reading.
+                if (messageData.TryGetValue("conversationId", out var conversationTag) && !string.IsNullOrWhiteSpace(conversationTag))
+                {
+                    message.Android.Notification.Tag = conversationTag;
+                }
 
                 var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);
                 _logger.LogInformation("✅ [FCM PUSH DISPATCH SUCCESS] Delivered: {SuccessCount}, Failed: {FailureCount}",

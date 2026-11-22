@@ -132,6 +132,30 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
             builder.SetWhen(sentAtMillis.Value).SetShowWhen(true);
         }
 
-        notificationManager.Notify(notificationId, builder.Build());
+        if (!string.IsNullOrEmpty(conversationId))
+        {
+            // One notification per chat (same tag and id as Firebase's own): a new message replaces the
+            // chat's previous one, and opening the chat removes it (ClearConversation), so the badge drops.
+            notificationManager.Notify(conversationId, ConversationNotificationId, builder.Build());
+        }
+        else
+        {
+            notificationManager.Notify(notificationId, builder.Build());
+        }
+    }
+
+    // Firebase posts its notifications with the push's tag and id 0; ours use the same.
+    private const int ConversationNotificationId = 0;
+
+    /// <summary>Removes the chat's notification from the tray (and from the launcher badge count).</summary>
+    public static void ClearConversation(Guid conversationId)
+    {
+        if (conversationId == Guid.Empty) return;
+        try
+        {
+            var manager = global::Android.App.Application.Context.GetSystemService(NotificationService) as NotificationManager;
+            manager?.Cancel(conversationId.ToString(), ConversationNotificationId);
+        }
+        catch { }
     }
 }

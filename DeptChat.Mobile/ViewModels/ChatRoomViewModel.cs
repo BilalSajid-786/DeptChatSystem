@@ -530,7 +530,20 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     private readonly LocalOutboxService? _outboxService;
     private readonly IAudioService? _audioService;
 
-    public static Guid ActiveConversationId { get; set; } = Guid.Empty;
+    private static Guid _activeConversationId = Guid.Empty;
+
+    /// <summary>The chat on screen (pushes for it are not shown). Opening it removes its notification.</summary>
+    public static Guid ActiveConversationId
+    {
+        get => _activeConversationId;
+        set
+        {
+            _activeConversationId = value;
+#if ANDROID
+            if (value != Guid.Empty) DeptChat.Mobile.Platforms.Android.MyFirebaseMessagingService.ClearConversation(value);
+#endif
+        }
+    }
     private CancellationTokenSource _disposeCts = new();
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly SemaphoreSlim _outgoingSendLock = new(1, 1);
