@@ -20,7 +20,11 @@ public class JwtTokenService : IJwtTokenService
     public string GenerateToken(Guid userId, string fullName, string? email, UserRole role, Guid clientId, string clientName, IEnumerable<Guid>? departmentIds = null, string? securityStamp = null, Guid? sessionId = null)
     {
         var jwtSettings = _configuration.GetSection("JwtSettings");
-        var secret = jwtSettings["Secret"] ?? "A_VERY_LONG_SUPER_SECRET_KEY_FOR_JWT_AUTHENTICATION_1234567890";
+        var secret = jwtSettings["Secret"];
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            throw new InvalidOperationException("JwtSettings:Secret is not configured.");
+        }
         var issuer = jwtSettings["Issuer"] ?? "DeptChatApi";
         var audience = jwtSettings["Audience"] ?? "DeptChatMobileApp";
         var expiryDays = int.TryParse(jwtSettings["ExpiryDays"], out var days) ? days : 30;
