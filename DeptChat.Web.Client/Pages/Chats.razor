@@ -38,6 +38,7 @@
                     {
                         <a href="/admin/departments" role="menuitem"><Icon Name="building" Size="16" /> Departments</a>
                         <a href="/admin/accounts" role="menuitem"><Icon Name="users" Size="16" /> Accounts</a>
+                        <button type="button" role="menuitem" @onclick="OpenDisappearingAsync">⏱ Disappearing messages</button>
                     }
                     @if (Auth.IsStaff)
                     {
@@ -213,6 +214,18 @@
     <AddDepartmentModal Open="_addDeptOpen" OnClose="() => _addDeptOpen = false" OnCreated="OnDepartmentCreated" />
     <NewChatModal Open="_newChatOpen" Department="SelectedDepartment" OnClose="() => _newChatOpen = false" OnStarted="OnChatStarted" />
 }
+
+<Modal Open="_showDisappearing" Title="Disappearing messages" OnClose="() => _showDisappearing = false">
+    <p style="margin:0 0 12px;color:var(--text-2);font-size:13px">Applies to every chat in your company, for all customers, managers and admins. New messages disappear for everyone after this time; messages already sent keep their time.</p>
+    <div class="dm-options">
+        @foreach (var s in DisappearingChoices)
+        {
+            <button type="button" class="dm-option @(s == _disappearingSeconds ? "on" : "")" disabled="@_savingDisappearing" @onclick="() => SetDisappearingAsync(s)">
+                <span>@DisappearingLabel(s)</span>@if (s == _disappearingSeconds) { <span class="dm-check">✓</span> }
+            </button>
+        }
+    </div>
+</Modal>
 
 @code {
     [Parameter] public Guid? DeptId { get; set; }
@@ -612,6 +625,52 @@
         catch (ApiException ex)
         {
             ToastService.Error(ex.Message);
+        }
+    }
+
+    // ---------------- disappearing messages (admins; whole company) ----------------
+    private static readonly int[] DisappearingChoices = { 0, 86400, 604800, 1209600, 2592000, 7776000 };
+    private int _disappearingSeconds = -1;
+    private bool _showDisappearing, _savingDisappearing;
+
+    private static string DisappearingLabel(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        86400 => "24 hours",
+        604800 => "7 days",
+        1209600 => "14 days",
+        2592000 => "30 days",
+        7776000 => "90 days",
+        _ => $"{seconds / 86400} days"
+    };
+
+    private async Task OpenDisappearingAsync()
+    {
+        _menuOpen = false;
+        _showDisappearing = true;
+        try { _disappearingSeconds = (await Api.GetDisappearingMessagesAsync()).Seconds; }
+        catch (ApiException ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task SetDisappearingAsync(int seconds)
+    {
+        if (seconds == _disappearingSeconds) { _showDisappearing = false; return; }
+        _savingDisappearing = true;
+        try
+        {
+            _disappearingSeconds = (await Api.SetDisappearingMessagesAsync(seconds)).Seconds;
+            _showDisappearing = false;
+            ToastService.Success(seconds > 0
+                ? $"New messages in every chat now disappear after {DisappearingLabel(seconds)}"
+                : "Disappearing messages turned off for every chat");
+        }
+        catch (ApiException ex)
+        {
+            ToastService.Error(ex.Message);
+        }
+        finally
+        {
+            _savingDisappearing = false;
         }
     }
 

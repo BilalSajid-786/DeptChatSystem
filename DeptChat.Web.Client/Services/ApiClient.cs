@@ -90,8 +90,8 @@ public sealed class ApiClient
         => SendForMessageAsync(HttpMethod.Delete, $"api/conversations/{conversationId}/pin");
 
     /// <summary>User: clears the chat for themselves. Admin / Manager: clears it for everyone.</summary>
-    public Task<ClearChatResultDto> ClearChatAsync(Guid conversationId)
-        => SendAsync<ClearChatResultDto>(HttpMethod.Post, $"api/conversations/{conversationId}/clear");
+    public Task<ClearChatResultDto> ClearChatAsync(Guid conversationId, bool forEveryone = true)
+        => SendAsync<ClearChatResultDto>(HttpMethod.Post, $"api/conversations/{conversationId}/clear?forEveryone={(forEveryone ? "true" : "false")}");
 
     /// <summary>The company's disappearing-messages time in seconds (0 = off).</summary>
     public Task<DisappearingMessagesSettingDto> GetDisappearingMessagesAsync()
