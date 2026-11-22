@@ -35,6 +35,11 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 | **BF-25** | Mobile / Clipboard | **Copy Text Offered on Voice, Image and File Messages** *(released in 1.0.11 build 13)* | `CanCopySelectedMessage` only checked that `Content` was not empty, so non-text messages copied their raw marker (e.g. base64 audio); the menu preview could show the marker too. | Copy and the menu preview text use `item.IsTextMessage`. The "Copied" popup is replaced by Android's own confirmation (Android 13+) or a short toast (older versions). | Long-press shows Copy only on non-deleted text messages; copied text pastes correctly. Forward/Delete menu permissions are unchanged. |
 | **BF-26** | Mobile / Departments | **Two "Session expired" Alerts and Duplicate Department Loads** *(released in 1.0.11 build 13; the bug was in build 12 and older)* | `DepartmentsViewModel` is transient and subscribes to SignalR / connectivity / resume events in its constructor without ever unsubscribing. After logout + login a new copy is created and the old one kept reacting: two alerts on a forced logout and the department list loading twice per event. | A static `_current` marks the copy in use (set in the constructor and whenever its page appears, `IsPageVisible = true`). `RequestDepartmentsReload`, `HandleForceLogout` and the shared-file handler return early when `!IsCurrent`. | One department load per event and one forced-logout alert, also after several logout/login cycles and while the user is inside a chat (the forced logout must still appear there). Sharing a picture into DeptChat still opens the share dialog. |
 
+| **BF-27** | Mobile / Sound | **"Message Sent" Sound Never Played** *(fixed for 1.0.12; broken since at least build 13)* | `ChatHub.SendMessage` sends `ReceiveMessage` to `Room_{id}` (including the sender) **before** `MessageAck`. The echo already turned the pending bubble ✓, so `HandleMessageAck` (which played the sound on Pending -> Sent) found nothing to change. | `PlaySentSound(clientGeneratedId)` plays only for messages sent from this chat screen (`_awaitingSentSound`, filled when a pending item is created) and only once, on whichever arrives first: the room echo (`AddOrUpdateServerMessage`) or the ack. Still foreground-only, never in silent/vibrate, at most once per second. | Sending text, voice, photo or file plays the sound once. Opening a chat, syncing, loading older messages, receiving messages and re-sync of stale ticks (BF-22) never play it. Verified on the emulator with `adb shell dumpsys audio` (`piid:N event:started`). |
+| **BF-28** | Push / Android | **Notification Time Was the Arrival Time, Not the Send Time** *(fixed for 1.0.12)* | The push carried only title, body and chat IDs; Android shows when the notification was posted, so late pushes (offline, deep sleep, reconnect) showed the wrong time. | Server adds `sentAt` (ISO UTC) to the push data and sets FCM `AndroidNotification.EventTimestamp` (Android-rendered notifications, also fixes the installed 1.0.11 app); `MyFirebaseMessagingService` uses `SetWhen` + `SetShowWhen` for notifications the app builds itself. | A message received after the phone was offline shows the time it was sent. Tapping still opens the chat (§13); in-chat duplicate suppression unchanged. |
+| **BF-29** | Mobile / Pins | **Message Pins Disappeared After Reopening a Chat** *(fixed before release)* | `LoadPinsAsync` ran only in `LoadInitialMessagesAsync`, which is skipped when messages come from the phone's saved copy. | `LoadPinsAsync` runs at the start of `SyncMissedMessagesAsync` (every open, reconnect and resume). | Pin, go back, reopen: the pinned bar and "Unpin" are still there, also offline-first opens. |
+| **BF-30** | Security / Blocking | **Blocked Users Stayed Logged In and Saw "Invalid email or password"** *(fixed for 1.0.12)* | Block only set `IsBlocked`: sessions, security stamp, caches and push tokens were untouched (up to 10 min of access, pushes kept coming), and the app replaced the server's login message. | `UsersController.BlockUser` rotates the security stamp, revokes all sessions, evicts `user_security_stamp_*` / `user_session_active_*`, deletes device tokens and sends `ForceLogout` with "You are blocked. Contact your admin to log in." (`UsersController.BlockedMessage`, also the login message). `AuthService` shows the server message when it mentions blocked/suspended. | Blocking logs the person out at once on every phone and browser with that message (one alert, BF-26); their next request is 401; login shows the block message; wrong passwords still say "Invalid email or password"; unblock works immediately. Managers can be blocked by admins only (Part 2 §2). |
+| **BF-31** | Push / Android | **Launcher Badge Stayed After Reading the Messages** *(fixed for 1.0.12; also in 1.0.11)* | Every notification had a random id (app-built) or random Firebase tag (app closed) and nothing ever removed them, so after reading a chat its notifications stayed in the tray and the launcher badge kept counting them. | Server sets FCM `AndroidNotification.Tag = conversationId`; the app posts its own notifications with the same tag and id 0, so one notification per chat (latest message). Setting `ChatRoomViewModel.ActiveConversationId` (chat opened or resumed) calls `MyFirebaseMessagingService.ClearConversation`. | 3 messages while the app is closed -> one notification for that chat; opening the app keeps it (still unread); opening the chat removes it and the badge. Other chats' notifications stay. Tapping a notification still opens the chat (§13). Verified on the emulator with `adb shell dumpsys notification`. |
 ---
 
 ## Part 2: All Completed Enhancements & Features
@@ -72,7 +77,7 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 ### 6. Message Management & Collaboration Tools
 - **2-Step Cross-Department Message Forwarding**: Long-press message $\rightarrow$ Forward $\rightarrow$ select destination department and customer chat.
 - **Message Deletion**: Users and staff can delete messages with role-appropriate permissions.
-- **User Blocking by Admins**: Admins can block problematic customer accounts from messaging departments.
+- **User Blocking by Admins**: Admins can block problematic customer accounts from messaging departments. Since 1.0.12 a block also logs the person out everywhere at once (BF-30).
 - **WhatsApp Date Pills & Badges**: Clean floating date separator pills (e.g., *TODAY*, *YESTERDAY*, *DD/MM/YYYY*) between message groups.
 - **Haptic Feedback**: Subtle vibration on long-press message context menus.
 
@@ -118,7 +123,7 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
   - All parts have fixed sizes (row content 52 px) so the row height never changes between idle and playing (BF-11 / BF-12 / BF-13).
 - **Playback speed 1x / 1.5x / 2x**: the speed button replaces the round picture while playing; tap cycles the speed. Remembered in `Preferences` (`voice_playback_speed`). Applied with Android `PlaybackParams` (`AndroidAudioService`). Recording preview always plays at 1x.
   - Progress bar and timer follow the player's real position (`GetCurrentPositionMs`), not a fixed 0.1 s tick, so they stay correct at 1.5x / 2x.
-- **Message sent sound**: `Platforms/Android/Resources/raw/message_sent.wav` is an original sound generated for DeptChat (not copied from WhatsApp). Played via `SoundPool` when the server first confirms a message (Pending -> Sent in `HandleMessageAck`), only while the app is in the foreground, never in silent/vibrate mode, at most once per second (a burst of queued messages plays once). The sound loads in the background on chat open.
+- **Message sent sound**: `Platforms/Android/Resources/raw/message_sent.wav` is an original sound generated for DeptChat (not copied from WhatsApp). Played via `SoundPool` once per message sent from this chat screen, on the first confirmation (room echo or ack, see BF-27), only while the app is in the foreground, never in silent/vibrate mode, at most once per second (a burst of queued messages plays once). The sound loads in the background on chat open.
 - **Do not break**: the `[voice:data:audio/m4a;base64,...:seconds]` content format (parsed by server and older apps), forwarding and deleting voice messages, BF-10 colleague names and alignment, BF-02/BF-22 tick behaviour (the sound never changes message status).
 
 ### 12. Test Builds vs Customer Builds
@@ -157,11 +162,58 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 - Limits: 2,000,000 chars per report, 5 MB per request, 30 reports per user per hour (429). Unknown kinds become `other`; header values are single-line.
 - **Do not break**: tenant-scoped user/session lookups, reports outside `wwwroot`, the volume in `docker-compose.yml`, the DTO parameter order (installed apps send it).
 
+
+### 18. Personal Message Pins (release 1.0.12, not live yet)
+- Every role can pin up to 3 messages per chat; pins are personal (`MessagePins`, unique `(UserId, MessageId)`). `GET /api/conversations/{id}/pins`, `POST`/`DELETE .../messages/{messageId}/pin` (409 "You can pin up to 3 messages in a chat. Unpin one first."); `PinsChanged` hub event to `User_{id}` only. `ChatMessageDto.IsPinned` is per caller.
+- Mobile: Pin / Unpin in the long-press card, 📌 bar at the top of the chat (tap jumps to the message, then the next one, `1/3`). Web: Pin / Unpin in the message menu, pinned bar with highlight.
+- **Do not break**: pins never visible to anyone else; cleared or disappeared messages cannot be pinned (404) and their pins are removed; BF-29; BF-11 (no gesture recognizers on chat rows).
+
+### 19. Clear Chat (release 1.0.12, not live yet)
+- Messages are never deleted: a clear is a watermark. `Conversations.ClearedUpToSequence` (+`ClearedAt`, `ClearedByUserId`) = cleared for everyone; `ConversationUserClears` = cleared for one person. Reads hide `SequenceNumber <= max(both)`; sequence numbers keep increasing.
+- `POST /api/conversations/{id}/clear?forEveryone=true|false`: customers always clear only for themselves (the flag is ignored); admins and managers with access choose (default for everyone). Personal clear also drops the caller's own pins; clear for everyone drops everyone's pins on cleared messages and sends `ConversationCleared` to `Room_{id}`, `User_{customer}` and `Dept_{dept}`.
+- Staff lists respect a staff member's personal clear (customer list preview and unread, department previews and unread).
+- Mobile ⋮ card: customer "Clear chat"; staff "Clear chat for me" / "Clear chat for everyone" / Block. Web: "Clear chat" (customer) or "Clear chat ▾" with both options (staff). Confirmation cards.
+- **Do not break**: pending outbox messages survive a clear (`DeleteMessagesUpToAsync`); BF-08 (staff still see the chat row, "No messages yet"); forwarding a cleared message is refused; a later message appears normally for everyone.
+
+### 20. Staff Chat Pins in the Customer List (release 1.0.12, not live yet)
+- Admins and managers pin customer chats at the top of their own department list (personal, no limit): `ConversationPins` (unique `(UserId, ConversationId)`), `POST`/`DELETE /api/conversations/{id}/pin` (customers 403, no access 404), `ConversationPinsChanged(departmentId)` to `User_{id}`. List order: my pins first (latest pin on top), then latest message; `ConversationSummaryDto.IsPinned`.
+- Mobile: long-press a row -> Pin / Unpin card; pinned rows are light green (`#E7F8F0`) with 📌. On Android the row uses the native click / long-click (`DepartmentConversationsPage.OnRowHandlerChanged`) because a MAUI tap gesture swallows long-press. Web: hover 📌 button, green row.
+- **Do not break**: a normal tap still opens the chat; BF-07 (no menu or modal opens by itself); BF-20 refresh rules; other staff's order unaffected.
+
+### 21. Disappearing Messages (release 1.0.12, not live yet)
+- One setting per company: `Clients.DisappearingMessagesSeconds` (default 604800 = 7 days; Off / 24 h / 7 / 14 / 30 / 90 days). `GET /api/conversations/disappearing-messages` for everyone, `PUT` admins only (managers and customers 403, other values 400); `DisappearingMessagesChanged(seconds)` to `Client_{clientId}`.
+- Each new or forwarded message gets `Messages.ExpiresAt` from the setting **at sending time**; messages sent before the release have none and never disappear; changing the setting affects only new messages.
+- Every read hides messages past `ExpiresAt` (history, sync, previews, unread counts, pins, forward). `DisappearingMessagesService` (every 2 min) empties expired messages for everyone (row kept, `Content` = ""), removes their pins, deletes their upload unless a visible message still uses it, fixes the chat preview and sends `MessagesExpired`. `ChatMessageDto.ExpiresAt` lets apps hide messages on time even offline; the phone keeps emptied rows so sync counts them as present (`_expiredSeqs`).
+- Where to change it: mobile admin card on the Departments screen; web admin main menu (both say it applies to every chat in the company). Every chat shows the banner "⏱ New messages disappear after …" (hidden when Off).
+- **Do not break**: `IX_Messages_ExpiresAt` must stay a plain index (Part 3 item 11); BF-12 (no scroll jumps when messages disappear); sequence numbers never reused; nothing disappears that was sent before the release.
+
+### 22. Card-Style Chat Menus (release 1.0.12, not live yet)
+- The chat ⋮ menu and the clear / block confirmations are cards in the same style as the message long-press menu (white rounded card, dimmed background, red action button), replacing Android system dialogs. Block / unblock success shows the short toast.
+- **Do not break**: BF-05 (keyboard), BF-17 style rules for modals, Cancel and tapping outside always close without acting.
+
+### 23. Headset Icon and Branding (release 1.0.12, not live yet)
+- App icon, splash and login logo are a white support headset (`Resources/appiconfg.svg`, `Resources/Images/login_headset.svg`); the notification icon is the white-only headset (`ic_stat_chat.xml`, also the FCM default in `AndroidManifest.xml`).
+- Web: favicon, sign-in logo, loading-screen logo and the empty chat placeholders use the same headset (`Icon Name="headset"` in `Components/Icon.razor`, inline SVG in `wwwroot/index.html`).
+- **Do not break**: BF-06 (icon inside the adaptive safe zone, title "DeptChat"); notification icons must stay one-colour white silhouettes. When changing icons, clear the resizetizer cache first (Part 3 item 12).
+
+### 24. Web App Loading Progress (web, not live yet)
+- The loading screen shows Blazor's own progress (`--blazor-load-percentage`, CSS only, no extra script under the CSP) and "The first visit can take up to a minute on a slow connection." The first visit downloads ~1.7 MB; later visits load from the browser cache.
+
+### 25. Password Reset by Admins and Managers (release 1.0.12, not live yet)
+- `POST /api/users/{id}/reset-password`: admins reset customers and managers (never admins); managers reset **customers only** (403 otherwise), the same rule as blocking. `GET /api/users` returns all users to admins and only customers to managers.
+- A reset changes the security stamp, revokes all sessions (reason "Password Reset By Staff"), evicts the cached checks and sends `ForceLogout` "Your password has been reset by your admin or manager. Please log in again with your new password."
+- Web: admins use **Accounts** (Customers / Managers / Admins tabs); managers get **Customer accounts** in the main menu (same page, customers only). Mobile: admins use **Manage Accounts** (Managers / Users tabs); managers get a **Customer Accounts** card on the Departments screen (customers list only, no Managers tab).
+- **Do not break**: admins can't be reset or blocked by anyone; tenant scoping on every lookup; BF-18 (other devices logged out after a reset); BF-26 (one logout alert); minimum 6 characters.
+
+### 26. VPS Test Environment
+- Separate stack next to live on the VPS (`deptchat-test`: `deptchat_test_api`, `deptchat_test_web`, `deptchat_test_sql`), files in `/opt/deptchat-testenv`, code in `/opt/deptchat-test` and `/opt/deptchat-test-web`. URLs: `https://test-api.179.197.255.148.sslip.io`, `https://test.179.197.255.148.sslip.io`. Own empty database (QA accounts only), own JWT secret, no public ports, test SQL only on its private network.
+- Test APKs point to it with `-p:DeptChatServerUrl=https://test-api.179.197.255.148.sslip.io` (never set for customer builds). Update: `git pull` in the test folders, then rebuild only the test containers. Automated checks: `ops/testing/pin_clear_test.py`.
+
 ---
 
 ## Part 3: Mandatory Pre-Commit Checklist for Claude / Developers
 
-Before committing any code change, verify all 10 items:
+Before committing any code change, verify all 14 items:
 1. [ ] **Build Check**: `dotnet build DeptChat.WebApi/DeptChat.WebApi.csproj` must compile with **0 Errors**.
 2. [ ] **Mobile Build**: `dotnet build DeptChat.Mobile/DeptChat.Mobile.csproj -f net10.0-android` must compile with **0 Errors**.
 3. [ ] **Tenant Scoping**: All database queries involving tenant data must include `.Where(x => x.ClientId == callerClientId)`.
@@ -172,3 +224,7 @@ Before committing any code change, verify all 10 items:
 8. [ ] **Test vs. Release APK**: internal test APKs use `-p:DeptChatDiag=true -p:DeptChatTestLabel=vNN` (reports to `internaltesterrors`, test label shown); customer release APKs are built with neither flag (reports to `livecustomererrors`).
 9. [ ] **Release Notes**: update `AppVersion.ReleaseNotes` in `appsettings.json` with every release; it is shown on the forced-update page.
 10. [ ] **Build Numbers**: build 14 is reserved for the prepared rollback of 1.0.11 (build 13); the next release must use build 15 or higher.
+11. [ ] **No Filtered Indexes**: never create filtered indexes (`CREATE INDEX ... WHERE ...`). They make INSERT/UPDATE fail for connections without `QUOTED_IDENTIFIER ON`, which is `sqlcmd`'s default (backup and new-client scripts).
+12. [ ] **Icon Changes**: before publishing an APK with a changed icon or image, delete `DeptChat.Mobile/obj/Release/net10.0-android/resizetizer` (it can reuse old generated images) and check `res/mipmap-xxxhdpi-v4/appicon.png` inside the APK.
+13. [ ] **Shared DTOs**: new record parameters only at the end, optional with defaults; copy `DeptChat.Shared/DTOs` changes to the web branch too.
+14. [ ] **Test Server First**: deploy new backend and web changes to the VPS test environment (Part 2 §26) and run `ops/testing/pin_clear_test.py` there before any live release.
