@@ -1,0 +1,89 @@
+@* Staff: pick a customer and open (or create) their conversation in this department. *@
+@inject ApiClient Api
+
+<Modal Open="Open" Title="New chat" Subtitle="@($"Select a user to chat in {Department?.Name}")" Brand="true" Flush="true" Busy="_busy" OnClose="() => OnClose.InvokeAsync()">
+    <div style="padding:12px 16px">
+        <label class="search">
+            <Icon Name="search" Size="16" />
+            <input type="search" placeholder="Search name or email…" aria-label="Search users" @bind="_query" @bind:event="oninput" />
+        </label>
+    </div>
+    @if (_loading)
+    {
+        <div class="state"><span class="spinner"></span>Loading users…</div>
+    }
+    else if (_error != null)
+    {
+        <div class="state"><strong>Couldn't load users</strong>@_error</div>
+    }
+    else
+    {
+        var list = Filtered.ToList();
+        @if (list.Count == 0)
+        {
+            <div class="state"><strong>No users found</strong>@(string.IsNullOrWhiteSpace(_query) ? "There are no customers registered in this organisation yet." : "No customers match your search.")</div>
+        }
+        @foreach (var u in list)
+        {
+            <button type="button" class="pick-row" disabled="@_busy" @onclick="() => PickAsync(u)">
+                <div class="avatar sm" style="background:@Format.AvatarColor(u.Id)">@Format.Initials(u.FullName)@if (u.IsOnline) { <span class="dot"></span> }</div>
+                <span class="body"><span>@u.FullName</span><span>@u.Email</span></span>
+                @if (u.IsBlocked) { <span class="tag tag-blocked">BLOCKED</span> }
+                else if (u.HasExistingChat) { <span class="tag tag-soft">EXISTING CHAT</span> }
+                else if (u.IsOnline) { <span class="tag tag-online">ONLINE</span> }
+            </button>
+        }
+    }
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public DepartmentDto? Department { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<ConversationSummaryDto> OnStarted { get; set; }
+
+    private List<AvailableDepartmentUserDto> _users = new();
+    private string _query = "";
+    private bool _loading, _busy, _wasOpen;
+    private string? _error;
+
+    private IEnumerable<AvailableDepartmentUserDto> Filtered
+        => _users.Where(u => u.Role == UserRole.User &&
+            (string.IsNullOrWhiteSpace(_query) || (u.FullName + " " + u.Email).Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase)));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !_wasOpen && Department != null)
+        {
+            _wasOpen = true;
+            _query = ""; _error = null; _loading = true;
+            try { _users = await Api.GetAvailableUsersAsync(Department.Id); }
+            catch (ApiException ex) { _error = ex.Message; }
+            finally { _loading = false; }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private async Task PickAsync(AvailableDepartmentUserDto u)
+    {
+        if (Department == null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var conversation = await Api.StartConversationWithUserAsync(Department.Id, u.Id);
+            await OnStarted.InvokeAsync(conversation);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

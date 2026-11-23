@@ -1,0 +1,191 @@
+@page "/admin/departments"
+@inject ApiClient Api
+@inject AuthSession Auth
+@inject ToastService ToastService
+@inject NavigationManager Nav
+
+<PageTitle>Departments · DeptChat</PageTitle>
+
+@if (!Auth.IsSignedIn)
+{
+}
+else if (!Auth.IsAdmin)
+{
+    <NotAvailable Denied="true" />
+}
+else
+{
+    <div class="page">
+        <header class="page-bar">
+            <a href="/chats" class="icon-btn on-dark" aria-label="Back to chats"><Icon Name="back" /></a>
+            <h1>Departments</h1>
+            <nav aria-label="Admin">
+                <a href="/admin/departments" class="active">Departments</a>
+                <a href="/admin/accounts">Accounts</a>
+                @if (Auth.IsPlatformAdmin) { <a href="/admin/companies">Companies</a> }
+            </nav>
+        </header>
+        <div class="page-body">
+            <div class="toolbar">
+                <label class="search pill">
+                    <Icon Name="search" Size="16" />
+                    <input type="search" placeholder="Search departments" aria-label="Search departments" @bind="_query" @bind:event="oninput" />
+                </label>
+                <button type="button" class="btn btn-primary" @onclick="() => _addOpen = true"><Icon Name="plus" Size="16" StrokeWidth="2.6" /> Add department</button>
+            </div>
+            <div class="banner banner-info">
+                <Icon Name="info" Size="18" />
+                <span>Managers can be assigned here, but current assignments can't be listed or removed yet (that needs a backend endpoint in Phase 2). A department with no assigned managers is open to every manager.</span>
+            </div>
+
+            @if (_loading)
+            {
+                <div class="state"><span class="spinner"></span>Loading departments…</div>
+            }
+            else if (_error != null)
+            {
+                <div class="state"><strong>Couldn't load departments</strong>@_error<button type="button" class="btn btn-outline btn-sm" @onclick="LoadAsync">Try again</button></div>
+            }
+            else if (_departments.Count == 0)
+            {
+                <div class="state"><strong>No departments yet</strong>Add your first department so customers can start chatting.</div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr><th>Department</th><th>Description</th><th>Unread</th><th>Last activity</th><th>Actions</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in Filtered)
+                            {
+                                <tr @key="d.Id">
+                                    <td><div class="who"><div class="avatar sm dept">@Format.Initials(d.Name)</div>@d.Name</div></td>
+                                    <td class="muted">@d.Description</td>
+                                    <td>@if (d.UnreadCount > 0) { <span class="badge-count">@Format.Badge(d.UnreadCount)</span> } else { <span class="muted">0</span> }</td>
+                                    <td class="muted">@(d.LastMessageAt.HasValue ? Format.ListTime(d.LastMessageAt) : "—")</td>
+                                    <td>
+                                        <div class="acts">
+                                            <button type="button" class="btn btn-sm btn-outline" @onclick="() => OpenAssignAsync(d)">Assign manager</button>
+                                            <button type="button" class="btn btn-sm btn-danger-soft" @onclick="() => _deleting = d">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <AddDepartmentModal Open="_addOpen" OnClose="() => _addOpen = false" OnCreated="d => _departments.Add(d)" />
+
+    <ConfirmDialog Open="_deleting != null" Title="@($"Delete “{_deleting?.Name}”?")"
+                   Message="The department will be hidden for everyone. Its conversations are kept."
+                   ConfirmText="Delete" Danger="true" OnConfirm="DeleteAsync" OnClose="() => _deleting = null" />
+
+    <Modal Open="_assignFor != null" Title="Assign manager" Subtitle="@_assignFor?.Name" Busy="_assignBusy" Flush="true" OnClose="() => _assignFor = null">
+        <ChildContent>
+            @if (_managersLoading)
+            {
+                <div class="state"><span class="spinner"></span>Loading managers…</div>
+            }
+            else if (_managersError != null)
+            {
+                <div class="state"><strong>Couldn't load managers</strong>@_managersError</div>
+            }
+            else if (_managers.Count == 0)
+            {
+                <div class="state"><strong>No managers yet</strong>Create a Staff / Manager account first (Accounts › Add user).</div>
+            }
+            else
+            {
+                @foreach (var m in _managers)
+                {
+                    <label class="pick-row" style="cursor:pointer">
+                        <input type="radio" name="assign-manager" checked="@(_pickedManager == m)" @onchange="() => _pickedManager = m" style="width:18px;height:18px;accent-color:var(--primary)" disabled="@m.IsBlocked" />
+                        <div class="avatar xs" style="background:@Format.AvatarColor(m.Id)">@Format.Initials(m.FullName)</div>
+                        <span class="body"><span>@m.FullName</span><span>@(m.Email ?? m.PhoneNumber ?? m.Username)</span></span>
+                        @if (m.IsBlocked) { <span class="tag tag-blocked">BLOCKED</span> }
+                    </label>
+                }
+            }
+            @if (_assignError != null) { <div class="banner banner-error" style="margin:12px 16px">@_assignError</div> }
+        </ChildContent>
+        <Footer>
+            <span style="font-size:12px;color:var(--text-2);flex:1">After the first assignment, only assigned managers can see this department.</span>
+            <button type="button" class="btn btn-ghost" @onclick="() => _assignFor = null" disabled="@_assignBusy">Cancel</button>
+            <button type="button" class="btn btn-primary" @onclick="AssignAsync" disabled="@(_assignBusy || _pickedManager == null)">Assign</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<DepartmentDto> _departments = new();
+    private bool _loading = true, _addOpen;
+    private string? _error;
+    private string _query = "";
+    private DepartmentDto? _deleting, _assignFor;
+    private List<UserSummaryDto> _managers = new();
+    private bool _managersLoading, _assignBusy;
+    private string? _managersError, _assignError;
+    private UserSummaryDto? _pickedManager;
+
+    private IEnumerable<DepartmentDto> Filtered => string.IsNullOrWhiteSpace(_query)
+        ? _departments
+        : _departments.Where(d => d.Name.Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase) || (d.Description ?? "").Contains(_query.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.IsSignedIn) { Nav.NavigateTo("/login", replace: true); return; }
+        if (Auth.IsAdmin) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _departments = await Api.GetDepartmentsAsync(); }
+        catch (ApiException ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_deleting == null) return;
+        var d = _deleting;
+        await Api.DeleteDepartmentAsync(d.Id);
+        _departments.RemoveAll(x => x.Id == d.Id);
+        ToastService.Success($"“{d.Name}” was deleted.");
+    }
+
+    private async Task OpenAssignAsync(DepartmentDto d)
+    {
+        _assignFor = d;
+        _pickedManager = null;
+        _assignError = null;
+        if (_managers.Count > 0) return;
+        _managersLoading = true;
+        _managersError = null;
+        try { _managers = await Api.GetManagersAsync(); }
+        catch (ApiException ex) { _managersError = ex.Message; }
+        finally { _managersLoading = false; }
+    }
+
+    private async Task AssignAsync()
+    {
+        if (_assignFor == null || _pickedManager == null) return;
+        _assignBusy = true;
+        _assignError = null;
+        try
+        {
+            var message = await Api.AssignManagerAsync(_assignFor.Id, _pickedManager.Id);
+            ToastService.Success($"{_pickedManager.FullName}: {message}");
+            _assignFor = null;
+        }
+        catch (ApiException ex) { _assignError = ex.Message; }
+        finally { _assignBusy = false; }
+    }
+}

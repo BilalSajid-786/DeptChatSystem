@@ -9,3 +9,13 @@
 :80 {
     reverse_proxy api:5051
 }
+
+# DeptChat web app (container deptchat_web, see docker-compose.web.yml).
+departmentchat.tech {
+    encode zstd gzip
+    reverse_proxy web:8080
+}
+
+www.departmentchat.tech {
+    redir https://departmentchat.tech{uri} permanent
+}

@@ -1,0 +1,69 @@
+@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@inject AuthSession Auth
+@inject ChatHubClient Hub
+@inject OutboxStore Outbox
+@inject NavigationManager Nav
+@inject ToastService ToastService
+
+@Body
+<Toasts />
+
+@code {
+    // Owns the SignalR connection for the tab: connect while signed in, handle ForceLogout,
+    // and re-send any unacknowledged messages after every (re)connect.
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Changed += OnAuthChanged;
+        Hub.ForceLogout += OnForceLogout;
+        Hub.Connected += FlushOutboxAsync;
+        if (Auth.IsSignedIn)
+        {
+            await Outbox.EnsureLoadedAsync();
+            await Hub.StartAsync();
+        }
+    }
+
+    private void OnAuthChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsSignedIn)
+            {
+                await Outbox.EnsureLoadedAsync();
+                await Hub.StartAsync();
+            }
+            else
+            {
+                await Hub.StopAsync();
+                Nav.NavigateTo("/login");
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OnForceLogout(string reason)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await Auth.SignOutAsync(string.IsNullOrWhiteSpace(reason) ? "You were signed out." : reason);
+        });
+    }
+
+    private async Task FlushOutboxAsync()
+    {
+        await Outbox.EnsureLoadedAsync();
+        foreach (var pending in Outbox.All)
+        {
+            if (!await Hub.SendMessageAsync(pending.Message)) break;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Auth.Changed -= OnAuthChanged;
+        Hub.ForceLogout -= OnForceLogout;
+        Hub.Connected -= FlushOutboxAsync;
+        await Task.CompletedTask;
+    }
+}

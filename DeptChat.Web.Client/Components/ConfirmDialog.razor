@@ -1,0 +1,55 @@
+<Modal Open="Open" Title="@Title" Busy="_busy" OnClose="Cancel">
+    <ChildContent>
+        <div style="font-size: 14px; color: #475569; line-height: 1.5">@Message</div>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="banner banner-error">@_error</div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-ghost" @onclick="Cancel" disabled="@_busy">Cancel</button>
+        <button type="button" class="btn @(Danger ? "btn-danger" : "btn-primary")" @onclick="ConfirmAsync" disabled="@_busy">
+            @if (_busy) { <span class="spinner" style="width:16px;height:16px;border-width:2px"></span> }
+            @ConfirmText
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string Title { get; set; } = "Are you sure?";
+    [Parameter] public string Message { get; set; } = "";
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public bool Danger { get; set; }
+    /// <summary>Runs the action; throw ApiException to show its message in the dialog.</summary>
+    [Parameter] public Func<Task>? OnConfirm { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _busy;
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (!Open) { _error = null; _busy = false; }
+    }
+
+    private Task Cancel() => _busy ? Task.CompletedTask : OnClose.InvokeAsync();
+
+    private async Task ConfirmAsync()
+    {
+        if (OnConfirm == null) { await OnClose.InvokeAsync(); return; }
+        _busy = true;
+        _error = null;
+        try
+        {
+            await OnConfirm();
+            _busy = false;
+            await OnClose.InvokeAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,63 @@
+@* Generic dialog: backdrop click and Esc close it unless Busy. *@
+@if (Open)
+{
+    <div class="modal-backdrop" @onclick="BackdropClick">
+        <div class="modal @(Wide ? "wide" : "")" role="dialog" aria-modal="true" aria-label="@Title"
+             @onclick:stopPropagation="true" @onkeydown="OnKeyDown" tabindex="-1" @ref="_dialog">
+            <div class="modal-head @(Brand ? "brand" : "")">
+                <div class="titles">
+                    <h2>@Title</h2>
+                    @if (!string.IsNullOrEmpty(Subtitle))
+                    {
+                        <span class="sub">@Subtitle</span>
+                    }
+                </div>
+                <button type="button" class="icon-btn @(Brand ? "on-dark" : "")" aria-label="Close" @onclick="Close" disabled="@Busy">
+                    <Icon Name="x" Size="18" StrokeWidth="2.4" />
+                </button>
+            </div>
+            <div class="modal-body @(Flush ? "flush" : "")">
+                @ChildContent
+            </div>
+            @if (Footer != null)
+            {
+                <div class="modal-foot">@Footer</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public bool Brand { get; set; }
+    [Parameter] public bool Flush { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _dialog;
+    private bool _wasOpen;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open && !_wasOpen)
+        {
+            _wasOpen = true;
+            try { await _dialog.FocusAsync(); } catch { }
+        }
+        else if (!Open)
+        {
+            _wasOpen = false;
+        }
+    }
+
+    private Task BackdropClick() => Busy ? Task.CompletedTask : Close();
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private Task OnKeyDown(KeyboardEventArgs e) => e.Key == "Escape" && !Busy ? Close() : Task.CompletedTask;
+}

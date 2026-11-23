@@ -1,0 +1,22 @@
+<PageTitle>Page not available · DeptChat</PageTitle>
+<div class="na">
+    <div class="card">
+        <div class="mark"><Icon Name="@(Denied ? "lock" : "info")" Size="34" /></div>
+        <h1 style="font-size: 24px">@(Denied ? "You don't have access to this page" : "Page not found")</h1>
+        <p>
+            @if (Denied)
+            {
+                @:This area is for administrators. If you think you should have access, ask your administrator.
+            }
+            else
+            {
+                @:The link may be old, or the department may have been removed.
+            }
+        </p>
+        <a class="btn btn-primary" href="/chats">Back to chats</a>
+    </div>
+</div>
+
+@code {
+    [Parameter] public bool Denied { get; set; }
+}

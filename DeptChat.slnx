@@ -6,5 +6,7 @@
     <Deploy Solution="Debug|*" />
   </Project>
   <Project Path="DeptChat.Shared/DeptChat.Shared.csproj" />
+  <Project Path="DeptChat.Web.Client/DeptChat.Web.Client.csproj" />
+  <Project Path="DeptChat.Web/DeptChat.Web.csproj" />
   <Project Path="DeptChat.WebApi/DeptChat.WebApi.csproj" />
 </Solution>

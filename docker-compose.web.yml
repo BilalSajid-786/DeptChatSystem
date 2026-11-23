@@ -1,0 +1,29 @@
+# DeptChat web app, run as its own stack next to the existing one (docker-compose.yml).
+# It joins that stack's network so Caddy can reach "web" and the web host can reach "api".
+# The api, sqlserver, redis and caddy containers are not touched by this file.
+#
+#   docker compose -f docker-compose.web.yml build
+#   docker compose -f docker-compose.web.yml up -d
+#
+# See DeptChat.Web/DEPLOYMENT.md.
+name: deptchat-web
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: DeptChat.Web/Dockerfile
+    image: deptchat-web
+    container_name: deptchat_web
+    environment:
+      - Backend__BaseUrl=http://api:5051
+      - ASPNETCORE_ENVIRONMENT=Production
+    networks:
+      - deptchat
+    mem_limit: 512m
+    restart: unless-stopped
+
+networks:
+  deptchat:
+    external: true
+    name: deptchat_default
