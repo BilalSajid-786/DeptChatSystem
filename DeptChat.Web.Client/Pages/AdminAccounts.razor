@@ -105,7 +105,7 @@ else
                     </div>
                 }
             }
-            <div style="font-size:13px;color:var(--text-2)">@(Auth.IsAdmin ? "Admin accounts can't be blocked or reset. " : "")Resetting a password or blocking signs the person out on all devices at once.</div>
+            <div style="font-size:13px;color:var(--text-2)">@(Auth.IsAdmin ? "Admin accounts can't be blocked or reset. " : "")Blocking signs the person out on all devices at once. Resetting a password keeps them signed in; the new password is needed at their next sign-in.</div>
         </div>
     </div>
 
@@ -119,7 +119,7 @@ else
 
     <Modal Open="_resetFor != null" Title="@($"Reset password — {_resetFor?.FullName}")" Busy="_resetBusy" OnClose="() => _resetFor = null">
         <ChildContent>
-            <div class="banner banner-warn"><Icon Name="alert" Size="18" />@_resetFor?.FullName will be signed out on all devices.</div>
+            <div class="banner banner-warn"><Icon Name="alert" Size="18" />@_resetFor?.FullName stays signed in on their devices. Tell them the new password; they need it at their next sign-in.</div>
             <label class="field">New password *<input type="password" @bind="_newPw" @bind:event="oninput" autocomplete="new-password" /></label>
             <label class="field @(_confirmPw.Length > 0 && _confirmPw != _newPw ? "invalid" : "")">Confirm *<input type="password" @bind="_confirmPw" @bind:event="oninput" autocomplete="new-password" /></label>
             @if (_resetError != null) { <div class="banner banner-error">@_resetError</div> }
