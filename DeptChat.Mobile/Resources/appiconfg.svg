@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;">
-  <!-- Centered strictly within 50% safe zone for Android Adaptive circular/squircle masks -->
-  <g transform="translate(228, 228) scale(0.52) translate(-228, -228)">
-    <path d="M 228,80 C 138,80 64,148 64,232 C 64,264 76,294 95,318 L 76,376 C 73,385 81,392 89,389 L 151,367 C 174,377 200,384 228,384 C 318,384 392,316 392,232 C 392,148 318,80 228,80 Z M 168,246 C 160.268,246 154,239.732 154,232 C 154,224.268 160.268,218 168,218 C 175.732,218 182,224.268 182,232 C 182,239.732 175.732,246 168,246 Z M 228,246 C 220.268,246 214,239.732 214,232 C 214,224.268 220.268,218 228,218 C 235.732,218 242,224.268 242,232 C 242,239.732 235.732,246 228,246 Z M 288,246 C 280.268,246 274,239.732 274,232 C 274,224.268 280.268,218 288,218 C 295.732,218 302,224.268 302,232 C 302,239.732 295.732,246 288,246 Z" fill="#FFFFFF" />
+<svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <!-- Support headset. Centered strictly within the 52% safe zone for Android adaptive circle/squircle masks. -->
+  <g transform="translate(228, 228) scale(0.52) translate(-228, -282)">
+    <!-- headband -->
+    <path d="M 100,262 A 128,128 0 0 1 356,262" fill="none" stroke="#FFFFFF" stroke-width="38" stroke-linecap="round" />
+    <!-- ear cups -->
+    <rect x="62" y="232" width="92" height="138" rx="40" fill="#FFFFFF" />
+    <rect x="302" y="232" width="92" height="138" rx="40" fill="#FFFFFF" />
+    <!-- microphone boom and tip -->
+    <path d="M 348,366 C 348,410 312,428 262,428" fill="none" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" />
+    <rect x="200" y="406" width="72" height="44" rx="22" fill="#FFFFFF" />
   </g>
 </svg>

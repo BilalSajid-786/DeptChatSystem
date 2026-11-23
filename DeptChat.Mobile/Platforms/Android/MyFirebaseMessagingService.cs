@@ -52,7 +52,16 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         {
             tappedConversationId = dataConversationId;
         }
-        SendNotification(title, SanitizeNotificationBody(body), tappedConversationId);
+
+        // When the message was sent (from the server), so a late push still shows the right time.
+        long? sentAtMillis = null;
+        if (message.Data != null && message.Data.TryGetValue("sentAt", out var sentAtText) &&
+            DateTimeOffset.TryParse(sentAtText, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var sentAt))
+        {
+            sentAtMillis = sentAt.ToUnixTimeMilliseconds();
+        }
+        SendNotification(title, SanitizeNotificationBody(body), tappedConversationId, sentAtMillis);
     }
 
     private static string SanitizeNotificationBody(string body)
@@ -83,7 +92,7 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
         return body;
     }
 
-    private void SendNotification(string title, string body, string? conversationId = null)
+    private void SendNotification(string title, string body, string? conversationId = null, long? sentAtMillis = null)
     {
         var notificationId = Random.Shared.Next(1000, 9999);
 
@@ -118,6 +127,35 @@ public class MyFirebaseMessagingService : FirebaseMessagingService
             .SetDefaults((int)NotificationDefaults.All)
             .SetContentIntent(pendingIntent);
 
-        notificationManager.Notify(notificationId, builder.Build());
+        if (sentAtMillis.HasValue)
+        {
+            builder.SetWhen(sentAtMillis.Value).SetShowWhen(true);
+        }
+
+        if (!string.IsNullOrEmpty(conversationId))
+        {
+            // One notification per chat (same tag and id as Firebase's own): a new message replaces the
+            // chat's previous one, and opening the chat removes it (ClearConversation), so the badge drops.
+            notificationManager.Notify(conversationId, ConversationNotificationId, builder.Build());
+        }
+        else
+        {
+            notificationManager.Notify(notificationId, builder.Build());
+        }
+    }
+
+    // Firebase posts its notifications with the push's tag and id 0; ours use the same.
+    private const int ConversationNotificationId = 0;
+
+    /// <summary>Removes the chat's notification from the tray (and from the launcher badge count).</summary>
+    public static void ClearConversation(Guid conversationId)
+    {
+        if (conversationId == Guid.Empty) return;
+        try
+        {
+            var manager = global::Android.App.Application.Context.GetSystemService(NotificationService) as NotificationManager;
+            manager?.Cancel(conversationId.ToString(), ConversationNotificationId);
+        }
+        catch { }
     }
 }

@@ -18,6 +18,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<MessagePin> MessagePins => Set<MessagePin>();
+    public DbSet<ConversationPin> ConversationPins => Set<ConversationPin>();
+    public DbSet<ConversationUserClear> ConversationUserClears => Set<ConversationUserClear>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -140,6 +143,26 @@ public class ApplicationDbContext : DbContext
             entity.Property(s => s.DevicePlatform).HasMaxLength(50);
             entity.Property(s => s.DeviceId).HasMaxLength(150);
             entity.Property(s => s.IpAddress).HasMaxLength(100);
+        });
+
+        // =====================================================================
+        // 5. Personal pins and personal "clear chat" (no foreign keys: avoids
+        //    multiple cascade paths; rows are only read together with their conversation)
+        // =====================================================================
+        modelBuilder.Entity<MessagePin>(entity =>
+        {
+            entity.HasIndex(p => new { p.UserId, p.MessageId }).IsUnique();
+            entity.HasIndex(p => new { p.UserId, p.ConversationId });
+        });
+
+        modelBuilder.Entity<ConversationUserClear>(entity =>
+        {
+            entity.HasIndex(c => new { c.ConversationId, c.UserId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ConversationPin>(entity =>
+        {
+            entity.HasIndex(p => new { p.UserId, p.ConversationId }).IsUnique();
         });
 
         // =====================================================================

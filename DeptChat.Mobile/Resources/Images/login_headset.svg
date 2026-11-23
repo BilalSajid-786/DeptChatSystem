@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Login screen logo: the white support headset from the app icon, on transparent. -->
+<svg width="120" height="120" viewBox="40 96 376 376" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <path d="M 100,262 A 128,128 0 0 1 356,262" fill="none" stroke="#FFFFFF" stroke-width="38" stroke-linecap="round" />
+  <rect x="62" y="232" width="92" height="138" rx="40" fill="#FFFFFF" />
+  <rect x="302" y="232" width="92" height="138" rx="40" fill="#FFFFFF" />
+  <path d="M 348,366 C 348,410 312,428 262,428" fill="none" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" />
+  <rect x="200" y="406" width="72" height="44" rx="22" fill="#FFFFFF" />
+</svg>

@@ -155,16 +155,18 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Admin-only: Retrieves all users belonging to the Admin's client organization.
+    /// Admins: all users of their organization. Managers: only customers (User role), for the
+    /// web Accounts page where they can reset a customer's password or block them.
     /// </summary>
     [HttpGet]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> GetUsers()
     {
         var clientId = GetClientId();
+        var isManager = User.FindFirstValue(ClaimTypes.Role) == UserRole.Manager.ToString();
 
         var users = await _dbContext.Users
-            .Where(u => u.ClientId == clientId)
+            .Where(u => u.ClientId == clientId && (!isManager || u.Role == UserRole.User))
             .OrderByDescending(u => u.CreatedAt)
             .Select(u => new UserSummaryDto(
                 u.Id,
@@ -183,6 +185,9 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    // Shown at login and on forced logout when an account is blocked (same text in AuthController).
+    public const string BlockedMessage = "You are blocked. Contact your admin to log in.";
+
     /// Blocks a user.
     /// Admin can block Users and Managers.
     /// Manager can ONLY block Users.
@@ -216,7 +221,31 @@ public class UsersController : ControllerBase
         targetUser.IsBlocked = true;
         targetUser.BlockedAt = DateTime.UtcNow;
         targetUser.BlockedByUserId = callerId;
+
+        // Log them out everywhere at once (same as a password reset): new security stamp, sessions
+        // revoked, cached checks dropped, no more pushes to their phones.
+        targetUser.SecurityStamp = Guid.NewGuid().ToString("N");
+        var activeSessions = await _dbContext.UserSessions
+            .Where(s => s.UserId == targetUser.Id && s.IsActive)
+            .ToListAsync();
+        foreach (var s in activeSessions)
+        {
+            s.IsActive = false;
+            s.RevokedAt = DateTime.UtcNow;
+            s.RevokedReason = "Blocked";
+            _memoryCache.Remove($"user_session_active_{s.Id}");
+        }
+        var deviceTokens = await _dbContext.DeviceTokens.Where(dt => dt.UserId == targetUser.Id).ToListAsync();
+        _dbContext.DeviceTokens.RemoveRange(deviceTokens);
         await _dbContext.SaveChangesAsync();
+        _memoryCache.Remove($"user_security_stamp_{targetUser.Id}");
+
+        // Open apps and web pages log out now and show the reason.
+        try
+        {
+            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", BlockedMessage);
+        }
+        catch { }
 
         return Ok(new { message = $"User '{targetUser.FullName}' has been blocked successfully." });
     }
@@ -276,10 +305,11 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
-    /// Admin-only: Resets the password of any Manager or User (Customer) in their organization.
+    /// Admins: reset the password of any Manager or User (Customer) in their organization.
+    /// Managers: only of Users (Customers), same rule as blocking.
     /// </summary>
     [HttpPost("{id}/reset-password")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Manager")]
     public async Task<IActionResult> ResetPassword(Guid id, [FromBody] AdminResetPasswordRequestDto dto)
     {
         if (dto == null || string.IsNullOrWhiteSpace(dto.NewPassword))
@@ -305,34 +335,18 @@ public class UsersController : ControllerBase
             return BadRequest(new { message = "Cannot reset the password of an administrator account." });
         }
 
-        targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
-        targetUser.SecurityStamp = Guid.NewGuid().ToString("N");
-
-        // Revoke all active sessions for this target user
-        var activeSessions = await _dbContext.UserSessions
-            .Where(s => s.UserId == targetUser.Id && s.IsActive)
-            .ToListAsync();
-
-        foreach (var s in activeSessions)
+        // Managers can only reset customers' passwords
+        if (User.FindFirstValue(ClaimTypes.Role) == UserRole.Manager.ToString() && targetUser.Role != UserRole.User)
         {
-            s.IsActive = false;
-            s.RevokedAt = DateTime.UtcNow;
-            s.RevokedReason = "Admin Reset Password";
-            _memoryCache.Remove($"user_session_active_{s.Id}");
+            return Forbid();
         }
 
+        // Only the password changes: the person stays signed in on every device (security stamp and
+        // sessions untouched, no ForceLogout), so staff can tell them the new password first.
+        // The new password is needed at their next sign-in. (Their own "change password" still signs out.)
+        targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
         await _dbContext.SaveChangesAsync();
 
-        // Evict security stamp from memory cache
-        _memoryCache.Remove($"user_security_stamp_{targetUser.Id}");
-
-        // Broadcast real-time ForceLogout to all connected devices for this target user
-        try
-        {
-            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", "An administrator has reset your password. Please log in again with your new password.");
-        }
-        catch { }
-
-        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset successfully. All their active sessions have been logged out." });
+        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset. They stay signed in on their devices; the new password is needed at their next sign-in." });
     }
 }

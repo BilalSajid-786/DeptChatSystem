@@ -36,6 +36,9 @@ public partial class ChatMessageItem : ObservableObject
 
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SenderId { get; set; }
+    // Disappearing messages: hidden after this time (UTC); null = never.
+    public DateTime? ExpiresAt { get; set; }
+    public bool IsExpired => ExpiresAt.HasValue && ExpiresAt.Value <= DateTime.UtcNow;
     public UserRole SenderRole { get; set; } = UserRole.User;
     public string ClientGeneratedId { get; set; } = string.Empty;
     public string SenderName { get; set; } = string.Empty;
@@ -527,7 +530,20 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     private readonly LocalOutboxService? _outboxService;
     private readonly IAudioService? _audioService;
 
-    public static Guid ActiveConversationId { get; set; } = Guid.Empty;
+    private static Guid _activeConversationId = Guid.Empty;
+
+    /// <summary>The chat on screen (pushes for it are not shown). Opening it removes its notification.</summary>
+    public static Guid ActiveConversationId
+    {
+        get => _activeConversationId;
+        set
+        {
+            _activeConversationId = value;
+#if ANDROID
+            if (value != Guid.Empty) DeptChat.Mobile.Platforms.Android.MyFirebaseMessagingService.ClearConversation(value);
+#endif
+        }
+    }
     private CancellationTokenSource _disposeCts = new();
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private readonly SemaphoreSlim _outgoingSendLock = new(1, 1);
@@ -668,6 +684,11 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         var convId = await EnsureConversationIdAsync();
         if (convId == Guid.Empty) return;
 
+        // My personal pins for the pinned bar (in the background). Loaded on every open, reconnect
+        // and resume: messages often come from this phone's saved copy, which has no pins.
+        _ = LoadPinsAsync();
+        _ = LoadDisappearingSettingAsync();
+
         await _syncLock.WaitAsync();
         MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -681,7 +702,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             long syncFromSeq;
             lock (Messages)
             {
-                syncFromSeq = GetHighestContiguousSequence(Messages.Select(m => m.SequenceNumber));
+                // Disappeared messages count as present, so sync does not fetch everything after them again.
+                syncFromSeq = GetHighestContiguousSequence(Messages.Select(m => m.SequenceNumber).Concat(_expiredSeqs));
             }
 
             if (syncFromSeq == 0)
@@ -712,6 +734,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var sync = await _apiService.SyncDeltaAsync(convId, syncFromSeq);
             if (sync != null)
             {
+                // Chat cleared (here, on another device or by staff) while this phone missed it.
+                ApplyClearedUpTo(convId, sync.ClearedUpToSequence);
+
                 // If server reports 0 messages, but local device has confirmed server messages, clear only confirmed messages (protect pending outbox messages!)
                 if (sync.LastSequenceNumber == 0 && sync.Messages.Count == 0 && Messages.Any(m => m.SequenceNumber > 0))
                 {
@@ -751,7 +776,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     m.Status,
                                     m.SentAt,
                                     m.IsDeleted,
-                                    m.IsForwarded
+                                    m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                 );
                             }
                         }
@@ -805,6 +831,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 IsSyncingMessages = false;
+                RemoveExpiredMessages();
             });
             _syncLock.Release();
         }
@@ -821,8 +848,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             // First page: 25 messages (same size as older pages) so the chat fills sooner;
             // scrolling up still loads older messages.
             var paged = await _apiService.GetMessagesAsync(convId, beforeSequenceNumber: null, pageSize: 25);
+
             if (paged != null)
             {
+                // Saved copies of cleared messages (shown from this phone's cache) go away.
+                ApplyClearedUpTo(convId, paged.ClearedUpToSequence);
+
                 HasMoreOlderMessages = paged.HasMore;
                 if (paged.EarliestSequenceNumber.HasValue)
                 {
@@ -851,7 +882,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     m.Status,
                                     m.SentAt,
                                     m.IsDeleted,
-                                    m.IsForwarded
+                                    m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                 );
                             }
                         }
@@ -940,7 +972,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                         m.Status,
                                         m.SentAt,
                                         m.IsDeleted,
-                                        m.IsForwarded
+                                        m.IsForwarded,
+                                    expiresAt: m.ExpiresAt
                                     );
                                 }
                             }
@@ -962,6 +995,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                 existing.SequenceNumber = m.SequenceNumber;
                                 existing.IsDeleted = m.IsDeleted;
                                 existing.IsForwarded = m.IsForwarded;
+                                existing.ExpiresAt = m.ExpiresAt;
                                 ApplyRoleAwareAlignment(existing, m.SenderId, m.SenderRole, m.SenderName);
                                 UpdateStatusVisuals(existing, m.Status);
                             }
@@ -976,7 +1010,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                                     MessageDate = m.SentAt.ToLocalTime(),
                                     SequenceNumber = m.SequenceNumber,
                                     IsDeleted = m.IsDeleted,
-                                    IsForwarded = m.IsForwarded
+                                    IsForwarded = m.IsForwarded,
+                                    ExpiresAt = m.ExpiresAt
                                 };
                                 ApplyRoleAwareAlignment(newItem, m.SenderId, m.SenderRole, m.SenderName);
                                 ParseMessagePayload(newItem, m.Content);
@@ -1445,8 +1480,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDelivered += HandleMessageDelivered;
             _signalRService.OnMessagesRead += HandleMessagesRead;
             _signalRService.OnMessageDeleted += HandleMessageDeleted;
+            _signalRService.OnConversationCleared += HandleConversationCleared;
+            _signalRService.OnPinsChanged += HandlePinsChanged;
+            _signalRService.OnMessagesExpired += HandleMessagesExpired;
+            _signalRService.OnDisappearingMessagesChanged += HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast += HandleInAppToast;
             _signalRService.OnReconnected += HandleSignalRReconnected;
+            _signalRService.OnConnectionRestored += HandleConnectionRestored;
             _signalRService.OnUserPresenceChanged += HandleUserPresenceChanged;
             _signalRService.OnUserTyping += HandleUserTyping;
             _signalRService.OnUserPresenceState += HandleUserPresenceState;
@@ -1457,7 +1497,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
         App.AppResumed += HandleAppResumed;
+        App.AppSleeping += HandleAppSleeping;
         _isSubscribed = true;
+        StartExpiryTimer();
     }
 
     public void UnsubscribeFromEvents()
@@ -1471,8 +1513,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             _signalRService.OnMessageDelivered -= HandleMessageDelivered;
             _signalRService.OnMessagesRead -= HandleMessagesRead;
             _signalRService.OnMessageDeleted -= HandleMessageDeleted;
+            _signalRService.OnConversationCleared -= HandleConversationCleared;
+            _signalRService.OnPinsChanged -= HandlePinsChanged;
+            _signalRService.OnMessagesExpired -= HandleMessagesExpired;
+            _signalRService.OnDisappearingMessagesChanged -= HandleDisappearingMessagesChanged;
             _signalRService.OnInAppToast -= HandleInAppToast;
             _signalRService.OnReconnected -= HandleSignalRReconnected;
+            _signalRService.OnConnectionRestored -= HandleConnectionRestored;
             _signalRService.OnUserPresenceChanged -= HandleUserPresenceChanged;
             _signalRService.OnUserTyping -= HandleUserTyping;
             _signalRService.OnUserPresenceState -= HandleUserPresenceState;
@@ -1483,7 +1530,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
         App.AppResumed -= HandleAppResumed;
+        App.AppSleeping -= HandleAppSleeping;
         _isSubscribed = false;
+        _expiryTimer?.Stop();
     }
 
     
@@ -1512,6 +1561,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var items = new List<ChatMessageItem>();
             foreach (var lm in ordered)
             {
+                // Disappeared: not shown, but remembered so sync treats it as present.
+                if (lm.ExpiresAt.HasValue && lm.ExpiresAt.Value <= DateTime.UtcNow)
+                {
+                    if (lm.SequenceNumber > 0) _expiredSeqs.Add(lm.SequenceNumber);
+                    continue;
+                }
                 var item = MapLocalToChatItem(lm);
                 items.Add(item);
                 if (lm.SequenceNumber > 0 && lm.SequenceNumber < _earliestLoadedSequenceNumber)
@@ -2284,6 +2339,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             CurrentPlaybackTime = isVoice ? $"0:{duration:D2}" : string.Empty,
             LocalAudioPath = localPath
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, myName);
 
         Messages.Add(pendingItem);
@@ -2658,6 +2714,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             ImageUrl = compressedPath,
             ImageCaption = caption ?? string.Empty
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
@@ -2737,6 +2794,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             DocumentFileSizeText = FormatFileSize(sizeBytes),
             DocumentUrl = localPath
         };
+        _awaitingSentSound.Add(pendingItem.ClientGeneratedId); // "message sent" sound once it is confirmed
         ApplyRoleAwareAlignment(pendingItem, myUserId, myRole, senderName);
 
         Messages.Add(pendingItem);
@@ -2900,7 +2958,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 msg.SenderId == (_authService?.UserId ?? Guid.Empty),
                 msg.SequenceNumber,
                 msg.Status,
-                msg.SentAt
+                msg.SentAt,
+                expiresAt: msg.ExpiresAt
             );
         }
     }
@@ -2957,8 +3016,15 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == msg.ClientGeneratedId || m.Id == msg.Id);
         if (existing != null)
         {
+            // "Message sent" sound: the server echoes my message to the chat before the ack arrives, so
+            // the ack would find it already sent. Play it on whichever turns it ✓ first (once per second).
+            if (msg.Status >= MessageDeliveryStatus.Sent)
+            {
+                PlaySentSound(existing.ClientGeneratedId);
+            }
             existing.Id = msg.Id;
             existing.SequenceNumber = msg.SequenceNumber;
+            existing.ExpiresAt = msg.ExpiresAt;
             ApplyRoleAwareAlignment(existing, msg.SenderId, msg.SenderRole, msg.SenderName);
             UpdateStatusVisuals(existing, msg.Status);
             if (reorder) ReorderMessageIfNeeded(existing);
@@ -2974,7 +3040,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                 MessageDate = msg.SentAt.ToLocalTime(),
                 SequenceNumber = msg.SequenceNumber,
                 IsDeleted = msg.IsDeleted,
-                IsForwarded = msg.IsForwarded
+                IsForwarded = msg.IsForwarded,
+                ExpiresAt = msg.ExpiresAt
             };
 
             ApplyRoleAwareAlignment(newItem, msg.SenderId, msg.SenderRole, msg.SenderName);
@@ -3008,7 +3075,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             MessageDate = lm.Timestamp.ToLocalTime(),
             SequenceNumber = lm.SequenceNumber,
             IsDeleted = lm.IsDeleted,
-            IsForwarded = lm.IsForwarded
+            IsForwarded = lm.IsForwarded,
+            ExpiresAt = lm.ExpiresAt
         };
 
         ApplyRoleAwareAlignment(item, lm.SenderId, lm.SenderRole, lm.SenderName);
@@ -3118,9 +3186,9 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             var existing = Messages.FirstOrDefault(m => m.ClientGeneratedId == clientGenId);
             if (existing != null)
             {
-                if (existing.Status < MessageDeliveryStatus.Sent && status >= MessageDeliveryStatus.Sent)
+                if (status >= MessageDeliveryStatus.Sent)
                 {
-                    PlaySentSound();
+                    PlaySentSound(clientGenId);
                 }
 
                 existing.Id = serverMsgId;
@@ -3142,8 +3210,13 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     /// "Message sent" sound when the server confirms a message (single tick). Several messages
     /// confirmed together (e.g. queued while offline) play it once.
     /// </summary>
-    private void PlaySentSound()
+    // ClientGeneratedIds of messages sent from this chat screen that have not played the sound yet.
+    private readonly HashSet<string> _awaitingSentSound = new();
+
+    private void PlaySentSound(string clientGeneratedId)
     {
+        // Only for a message I just sent here, and only once (the echo and the ack both confirm it).
+        if (string.IsNullOrEmpty(clientGeneratedId) || !_awaitingSentSound.Remove(clientGeneratedId)) return;
         if (!App.IsInForeground) return;
         var now = DateTime.UtcNow;
         if ((now - _lastSentSoundUtc).TotalMilliseconds < 1000) return;
@@ -3194,12 +3267,64 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             {
                 try
                 {
-                    await _signalRService.EnterRoomAsync(_conversationId);
+                    await EnterRoomIfForegroundAsync();
                     await SyncMissedMessagesAsync();
                     await FlushOutboxAsync();
                 }
                 catch { }
             }
+        });
+    }
+
+    // Room membership follows the screen: in the room only while this chat is on screen and the app is
+    // in the foreground. A phone in the pocket must not count as "in the chat" (no instant blue ticks,
+    // staff get notifications, the customer doesn't see the department in the chat).
+    private readonly SemaphoreSlim _roomLock = new(1, 1);
+
+    private async Task EnterRoomIfForegroundAsync()
+    {
+        if (_signalRService == null || _conversationId == Guid.Empty) return;
+        await _roomLock.WaitAsync();
+        try
+        {
+            if (App.IsInForeground && _isSubscribed)
+                await _signalRService.EnterRoomAsync(_conversationId);
+        }
+        finally { _roomLock.Release(); }
+    }
+
+    private void HandleAppSleeping()
+    {
+        if (_conversationId == Guid.Empty || _signalRService == null) return;
+        _ = Task.Run(async () =>
+        {
+            await _roomLock.WaitAsync();
+            try
+            {
+                // Skip if the app already came back (resume runs after this and re-enters).
+                if (!App.IsInForeground)
+                    await _signalRService.LeaveRoomAsync(_conversationId);
+            }
+            catch { }
+            finally { _roomLock.Release(); }
+        });
+    }
+
+    // The connection was started again (e.g. by a send after unlocking the phone). The server no
+    // longer has us in this room, so enter it again; otherwise the other side keeps showing us offline.
+    // Only in the foreground, and no outbox flush here (sending keeps its own path, so no duplicates).
+    private void HandleConnectionRestored()
+    {
+        if (_conversationId == Guid.Empty || !App.IsInForeground) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await EnterRoomIfForegroundAsync();
+                await SyncMissedMessagesAsync();
+            }
+            catch { }
         });
     }
 
@@ -3213,6 +3338,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             try
             {
+                // Re-enter the room: we left it when the app went to the background.
+                await EnterRoomIfForegroundAsync();
                 await SyncMissedMessagesAsync();
             }
             catch { }
@@ -3233,7 +3360,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                     }
                     if (_conversationId != Guid.Empty && _signalRService != null && _signalRService.IsConnected)
                     {
-                        await _signalRService.EnterRoomAsync(_conversationId);
+                        await EnterRoomIfForegroundAsync();
                         await SyncMissedMessagesAsync();
                         await FlushOutboxAsync();
                     }
@@ -3445,6 +3572,12 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             myRole == UserRole.Admin ||
             (myRole == UserRole.Manager && (item.SenderId == myUserId || item.IsOutgoing))
         );
+
+        // Personal pin: everyone may pin messages the server already has (not unsent or deleted ones).
+        CanPinSelectedMessage = !item.IsDeleted && item.SequenceNumber > 0;
+        var pinned = IsPinnedByMe(item.Id);
+        PinMenuTitle = pinned ? "Unpin" : "Pin";
+        PinMenuSubtitle = pinned ? "Remove from your pinned messages" : "Keep at the top of this chat (only you see it)";
 
         IsMessageMenuVisible = true;
     }
@@ -3715,60 +3848,508 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         return "📁";
     }
 
-    [RelayCommand]
-    private async Task ShowChatMenuOptionsAsync()
+    // =====================================================================
+    // Personal pins (only I see my pins) and "clear chat"
+    // =====================================================================
+
+    // My pinned messages in this chat, newest pin first (from the server).
+    private List<ChatMessageDto> _pinnedMessages = new();
+    private int _pinnedBarIndex;
+    private long _appliedClearedUpToSequence;
+
+    [ObservableProperty]
+    private bool _hasPinnedMessages;
+
+    [ObservableProperty]
+    private string _pinnedBarText = string.Empty;
+
+    [ObservableProperty]
+    private string _pinnedBarCounter = string.Empty;
+
+    [ObservableProperty]
+    private bool _canPinSelectedMessage;
+
+    [ObservableProperty]
+    private string _pinMenuTitle = "Pin";
+
+    [ObservableProperty]
+    private string _pinMenuSubtitle = string.Empty;
+
+    private bool IsPinnedByMe(Guid messageId) => _pinnedMessages.Any(p => p.Id == messageId);
+
+    /// <summary>Loads my pins for this chat and refreshes the pinned bar. Never throws.</summary>
+    private async Task LoadPinsAsync()
     {
-        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
-        var isStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
-
-        if (!isStaff) return;
-
-        var blockAction = IsTargetUserBlocked ? "✅ Unblock User" : "🚫 Block User";
-        var choice = await Application.Current?.MainPage?.DisplayActionSheetAsync(
-            $"Chat Options ({CustomerName})",
-            "Cancel",
-            null,
-            blockAction
-        )!;
-
-        if (choice == "🚫 Block User")
+        if (_apiService == null || _conversationId == Guid.Empty) return;
+        var convId = _conversationId;
+        try
         {
-            var confirm = await Application.Current?.MainPage?.DisplayAlertAsync(
-                "Block User",
-                $"Are you sure you want to block {CustomerName} from sending messages?",
-                "Block",
-                "Cancel"
-            )!;
-
-            if (confirm && _apiService != null && OtherUserId != Guid.Empty)
+            var pins = await _apiService.GetPinnedMessagesAsync(convId);
+            if (convId != _conversationId) return;
+            MainThread.BeginInvokeOnMainThread(() =>
             {
-                var (success, msg) = await _apiService.BlockUserAsync(OtherUserId);
-                if (success)
+                _pinnedMessages = pins;
+                if (_pinnedBarIndex >= _pinnedMessages.Count) _pinnedBarIndex = 0;
+                UpdatePinnedBar();
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Pins] load failed: {ex.Message}");
+        }
+    }
+
+    private void UpdatePinnedBar()
+    {
+        HasPinnedMessages = _pinnedMessages.Count > 0;
+        if (!HasPinnedMessages)
+        {
+            PinnedBarText = string.Empty;
+            PinnedBarCounter = string.Empty;
+            return;
+        }
+
+        var pin = _pinnedMessages[_pinnedBarIndex];
+        PinnedBarText = DescribeForPreview(pin.Content, pin.IsDeleted);
+        PinnedBarCounter = _pinnedMessages.Count > 1 ? $"{_pinnedBarIndex + 1}/{_pinnedMessages.Count}" : string.Empty;
+    }
+
+    private static string DescribeForPreview(string? content, bool isDeleted)
+    {
+        if (isDeleted) return "🚫 This message was deleted";
+        if (string.IsNullOrWhiteSpace(content)) return "Message";
+        if (content.StartsWith("[voice:", StringComparison.OrdinalIgnoreCase)) return "🎙️ Voice message";
+        if (content.StartsWith("[image:", StringComparison.OrdinalIgnoreCase)) return "📷 Photo";
+        if (content.StartsWith("[file:", StringComparison.OrdinalIgnoreCase)) return "📄 Document";
+        // One line in the bar: line breaks become spaces.
+        return content.Replace("\r", " ").Replace("\n", " ");
+    }
+
+    /// <summary>Tap on the pinned bar: jump to the shown pin, then show the next pin (like WhatsApp).</summary>
+    [RelayCommand]
+    private async Task OpenPinnedMessageAsync()
+    {
+        if (_pinnedMessages.Count == 0) return;
+        var pin = _pinnedMessages[_pinnedBarIndex];
+
+        // Next tap shows the next pin.
+        _pinnedBarIndex = (_pinnedBarIndex + 1) % _pinnedMessages.Count;
+        UpdatePinnedBar();
+
+        var item = Messages.FirstOrDefault(m => m.Id == pin.Id);
+        if (item != null)
+        {
+            RequestScrollToItem?.Invoke(item);
+            return;
+        }
+
+        // Older than the loaded messages: show it instead of loading the whole history.
+        var page = Application.Current?.MainPage;
+        if (page != null)
+        {
+            var who = pin.SenderId == (_authService?.UserId ?? Guid.Empty) ? "You" : pin.SenderName;
+            await page.DisplayAlertAsync($"📌 {who} · {pin.SentAt.ToLocalTime():dd/MM/yyyy h:mm tt}",
+                DescribeForPreview(pin.Content, pin.IsDeleted), "OK");
+        }
+    }
+
+    [RelayCommand]
+    private async Task TogglePinFromMenuAsync()
+    {
+        var msg = SelectedMenuMessage;
+        IsMessageMenuVisible = false;
+        SelectedMenuMessage = null;
+        if (msg == null || _apiService == null || _conversationId == Guid.Empty) return;
+
+        var pin = !IsPinnedByMe(msg.Id);
+        var (success, error) = await _apiService.SetMessagePinnedAsync(_conversationId, msg.Id, pin);
+        if (success)
+        {
+            await LoadPinsAsync();
+            ShowShortNotice(pin ? "Message pinned" : "Message unpinned");
+        }
+        else if (Application.Current?.MainPage != null)
+        {
+            await Application.Current.MainPage.DisplayAlertAsync(pin ? "Pin" : "Unpin", error ?? "Please try again.", "OK");
+        }
+    }
+
+    private static void ShowShortNotice(string text)
+    {
+#if ANDROID
+        Android.Widget.Toast.MakeText(Android.App.Application.Context, text, Android.Widget.ToastLength.Short)?.Show();
+#endif
+    }
+
+    private void HandlePinsChanged(Guid convId)
+    {
+        if (convId != _conversationId) return;
+        _ = LoadPinsAsync();
+    }
+
+    /// <summary>
+    /// Removes messages up to <paramref name="clearedUpToSequence"/> from the screen and from the saved copy
+    /// on this phone (unsent messages are kept). Used after "clear chat" here, on another device or by staff,
+    /// and whenever the server reports a clear point (so a missed live event is caught up).
+    /// </summary>
+    private void ApplyClearedUpTo(Guid convId, long clearedUpToSequence)
+    {
+        if (clearedUpToSequence <= 0 || convId != _conversationId) return;
+        if (clearedUpToSequence <= _appliedClearedUpToSequence)
+        {
+            // Already applied on screen; still make sure no older cached copies remain.
+            if (_outboxService != null) _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+            return;
+        }
+        _appliedClearedUpToSequence = clearedUpToSequence;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            var cleared = Messages.Where(m => m.SequenceNumber > 0 && m.SequenceNumber <= clearedUpToSequence).ToList();
+            if (cleared.Count > 0)
+            {
+                RunBulkUpdate(() =>
                 {
-                    IsTargetUserBlocked = true;
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Blocked", $"{CustomerName} has been blocked.", "OK")!;
-                }
-                else
+                    foreach (var m in cleared) Messages.Remove(m);
+                });
+            }
+
+            // Pins on cleared messages are gone on the server too.
+            var before = _pinnedMessages.Count;
+            _pinnedMessages = _pinnedMessages.Where(p => p.SequenceNumber > clearedUpToSequence).ToList();
+            if (_pinnedMessages.Count != before)
+            {
+                _pinnedBarIndex = 0;
+                UpdatePinnedBar();
+            }
+
+            // Nothing older can be loaded any more.
+            if (!Messages.Any(m => m.SequenceNumber > 0)) HasMoreOlderMessages = false;
+        });
+
+        if (_outboxService != null) _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+    }
+
+    private void HandleConversationCleared(Guid convId, long clearedUpToSequence, bool forEveryone)
+    {
+        if (convId == _conversationId)
+        {
+            ApplyClearedUpTo(convId, clearedUpToSequence);
+        }
+        else if (_outboxService != null)
+        {
+            // Another chat: drop its saved copies so they never flash when it is opened.
+            _ = _outboxService.DeleteMessagesUpToAsync(convId, clearedUpToSequence);
+        }
+    }
+
+    /// <summary>
+    /// User: clears their own chat with this department (only for them).
+    /// Admin / Manager: clears this chat for everyone (the user and all staff).
+    /// </summary>
+    private async Task ClearChatAsync(bool forEveryone)
+    {
+        var page = Application.Current?.MainPage;
+        if (page == null || _apiService == null) return;
+
+        var convId = await EnsureConversationIdAsync();
+        if (convId == Guid.Empty) return;
+
+        var confirm = forEveryone
+            ? await AskConfirmAsync("🧹", "Clear chat for everyone?",
+                $"All messages in this chat will be removed for {CustomerName}, admins and managers. This can't be undone.",
+                "Clear for everyone")
+            : await AskConfirmAsync("🧹", "Clear this chat?",
+                IsChatMenuStaff
+                    ? $"All messages in this chat will be removed from your view only. {CustomerName} and other staff still see them."
+                    : "All messages in this chat will be removed from your view. The department still keeps them.",
+                "Clear chat");
+        if (!confirm) return;
+
+        var (result, error) = await _apiService.ClearChatAsync(convId, forEveryone);
+        if (result == null)
+        {
+            await page.DisplayAlertAsync("Clear chat", error ?? "Couldn't clear the chat. Please try again.", "OK");
+            return;
+        }
+
+        ApplyClearedUpTo(convId, result.ClearedUpToSequence);
+        ConversationListCache.Clear();
+        ShowShortNotice(result.ForEveryone ? "Chat cleared for everyone" : "Chat cleared");
+    }
+
+    // ---- Disappearing messages (one company setting; admins change it) ----
+
+    // Sequence numbers of messages that disappeared in this chat: sync counts them as present.
+    private readonly HashSet<long> _expiredSeqs = new();
+    private IDispatcherTimer? _expiryTimer;
+
+    private void StartExpiryTimer()
+    {
+        if (_expiryTimer == null)
+        {
+            _expiryTimer = Application.Current?.Dispatcher.CreateTimer();
+            if (_expiryTimer == null) return;
+            _expiryTimer.Interval = TimeSpan.FromSeconds(15);
+            _expiryTimer.Tick += (_, _) => RemoveExpiredMessages();
+        }
+        _expiryTimer.Start();
+    }
+
+    /// <summary>Removes messages whose time is up from the screen, the pinned bar and this phone. Main thread.</summary>
+    private void RemoveExpiredMessages()
+    {
+        List<ChatMessageItem> expired;
+        lock (Messages)
+        {
+            expired = Messages.Where(m => m.IsExpired).ToList();
+        }
+
+        if (expired.Count > 0)
+        {
+            RunBulkUpdate(() =>
+            {
+                foreach (var item in expired)
                 {
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to block user.", "OK")!;
+                    if (item.SequenceNumber > 0) _expiredSeqs.Add(item.SequenceNumber);
+                    Messages.Remove(item);
                 }
+            });
+            UpdateDateHeaders();
+            if (_outboxService != null && _conversationId != Guid.Empty)
+            {
+                _ = _outboxService.WipeExpiredMessagesAsync(_conversationId);
             }
         }
-        else if (choice == "✅ Unblock User")
+
+        var before = _pinnedMessages.Count;
+        _pinnedMessages = _pinnedMessages.Where(p => !(p.ExpiresAt.HasValue && p.ExpiresAt.Value <= DateTime.UtcNow)).ToList();
+        if (_pinnedMessages.Count != before)
         {
-            if (_apiService != null && OtherUserId != Guid.Empty)
+            _pinnedBarIndex = 0;
+            UpdatePinnedBar();
+        }
+    }
+
+    // The server emptied disappeared messages of a chat: drop them here now (normally the timer already did).
+    private void HandleMessagesExpired(Guid conversationId)
+    {
+        if (conversationId != _conversationId) return;
+        MainThread.BeginInvokeOnMainThread(RemoveExpiredMessages);
+    }
+
+    private int _disappearingSeconds;
+
+    [ObservableProperty]
+    private bool _isDisappearingBannerVisible;
+
+    [ObservableProperty]
+    private string _disappearingBannerText = string.Empty;
+
+    public static string DisappearingLabel(int seconds) => seconds switch
+    {
+        <= 0 => "Off",
+        86400 => "24 hours",
+        604800 => "7 days",
+        1209600 => "14 days",
+        2592000 => "30 days",
+        7776000 => "90 days",
+        _ => $"{seconds / 86400} days"
+    };
+
+    private void ApplyDisappearingSetting(int seconds)
+    {
+        _disappearingSeconds = seconds;
+        IsDisappearingBannerVisible = seconds > 0;
+        DisappearingBannerText = seconds > 0 ? $"⏱ New messages disappear after {DisappearingLabel(seconds)}" : string.Empty;
+    }
+
+    private async Task LoadDisappearingSettingAsync()
+    {
+        if (_apiService == null) return;
+        var seconds = await _apiService.GetDisappearingMessagesAsync();
+        if (seconds.HasValue) MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds.Value));
+    }
+
+    private void HandleDisappearingMessagesChanged(int seconds)
+        => MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds));
+
+    // ---- Chat options card (⋮) and confirmation card: same look as the message menu ----
+
+    [ObservableProperty]
+    private bool _isChatMenuVisible;
+
+    [ObservableProperty]
+    private string _chatMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private bool _isChatMenuStaff;
+
+    [ObservableProperty]
+    private string _clearMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _clearMenuSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private string _clearForEveryoneSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuIcon = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _blockMenuSubtitle = string.Empty;
+
+    [ObservableProperty]
+    private bool _isConfirmVisible;
+
+    [ObservableProperty]
+    private string _confirmIcon = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _confirmButtonText = string.Empty;
+
+    private TaskCompletionSource<bool>? _confirmTcs;
+
+    /// <summary>Shows the confirmation card and waits for the answer (Cancel / tap outside = false).</summary>
+    private Task<bool> AskConfirmAsync(string icon, string title, string message, string confirmText)
+    {
+        _confirmTcs?.TrySetResult(false);
+        var tcs = new TaskCompletionSource<bool>();
+        _confirmTcs = tcs;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ConfirmIcon = icon;
+            ConfirmTitle = title;
+            ConfirmMessage = message;
+            ConfirmButtonText = confirmText;
+            IsConfirmVisible = true;
+        });
+        return tcs.Task;
+    }
+
+    [RelayCommand]
+    private void ConfirmAccept() => CloseConfirm(true);
+
+    [RelayCommand]
+    private void ConfirmCancel() => CloseConfirm(false);
+
+    private void CloseConfirm(bool result)
+    {
+        IsConfirmVisible = false;
+        var tcs = _confirmTcs;
+        _confirmTcs = null;
+        tcs?.TrySetResult(result);
+    }
+
+    [RelayCommand]
+    private void ShowChatMenuOptions()
+    {
+        var myRole = _authService?.Role ?? _authService?.CurrentUser?.Role ?? UserRole.User;
+        IsChatMenuStaff = myRole == UserRole.Admin || myRole == UserRole.Manager;
+
+        if (IsChatMenuStaff)
+        {
+            ChatMenuTitle = $"Chat options · {CustomerName}";
+            ClearMenuTitle = "Clear chat for me";
+            ClearMenuSubtitle = "Removes messages only from your view";
+            ClearForEveryoneSubtitle = $"Removes all messages for {CustomerName} and all staff";
+            BlockMenuIcon = IsTargetUserBlocked ? "✅" : "🚫";
+            BlockMenuTitle = IsTargetUserBlocked ? "Unblock user" : "Block user";
+            BlockMenuSubtitle = IsTargetUserBlocked
+                ? $"Let {CustomerName} send messages again"
+                : $"Stop {CustomerName} from sending messages";
+        }
+        else
+        {
+            // Users: clear their own chat with this department, only for themselves.
+            ChatMenuTitle = "Chat options";
+            ClearMenuTitle = "Clear chat";
+            ClearMenuSubtitle = "Removes messages only from your view";
+        }
+
+        IsChatMenuVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseChatMenu() => IsChatMenuVisible = false;
+
+    [RelayCommand]
+    private async Task ClearChatFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        await ClearChatAsync(forEveryone: false);
+    }
+
+    // Staff only: the second clear option.
+    [RelayCommand]
+    private async Task ClearChatForEveryoneFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        if (!IsChatMenuStaff) return;
+        await ClearChatAsync(forEveryone: true);
+    }
+
+    [RelayCommand]
+    private async Task ToggleBlockFromMenuAsync()
+    {
+        IsChatMenuVisible = false;
+        if (!IsChatMenuStaff || _apiService == null || OtherUserId == Guid.Empty) return;
+
+        if (!IsTargetUserBlocked)
+        {
+            var confirm = await AskConfirmAsync("🚫", "Block user?",
+                $"{CustomerName} won't be able to send messages until you unblock them.", "Block");
+            if (!confirm) return;
+
+            var (success, msg) = await _apiService.BlockUserAsync(OtherUserId);
+            if (success)
             {
-                var (success, msg) = await _apiService.UnblockUserAsync(OtherUserId);
-                if (success)
-                {
-                    IsTargetUserBlocked = false;
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Unblocked", $"{CustomerName} has been unblocked.", "OK")!;
-                }
-                else
-                {
-                    await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to unblock user.", "OK")!;
-                }
+                IsTargetUserBlocked = true;
+                ShowShortNotice($"{CustomerName} has been blocked");
+            }
+            else
+            {
+                await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to block user.", "OK")!;
+            }
+        }
+        else
+        {
+            var (success, msg) = await _apiService.UnblockUserAsync(OtherUserId);
+            if (success)
+            {
+                IsTargetUserBlocked = false;
+                ShowShortNotice($"{CustomerName} has been unblocked");
+            }
+            else
+            {
+                await Application.Current?.MainPage?.DisplayAlertAsync("Error", msg ?? "Failed to unblock user.", "OK")!;
             }
         }
     }
+}
+
+/// <summary>One choice in the disappearing-messages picker.</summary>
+public partial class DisappearingOption : ObservableObject
+{
+    public DisappearingOption(int seconds, string label)
+    {
+        Seconds = seconds;
+        Label = label;
+    }
+
+    public int Seconds { get; }
+    public string Label { get; }
+
+    [ObservableProperty]
+    private bool _isSelected;
 }

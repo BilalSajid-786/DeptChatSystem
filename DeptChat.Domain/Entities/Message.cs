@@ -22,4 +22,8 @@ public class Message
     public bool IsDeleted { get; set; } = false;
     public DateTime? DeletedAt { get; set; }
     public bool IsForwarded { get; set; } = false;
+
+    // Disappearing messages: when this message disappears for everyone (null = never).
+    // Set when sent from the company's setting at that moment; the content is emptied after this time.
+    public DateTime? ExpiresAt { get; set; }
 }

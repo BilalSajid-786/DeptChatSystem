@@ -12,7 +12,7 @@
             <!-- App Icon & Title (WhatsApp Green Branding) -->
             <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
                 <Frame BackgroundColor="#25D366" CornerRadius="32" HeightRequest="68" WidthRequest="68" Padding="0" HasShadow="True" HorizontalOptions="Center" BorderColor="Transparent">
-                    <Label Text="💬" FontSize="36" HorizontalOptions="Center" VerticalOptions="Center"/>
+                    <Image Source="login_headset.png" WidthRequest="40" HeightRequest="40" HorizontalOptions="Center" VerticalOptions="Center"/>
                 </Frame>
                 <Label Text="Department Chat"
                        FontSize="24"

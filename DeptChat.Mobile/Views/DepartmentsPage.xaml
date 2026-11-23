@@ -129,141 +129,163 @@
 
             <!-- Admin Quick Actions: Add Department, Add User & Manage Accounts (WhatsApp Cards) -->
 
-            <Grid Grid.Row="0"
-
-                  IsVisible="{Binding IsAdmin}"
-
-                  ColumnDefinitions="*, *, *"
-
-                  ColumnSpacing="8"
-
-                  Margin="16,12,16,4">
-
-                
-
-                <!-- Add Department Card -->
-
-                <Border Grid.Column="0"
-
-                        BackgroundColor="White"
-
+            <VerticalStackLayout Grid.Row="0" IsVisible="{Binding IsAdmin}" Spacing="0">
+                <Grid
+    
+                      ColumnDefinitions="*, *, *"
+    
+                      ColumnSpacing="8"
+    
+                      Margin="16,12,16,4">
+    
+                    
+    
+                    <!-- Add Department Card -->
+    
+                    <Border Grid.Column="0"
+    
+                            BackgroundColor="White"
+    
+                            Stroke="#C8E6C9"
+    
+                            StrokeThickness="1"
+    
+                            StrokeShape="RoundRectangle 12"
+    
+                            Padding="12,10">
+    
+                        <Border.GestureRecognizers>
+    
+                            <TapGestureRecognizer Command="{Binding OpenAddDepartmentModalCommand}" />
+    
+                        </Border.GestureRecognizers>
+    
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
+    
+                            <Border BackgroundColor="#25D366" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+    
+                                <Label Text="➕" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+    
+                            </Border>
+    
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+    
+                                <Label Text="Department" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+    
+                                <Label Text="Add channel" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
+    
+                            </VerticalStackLayout>
+    
+                        </Grid>
+    
+                    </Border>
+    
+                    <!-- Add User Card -->
+    
+                    <Border Grid.Column="1"
+    
+                            BackgroundColor="White"
+    
+                            Stroke="#C8E6C9"
+    
+                            StrokeThickness="1"
+    
+                            StrokeShape="RoundRectangle 12"
+    
+                            Padding="12,10">
+    
+                        <Border.GestureRecognizers>
+    
+                            <TapGestureRecognizer Command="{Binding OpenAddUserModalCommand}" />
+    
+                        </Border.GestureRecognizers>
+    
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
+    
+                            <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+    
+                                <Label Text="👤⁺" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+    
+                            </Border>
+    
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+    
+                                <Label Text="Add User" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+    
+                                <Label Text="Staff / Manager" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
+    
+                            </VerticalStackLayout>
+    
+                        </Grid>
+    
+                    </Border>
+    
+                    <!-- Manage Accounts Card -->
+    
+                    <Border Grid.Column="2"
+    
+                            BackgroundColor="White"
+    
+                            Stroke="#C8E6C9"
+    
+                            StrokeThickness="1"
+    
+                            StrokeShape="RoundRectangle 12"
+    
+                            Padding="8,8">
+    
+                        <Border.GestureRecognizers>
+    
+                            <TapGestureRecognizer Command="{Binding OpenManageAccountsModalCommand}" />
+    
+                        </Border.GestureRecognizers>
+    
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="6" VerticalOptions="Center">
+    
+                            <Border BackgroundColor="#0F766E" StrokeShape="RoundRectangle 16" WidthRequest="32" HeightRequest="32" VerticalOptions="Center">
+    
+                                <Label Text="🛡️" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+    
+                            </Border>
+    
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+    
+                                <Label Text="Accounts" FontSize="12" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
+    
+                                <Label Text="Security" FontSize="10" TextColor="#008069" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+    
+                            </VerticalStackLayout>
+    
+                        </Grid>
+                    </Border>
+                </Grid>
+                <!-- Disappearing messages (admins): one setting for every chat in the company -->
+                <Border BackgroundColor="White"
                         Stroke="#C8E6C9"
-
                         StrokeThickness="1"
-
                         StrokeShape="RoundRectangle 12"
-
-                        Padding="12,10">
-
+                        Padding="14,10"
+                        Margin="16,4,16,4">
                     <Border.GestureRecognizers>
-
-                        <TapGestureRecognizer Command="{Binding OpenAddDepartmentModalCommand}" />
-
+                        <TapGestureRecognizer Command="{Binding OpenDisappearingPickerCommand}" />
                     </Border.GestureRecognizers>
-
-                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
-
-                        <Border BackgroundColor="#25D366" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
-
-                            <Label Text="➕" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
-
-                        </Border>
-
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-
-                            <Label Text="Department" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
-
-                            <Label Text="Add channel" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
-
-                        </VerticalStackLayout>
-
-                    </Grid>
-
-                </Border>
-
-                <!-- Add User Card -->
-
-                <Border Grid.Column="1"
-
-                        BackgroundColor="White"
-
-                        Stroke="#C8E6C9"
-
-                        StrokeThickness="1"
-
-                        StrokeShape="RoundRectangle 12"
-
-                        Padding="12,10">
-
-                    <Border.GestureRecognizers>
-
-                        <TapGestureRecognizer Command="{Binding OpenAddUserModalCommand}" />
-
-                    </Border.GestureRecognizers>
-
-                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="10" VerticalOptions="Center">
-
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
                         <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
-
-                            <Label Text="👤⁺" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
-
+                            <Label Text="⏱" FontSize="16" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
-
                         <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-
-                            <Label Text="Add User" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
-
-                            <Label Text="Staff / Manager" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
-
+                            <Label Text="Disappearing messages" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+                            <Label Text="{Binding DisappearingSummary}" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
                         </VerticalStackLayout>
-
-                    </Grid>
-
-                </Border>
-
-                <!-- Manage Accounts Card -->
-
-                <Border Grid.Column="2"
-
-                        BackgroundColor="White"
-
-                        Stroke="#C8E6C9"
-
-                        StrokeThickness="1"
-
-                        StrokeShape="RoundRectangle 12"
-
-                        Padding="8,8">
-
-                    <Border.GestureRecognizers>
-
-                        <TapGestureRecognizer Command="{Binding OpenManageAccountsModalCommand}" />
-
-                    </Border.GestureRecognizers>
-
-                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="6" VerticalOptions="Center">
-
-                        <Border BackgroundColor="#0F766E" StrokeShape="RoundRectangle 16" WidthRequest="32" HeightRequest="32" VerticalOptions="Center">
-
-                            <Label Text="🛡️" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
-
-                        </Border>
-
-                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
-
-                            <Label Text="Accounts" FontSize="12" FontAttributes="Bold" TextColor="#111B21" LineBreakMode="TailTruncation" />
-
-                            <Label Text="Security" FontSize="10" TextColor="#008069" FontAttributes="Bold" LineBreakMode="TailTruncation" />
-
-                        </VerticalStackLayout>
-
+                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
                     </Grid>
                 </Border>
-            </Grid>
+            </VerticalStackLayout>
 
-            <!-- Manager Quick Actions: Add User Only -->
-            <Grid Grid.Row="0"
+            <!-- Manager Quick Actions: Add User and Customer Accounts -->
+            <VerticalStackLayout Grid.Row="0"
                   IsVisible="{Binding IsManagerOnly}"
+                  Spacing="8"
                   Margin="16,12,16,4">
                 <Border BackgroundColor="White"
                         Stroke="#C8E6C9"
@@ -284,7 +306,27 @@
                         <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
                     </Grid>
                 </Border>
-            </Grid>
+                <!-- Customer accounts: reset a customer's password or block them (managers: customers only) -->
+                <Border BackgroundColor="White"
+                        Stroke="#C8E6C9"
+                        StrokeThickness="1"
+                        StrokeShape="RoundRectangle 12"
+                        Padding="14,10">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenManageAccountsModalCommand}" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="12" VerticalOptions="Center">
+                        <Border BackgroundColor="#008069" StrokeShape="RoundRectangle 18" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                            <Label Text="🛡️" FontSize="15" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Customer Accounts" FontSize="13" FontAttributes="Bold" TextColor="#111B21" />
+                            <Label Text="Reset a customer's password or block them" FontSize="10" TextColor="#008069" FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="➔" FontSize="16" TextColor="#008069" VerticalOptions="Center" FontAttributes="Bold" />
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
 
             <!-- Department Cards List -->
 
@@ -1249,7 +1291,7 @@
 
                                FontSize="16" />
 
-                        <Label Text="Manage and block/unblock managers and clients"
+                        <Label Text="{Binding AccountsModalSubtitle}"
 
                                TextColor="#D1FAE5"
 
@@ -1281,7 +1323,7 @@
 
                 <!-- Tabs: Managers | Clients -->
 
-                <Grid Grid.Row="1"
+                <Grid Grid.Row="1" IsVisible="{Binding IsAdmin}"
 
                       ColumnDefinitions="*, *"
 
@@ -2033,6 +2075,64 @@
             </Border>
         </Grid>
 
+
+    <!-- Disappearing messages picker (admins) -->
+    <Grid Grid.RowSpan="2"
+          IsVisible="{Binding IsDisappearingPickerVisible}"
+          BackgroundColor="#80000000"
+          ZIndex="1001">
+        <Grid.GestureRecognizers>
+            <TapGestureRecognizer Command="{Binding CloseDisappearingPickerCommand}" />
+        </Grid.GestureRecognizers>
+        <Border BackgroundColor="White"
+                Stroke="#CBD5E1"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 16"
+                Margin="24,0"
+                Padding="0"
+                HorizontalOptions="Fill"
+                VerticalOptions="Center"
+                MaximumWidthRequest="360">
+            <Border.Shadow>
+                <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+            </Border.Shadow>
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer />
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="0">
+                <VerticalStackLayout Padding="20,18,20,12" Spacing="4">
+                    <Label Text="⏱ Disappearing messages" FontSize="16" FontAttributes="Bold" TextColor="#008069" />
+                    <Label Text="Applies to every chat in your company, for all customers, managers and admins. New messages disappear for everyone after this time; messages already sent keep their time."
+                           FontSize="12" TextColor="#64748B" />
+                </VerticalStackLayout>
+                <BoxView HeightRequest="1" Color="#F1F5F9" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding DisappearingOptions}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DisappearingOption">
+                            <Grid Padding="20,12" ColumnDefinitions="*, Auto">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:DepartmentsViewModel}}, Path=ChooseDisappearingCommand, x:DataType=vm:DepartmentsViewModel}"
+                                                          CommandParameter="{Binding .}" />
+                                </Grid.GestureRecognizers>
+                                <Label Grid.Column="0" Text="{Binding Label}" FontSize="15" TextColor="#1E293B" VerticalOptions="Center" />
+                                <Label Grid.Column="1" Text="✓" FontSize="17" FontAttributes="Bold" TextColor="#008069"
+                                       IsVisible="{Binding IsSelected}" VerticalOptions="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+                <BoxView HeightRequest="1" Color="#E2E8F0" />
+                <Button Text="Cancel"
+                        Command="{Binding CloseDisappearingPickerCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="#64748B"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        HeightRequest="44"
+                        Margin="16,4,16,12" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
     </Grid>
 
 </ContentPage>

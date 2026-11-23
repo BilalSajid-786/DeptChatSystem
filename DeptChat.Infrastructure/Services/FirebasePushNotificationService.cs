@@ -79,6 +79,15 @@ public class FirebasePushNotificationService : IPushNotificationService
                 if (!messageData.ContainsKey("title")) messageData["title"] = title;
                 if (!messageData.ContainsKey("body")) messageData["body"] = body;
 
+                // Show when the message was sent, not when the phone received the push (it can arrive late).
+                DateTime? eventTime = null;
+                if (messageData.TryGetValue("sentAt", out var sentAtText) &&
+                    DateTime.TryParse(sentAtText, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal, out var sentAtUtc))
+                {
+                    eventTime = DateTime.SpecifyKind(sentAtUtc, DateTimeKind.Utc);
+                }
+
                 var message = new MulticastMessage
                 {
                     Tokens = tokenList,
@@ -98,6 +107,13 @@ public class FirebasePushNotificationService : IPushNotificationService
                         }
                     }
                 };
+                if (eventTime.HasValue) message.Android.Notification.EventTimestamp = eventTime.Value;
+                // One notification per chat: a new message replaces the chat's previous one, and the app
+                // removes it when the chat is opened (same tag), so the launcher badge drops after reading.
+                if (messageData.TryGetValue("conversationId", out var conversationTag) && !string.IsNullOrWhiteSpace(conversationTag))
+                {
+                    message.Android.Notification.Tag = conversationTag;
+                }
 
                 var response = await FirebaseMessaging.DefaultInstance.SendEachForMulticastAsync(message);
                 _logger.LogInformation("✅ [FCM PUSH DISPATCH SUCCESS] Delivered: {SuccessCount}, Failed: {FailureCount}",

@@ -82,6 +82,14 @@ public class ConversationListItem : ObservableObject
         set => SetProperty(ref _isUserBlocked, value);
     }
 
+    // Pinned by me at the top of my list (admins/managers; personal).
+    private bool _isPinned;
+    public bool IsPinned
+    {
+        get => _isPinned;
+        set => SetProperty(ref _isPinned, value);
+    }
+
     /// <summary>Copies the displayed fields from a fresh copy of the same conversation.</summary>
     public void UpdateFrom(ConversationListItem fresh)
     {
@@ -95,6 +103,7 @@ public class ConversationListItem : ObservableObject
         Status = fresh.Status;
         IsOnline = fresh.IsOnline;
         IsUserBlocked = fresh.IsUserBlocked;
+        IsPinned = fresh.IsPinned;
     }
 }
 
@@ -223,6 +232,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived += HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged += HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead += HandleMessagesRead;
+        _signalRService.OnConversationCleared += HandleConversationCleared;
+        _signalRService.OnMessagesExpired += HandleMessagesExpired;
+        _signalRService.OnConversationPinsChanged += HandleConversationPinsChanged;
         _signalRService.OnReconnected += HandleCatchUp;
         Connectivity.ConnectivityChanged += HandleConnectivityChanged;
         App.AppResumed += HandleCatchUp;
@@ -239,6 +251,9 @@ public partial class DepartmentConversationsViewModel : ObservableObject
         _signalRService.OnMessageReceived -= HandleMessageReceived;
         _signalRService.OnUserOnlineStatusChanged -= HandleUserOnlineStatusChanged;
         _signalRService.OnMessagesRead -= HandleMessagesRead;
+        _signalRService.OnConversationCleared -= HandleConversationCleared;
+        _signalRService.OnMessagesExpired -= HandleMessagesExpired;
+        _signalRService.OnConversationPinsChanged -= HandleConversationPinsChanged;
         _signalRService.OnReconnected -= HandleCatchUp;
         Connectivity.ConnectivityChanged -= HandleConnectivityChanged;
         App.AppResumed -= HandleCatchUp;
@@ -257,6 +272,74 @@ public partial class DepartmentConversationsViewModel : ObservableObject
     private CancellationTokenSource? _periodicRefreshCts;
 
     private void HandleCatchUp() => ScheduleReload();
+
+    // A chat was cleared for everyone: its last-message preview and unread badge change.
+    private void HandleConversationCleared(Guid conversationId, long clearedUpToSequence, bool forEveryone) => ScheduleReload();
+
+    // Disappearing messages: a chat's last message may have disappeared (preview changes).
+    private void HandleMessagesExpired(Guid conversationId) => ScheduleReload();
+
+    // I pinned/unpinned a chat (here, on another device or on the web): reorder this department's list.
+    private void HandleConversationPinsChanged(Guid departmentId)
+    {
+        if (Guid.TryParse(DepartmentId, out var deptGuid) && deptGuid == departmentId) ScheduleReload();
+    }
+
+    // ---- Long-press menu on a customer chat row (admins/managers): pin / unpin ----
+    private ConversationListItem? _rowMenuItem;
+
+    [ObservableProperty]
+    private bool _isRowMenuVisible;
+
+    [ObservableProperty]
+    private string _rowMenuTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _rowMenuPinTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _rowMenuPinSubtitle = string.Empty;
+
+    /// <summary>Opens the row menu. Returns false (nothing shown) for customers.</summary>
+    public bool ShowRowMenu(ConversationListItem item)
+    {
+        if (!IsAdminOrManager || item == null) return false;
+        _rowMenuItem = item;
+        RowMenuTitle = item.CreatedByUserName;
+        RowMenuPinTitle = item.IsPinned ? "Unpin chat" : "Pin chat";
+        RowMenuPinSubtitle = item.IsPinned
+            ? "Move this chat back to its normal place"
+            : "Keep this chat at the top of your list (only you see this)";
+        IsRowMenuVisible = true;
+        return true;
+    }
+
+    [RelayCommand]
+    private void CloseRowMenu()
+    {
+        IsRowMenuVisible = false;
+        _rowMenuItem = null;
+    }
+
+    [RelayCommand]
+    private async Task ToggleRowPinAsync()
+    {
+        var item = _rowMenuItem;
+        CloseRowMenu();
+        if (item == null || _apiService == null) return;
+
+        var pin = !item.IsPinned;
+        var (ok, error) = await _apiService.SetConversationPinnedAsync(item.Id, pin);
+        if (!ok)
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page;
+            if (page != null) await page.DisplayAlertAsync(pin ? "Pin chat" : "Unpin chat", error ?? "Please try again.", "OK");
+            return;
+        }
+
+        // The server's ConversationPinsChanged event also reloads; reload now so the list moves at once.
+        ScheduleReload();
+    }
 
     private void HandleConnectivityChanged(object? sender, ConnectivityChangedEventArgs e)
     {
@@ -732,9 +815,12 @@ public partial class DepartmentConversationsViewModel : ObservableObject
             UnreadCount = c.UnreadCount,
             Status = c.Status,
             IsOnline = c.IsOnline,
-            IsUserBlocked = c.IsUserBlocked
+            IsUserBlocked = c.IsUserBlocked,
+            IsPinned = c.IsPinned
         })
-        .OrderByDescending(c => c.LastMessageAt ?? DateTime.MinValue)
+        // My pinned chats first, in the server's order (latest pin on top); the rest by latest message.
+        .OrderByDescending(c => c.IsPinned)
+        .ThenByDescending(c => c.IsPinned ? DateTime.MinValue : (c.LastMessageAt ?? DateTime.MinValue))
         .ToList();
     }
 
@@ -755,7 +841,8 @@ public partial class DepartmentConversationsViewModel : ObservableObject
                 || a.UnreadCount != b.UnreadCount
                 || a.Status != b.Status
                 || a.IsOnline != b.IsOnline
-                || a.IsUserBlocked != b.IsUserBlocked)
+                || a.IsUserBlocked != b.IsUserBlocked
+                || a.IsPinned != b.IsPinned)
             {
                 return false;
             }

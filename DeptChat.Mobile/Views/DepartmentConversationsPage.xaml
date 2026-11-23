@@ -194,10 +194,16 @@
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ConversationListItem">
                         <!-- Flattened row (same look): one grid instead of nested stacks; tap handled in code-behind -->
-                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,4" Padding="14,12">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnConversationTapped" />
-                            </Border.GestureRecognizers>
+                        <!-- Tap opens the chat; long-press (admins/managers) opens the pin menu. Both wired in code-behind (OnRowHandlerChanged). -->
+                        <Border Stroke="#E2E8F0" StrokeThickness="1" StrokeShape="RoundRectangle 12" BackgroundColor="White" Margin="0,4" Padding="14,12"
+                                HandlerChanged="OnRowHandlerChanged">
+                            <!-- Pinned by me: light green row -->
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsPinned}" Value="True">
+                                    <Setter Property="BackgroundColor" Value="#E7F8F0" />
+                                    <Setter Property="Stroke" Value="#9EDFC0" />
+                                </DataTrigger>
+                            </Border.Triggers>
 
                             <Grid ColumnDefinitions="46, *, Auto, Auto" RowDefinitions="*, Auto, Auto, *" VerticalOptions="Center">
                                 <!-- User Avatar -->
@@ -251,11 +257,16 @@
                                 </HorizontalStackLayout>
 
                                 <!-- Timestamp -->
-                                <Label Grid.Column="2" Grid.Row="1"
-                                       Text="{Binding TimeFormatted}"
-                                       FontSize="11"
-                                       TextColor="#667781"
-                                       HorizontalOptions="End" />
+                                <HorizontalStackLayout Grid.Column="2" Grid.Row="1" Spacing="4" HorizontalOptions="End" VerticalOptions="Center">
+                                    <Label Text="📌"
+                                           FontSize="11"
+                                           IsVisible="{Binding IsPinned}"
+                                           VerticalOptions="Center" />
+                                    <Label Text="{Binding TimeFormatted}"
+                                           FontSize="11"
+                                           TextColor="#667781"
+                                           VerticalOptions="Center" />
+                                </HorizontalStackLayout>
 
                                 <!-- Last message preview -->
                                 <Label Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="2"
@@ -316,6 +327,59 @@
                      Grid.RowSpan="3"
                      IsVisible="{Binding IsSelectUserModalVisible}"
                      ZIndex="999" />
+        <!-- Long-press menu on a customer chat (admins/managers): Pin / Unpin. Same card style as the message menu. -->
+        <Grid Grid.RowSpan="3"
+              IsVisible="{Binding IsRowMenuVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="1000">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseRowMenuCommand}" />
+            </Grid.GestureRecognizers>
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="24,0"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="360">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="0">
+                    <Label Text="{Binding RowMenuTitle}"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="#008069"
+                           LineBreakMode="TailTruncation"
+                           Margin="20,18,20,12" />
+                    <BoxView HeightRequest="1" Color="#F1F5F9" />
+                    <Grid Padding="20,14" ColumnDefinitions="32, *">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ToggleRowPinCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="📌" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="{Binding RowMenuPinTitle}" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+                            <Label Text="{Binding RowMenuPinSubtitle}" FontSize="11" TextColor="#64748B" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="#E2E8F0" />
+                    <Button Text="Cancel"
+                            Command="{Binding CloseRowMenuCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#64748B"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HeightRequest="44"
+                            Margin="16,4,16,12" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
     </Grid>
 
 </ContentPage>

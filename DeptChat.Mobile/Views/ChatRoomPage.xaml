@@ -299,15 +299,13 @@
 
 
 
-            <!-- Staff More Menu (⋮) for Block / Unblock Customer -->
+            <!-- More Menu (⋮): users "Clear chat"; staff "Clear chat for everyone" and Block / Unblock -->
 
             <Button Grid.Column="2"
 
                     Text="⋮"
 
                     Command="{Binding ShowChatMenuOptionsCommand}"
-
-                    IsVisible="{Binding IsStaff}"
 
                     BackgroundColor="Transparent"
 
@@ -351,11 +349,47 @@
 
 
 
+                <VerticalStackLayout Grid.Row="0" Spacing="0">
+                <!-- Disappearing messages banner (company setting; hidden when Off) -->
+                <Grid IsVisible="{Binding IsDisappearingBannerVisible}"
+                      BackgroundColor="#FFF7E6"
+                      Padding="16,6">
+                    <Label Text="{Binding DisappearingBannerText}"
+                           TextColor="#92400E"
+                           FontSize="12"
+                           HorizontalOptions="Center"
+                           LineBreakMode="TailTruncation" />
+                </Grid>
+
+                <!-- Pinned Messages Bar (personal pins; tap = jump to it, then the next pin) -->
+
+                <Grid IsVisible="{Binding HasPinnedMessages}"
+
+                      ColumnDefinitions="Auto, *, Auto"
+
+                      ColumnSpacing="10"
+
+                      BackgroundColor="#F0F2F5"
+
+                      Padding="14,8">
+
+                    <Grid.GestureRecognizers>
+
+                        <TapGestureRecognizer Command="{Binding OpenPinnedMessageCommand}" />
+
+                    </Grid.GestureRecognizers>
+
+                    <Label Grid.Column="0" Text="📌" FontSize="15" VerticalOptions="Center" />
+
+                    <Label Grid.Column="1" Text="{Binding PinnedBarText}" TextColor="#111B21" FontSize="13.5" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
+
+                    <Label Grid.Column="2" Text="{Binding PinnedBarCounter}" TextColor="#667781" FontSize="12" VerticalOptions="Center" />
+
+                </Grid>
+
                 <!-- In-App Cross-Department Toast Banner -->
 
-                <Border Grid.Row="0" 
-
-                        IsVisible="{Binding ShowInAppToast}" 
+                <Border IsVisible="{Binding ShowInAppToast}"
 
                         BackgroundColor="#1E293B" 
 
@@ -374,6 +408,8 @@
                     </Grid>
 
                 </Border>
+
+                </VerticalStackLayout>
 
 
 
@@ -1336,6 +1372,38 @@
 
 
 
+                    <!-- Action: Pin / Unpin (personal: only I see my pins) -->
+
+                    <Grid Padding="20,14"
+
+                          ColumnDefinitions="32, *"
+
+                          IsVisible="{Binding CanPinSelectedMessage}">
+
+                        <Grid.GestureRecognizers>
+
+                            <TapGestureRecognizer Command="{Binding TogglePinFromMenuCommand}" />
+
+                        </Grid.GestureRecognizers>
+
+                        <Label Grid.Column="0" Text="📌" FontSize="18" VerticalOptions="Center" />
+
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+
+                            <Label Text="{Binding PinMenuTitle}" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+
+                            <Label Text="{Binding PinMenuSubtitle}" FontSize="11" TextColor="#64748B" />
+
+                        </VerticalStackLayout>
+
+                    </Grid>
+
+
+
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding CanPinSelectedMessage}" />
+
+
+
                     <!-- Action 2: Forward Message (Admin Only) -->
 
                     <Grid Padding="20,14"
@@ -1425,6 +1493,149 @@
         </Grid>
 
 
+
+        <!-- Chat options card (⋮): Clear chat / Clear for everyone / Block. Same look as the message menu. -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsChatMenuVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="99">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding CloseChatMenuCommand}" />
+            </Grid.GestureRecognizers>
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="24,0"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="360">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="0">
+                    <Label Text="{Binding ChatMenuTitle}"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           TextColor="#008069"
+                           LineBreakMode="TailTruncation"
+                           Margin="20,18,20,12" />
+                    <BoxView HeightRequest="1" Color="#F1F5F9" />
+                    <Grid Padding="20,14" ColumnDefinitions="32, *">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ClearChatFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="🧹" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="{Binding ClearMenuTitle}" FontSize="15" FontAttributes="Bold" TextColor="#DC2626" />
+                            <Label Text="{Binding ClearMenuSubtitle}" FontSize="11" TextColor="#EF4444" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding IsChatMenuStaff}" />
+                    <Grid Padding="20,14" ColumnDefinitions="32, *" IsVisible="{Binding IsChatMenuStaff}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ClearChatForEveryoneFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="🧹" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="Clear chat for everyone" FontSize="15" FontAttributes="Bold" TextColor="#DC2626" />
+                            <Label Text="{Binding ClearForEveryoneSubtitle}" FontSize="11" TextColor="#EF4444" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="#F1F5F9" IsVisible="{Binding IsChatMenuStaff}" />
+                    <Grid Padding="20,14" ColumnDefinitions="32, *" IsVisible="{Binding IsChatMenuStaff}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ToggleBlockFromMenuCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Grid.Column="0" Text="{Binding BlockMenuIcon}" FontSize="18" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="1">
+                            <Label Text="{Binding BlockMenuTitle}" FontSize="15" FontAttributes="Bold" TextColor="#1E293B" />
+                            <Label Text="{Binding BlockMenuSubtitle}" FontSize="11" TextColor="#64748B" />
+                        </VerticalStackLayout>
+                    </Grid>
+                    <BoxView HeightRequest="1" Color="#E2E8F0" />
+                    <Button Text="Cancel"
+                            Command="{Binding CloseChatMenuCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#64748B"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HeightRequest="44"
+                            Margin="16,4,16,12" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+
+        <!-- Confirmation card (clear chat, block user): red action button, Cancel / tap outside = no. -->
+        <Grid Grid.RowSpan="2"
+              IsVisible="{Binding IsConfirmVisible}"
+              BackgroundColor="#80000000"
+              ZIndex="100">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Command="{Binding ConfirmCancelCommand}" />
+            </Grid.GestureRecognizers>
+            <Border BackgroundColor="White"
+                    Stroke="#CBD5E1"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 16"
+                    Margin="24,0"
+                    Padding="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Center"
+                    MaximumWidthRequest="360">
+                <Border.Shadow>
+                    <Shadow Brush="#50000000" Offset="0,8" Radius="20" Opacity="0.35" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="0" Padding="24,24,24,16">
+                    <Border BackgroundColor="#FEE2E2"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 28"
+                            WidthRequest="56"
+                            HeightRequest="56"
+                            HorizontalOptions="Center">
+                        <Label Text="{Binding ConfirmIcon}"
+                               FontSize="26"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <Label Text="{Binding ConfirmTitle}"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="#111B21"
+                           HorizontalTextAlignment="Center"
+                           Margin="0,16,0,6" />
+                    <Label Text="{Binding ConfirmMessage}"
+                           FontSize="13"
+                           TextColor="#64748B"
+                           HorizontalTextAlignment="Center"
+                           LineHeight="1.2" />
+                    <Button Text="{Binding ConfirmButtonText}"
+                            Command="{Binding ConfirmAcceptCommand}"
+                            BackgroundColor="#DC2626"
+                            TextColor="White"
+                            FontAttributes="Bold"
+                            FontSize="15"
+                            CornerRadius="12"
+                            HeightRequest="46"
+                            Margin="0,20,0,0" />
+                    <Button Text="Cancel"
+                            Command="{Binding ConfirmCancelCommand}"
+                            BackgroundColor="Transparent"
+                            TextColor="#64748B"
+                            FontAttributes="Bold"
+                            FontSize="14"
+                            HeightRequest="44"
+                            Margin="0,6,0,0" />
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
 
         <!-- 3. Forward Message Modal Overlay (Admin Only - 2-Step Workflow).
              Built on first open by the page code-behind (ForwardModalView). -->

@@ -73,13 +73,62 @@ public partial class DepartmentConversationsPage : ContentPage
     // the page for the command every time a row was reused while scrolling.
     private void OnConversationTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is BindableObject row
-            && row.BindingContext is ViewModels.ConversationListItem item
+        if (sender is BindableObject row) OpenRow(row);
+    }
+
+    private void OpenRow(BindableObject row)
+    {
+        if (row.BindingContext is ViewModels.ConversationListItem item
             && BindingContext is ViewModels.DepartmentConversationsViewModel vm
             && vm.SelectConversationCommand.CanExecute(item))
         {
             vm.SelectConversationCommand.Execute(item);
         }
+    }
+
+    /// <summary>Long-press on a row: pin menu for admins/managers. True when the menu was shown.</summary>
+    private bool ShowRowMenu(BindableObject row)
+    {
+        if (row.BindingContext is ViewModels.ConversationListItem item
+            && BindingContext is ViewModels.DepartmentConversationsViewModel vm
+            && vm.ShowRowMenu(item))
+        {
+            try { HapticFeedback.Default.Perform(HapticFeedbackType.LongPress); } catch { }
+            return true;
+        }
+        return false;
+    }
+
+#if ANDROID
+    // Rows already wired (a recycled row keeps its native view; its BindingContext changes, read at tap time).
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Android.Views.View, object> _wiredRows = new();
+#endif
+
+    /// <summary>
+    /// Wires tap and long-press on a chat row. On Android both use the native view's own click and
+    /// long-click (a MAUI tap gesture would swallow the touch, so long-press would never fire).
+    /// Other platforms keep a plain tap.
+    /// </summary>
+    private void OnRowHandlerChanged(object? sender, EventArgs e)
+    {
+        if (sender is not View row || row.Handler?.PlatformView == null) return;
+#if ANDROID
+        if (row.Handler.PlatformView is Android.Views.View native && !_wiredRows.TryGetValue(native, out _))
+        {
+            _wiredRows.Add(native, new object());
+            native.Clickable = true;
+            native.LongClickable = true;
+            native.Click += (_, _) => OpenRow(row);
+            native.LongClick += (_, args) => args.Handled = ShowRowMenu(row);
+        }
+#else
+        if (!row.GestureRecognizers.OfType<TapGestureRecognizer>().Any())
+        {
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += OnConversationTapped;
+            row.GestureRecognizers.Add(tap);
+        }
+#endif
     }
 
     protected override void OnDisappearing()

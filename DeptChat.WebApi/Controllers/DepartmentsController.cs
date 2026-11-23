@@ -83,11 +83,19 @@ public class DepartmentsController : ControllerBase
             .Include(m => m.Sender)
             .Where(m => deptIds.Contains(m.Conversation.DepartmentId) 
                         && m.Conversation.ClientId == clientId 
-                        && !m.IsDeleted);
+                        && !m.IsDeleted
+                        // Cleared messages are never previewed: cleared for everyone, or (users) by themselves.
+                        && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow));
 
         if (role == UserRole.User)
         {
-            latestMessagesQuery = latestMessagesQuery.Where(m => m.Conversation.CreatedByUserId == userId);
+            latestMessagesQuery = latestMessagesQuery.Where(m => m.Conversation.CreatedByUserId == userId
+                && !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber));
+        }
+        else
+        {
+            // Staff: chats they cleared only for themselves.
+            latestMessagesQuery = latestMessagesQuery.Where(m => !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber));
         }
 
         var latestMessagesList = await latestMessagesQuery
@@ -114,7 +122,9 @@ public class DepartmentsController : ControllerBase
                             && m.Conversation.ClientId == clientId
                             && m.Conversation.CreatedByUserId == userId 
                             && m.SenderId != userId 
-                            && m.Status < MessageDeliveryStatus.Read)
+                            && m.Status < MessageDeliveryStatus.Read
+                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow)
+                            && !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber))
                 .GroupBy(m => m.Conversation.DepartmentId)
                 .Select(g => new { DepartmentId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.DepartmentId, x => x.Count);
@@ -125,7 +135,9 @@ public class DepartmentsController : ControllerBase
                 .Where(m => deptIds.Contains(m.Conversation.DepartmentId) 
                             && m.Conversation.ClientId == clientId
                             && m.SenderRole == UserRole.User 
-                            && m.Status < MessageDeliveryStatus.Read)
+                            && m.Status < MessageDeliveryStatus.Read
+                            && m.SequenceNumber > m.Conversation.ClearedUpToSequence && (m.ExpiresAt == null || m.ExpiresAt > DateTime.UtcNow)
+                            && !_dbContext.ConversationUserClears.Any(c => c.ConversationId == m.ConversationId && c.UserId == userId && c.ClearedUpToSequence >= m.SequenceNumber))
                 .GroupBy(m => m.Conversation.DepartmentId)
                 .Select(g => new { DepartmentId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.DepartmentId, x => x.Count);

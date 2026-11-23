@@ -75,7 +75,21 @@ if (redisMultiplexer != null)
 // 4. AUTHENTICATION & JWT (Configured for both HTTP & WebSockets)
 // =============================================================================
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var secretKey = Encoding.UTF8.GetBytes(jwtSettings["Secret"] ?? "A_VERY_LONG_SUPER_SECRET_KEY_FOR_JWT_AUTHENTICATION_1234567890");
+// The signing key comes only from the server's own settings (JwtSettings__Secret in the server's .env),
+// never from the repository. Missing or short key: refuse to start instead of using a known default.
+var jwtSecret = jwtSettings["Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+{
+    throw new InvalidOperationException("JwtSettings:Secret is missing or shorter than 32 characters. Set JwtSettings__Secret on the server.");
+}
+var jwtSigningKeys = new List<SecurityKey> { new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)) };
+// Key rotation: tokens signed with the previous key stay valid until they expire. They still need an active
+// session and the user's security stamp (checked below), which a leaked key alone cannot provide.
+var jwtPreviousSecret = jwtSettings["PreviousSecret"];
+if (!string.IsNullOrWhiteSpace(jwtPreviousSecret))
+{
+    jwtSigningKeys.Add(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtPreviousSecret)));
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -92,7 +106,7 @@ builder.Services.AddAuthentication(options =>
         ValidateIssuerSigningKey = true,
         ValidIssuer = jwtSettings["Issuer"],
         ValidAudience = jwtSettings["Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(secretKey)
+        IssuerSigningKeys = jwtSigningKeys
     };
 
     // Enables JWT Authentication over SignalR WebSockets query string & validates session / security stamp
@@ -120,6 +134,15 @@ builder.Services.AddAuthentication(options =>
             if (string.IsNullOrEmpty(userIdStr) || !Guid.TryParse(userIdStr, out var userId))
             {
                 context.Fail("Invalid user identifier in token.");
+                return;
+            }
+
+            // Every token must carry an active session and the user's security stamp (login and sign-up
+            // both issue them). Tokens without them (old sign-up tokens, logins from before sessions
+            // existed) are refused, so a token made with a leaked signing key alone is never accepted.
+            if (string.IsNullOrEmpty(tokenStamp) || string.IsNullOrEmpty(sessionIdStr) || !Guid.TryParse(sessionIdStr, out _))
+            {
+                context.Fail("Token has no session. Please log in again.");
                 return;
             }
 
@@ -182,6 +205,8 @@ else
     builder.Services.AddSingleton<IPresenceService, InMemoryPresenceService>();
 }
 builder.Services.AddSingleton<IPushNotificationService, FirebasePushNotificationService>();
+// Disappearing messages: empties messages after their disappear time (every 2 minutes).
+builder.Services.AddHostedService<DeptChat.WebApi.Services.DisappearingMessagesService>();
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
@@ -250,6 +275,90 @@ using (var scope = app.Services.CreateScope())
                         CREATE INDEX IX_UserSessions_UserId_IsActive ON UserSessions (UserId, IsActive);
                     END
                 ");
+
+                // Pin and clear chat: "clear for everyone" marker on the conversation,
+                // personal pins and personal clears.
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedUpToSequence')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedUpToSequence BIGINT NOT NULL CONSTRAINT DF_Conversations_ClearedUpToSequence DEFAULT 0;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedAt')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedAt DATETIME2 NULL;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Conversations') AND name = 'ClearedByUserId')
+                    BEGIN
+                        ALTER TABLE Conversations ADD ClearedByUserId UNIQUEIDENTIFIER NULL;
+                    END
+                ");
+
+                // Disappearing messages: company setting (default 7 days) and each message's own disappear time.
+                // Existing messages get NULL (never disappear), so nothing sent before this release is removed.
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Clients') AND name = 'DisappearingMessagesSeconds')
+                    BEGIN
+                        ALTER TABLE Clients ADD DisappearingMessagesSeconds INT NOT NULL CONSTRAINT DF_Clients_DisappearingMessagesSeconds DEFAULT 604800;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Messages') AND name = 'ExpiresAt')
+                    BEGIN
+                        ALTER TABLE Messages ADD ExpiresAt DATETIME2 NULL;
+                    END
+                ");
+                // Plain index (a filtered index would make INSERTs fail from tools without QUOTED_IDENTIFIER ON,
+                // e.g. sqlcmd scripts). Replaces the filtered one an early test build created.
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Messages_ExpiresAt' AND object_id = OBJECT_ID('Messages') AND has_filter = 1)
+                    BEGIN
+                        DROP INDEX IX_Messages_ExpiresAt ON Messages;
+                    END
+                    IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Messages_ExpiresAt' AND object_id = OBJECT_ID('Messages'))
+                    BEGIN
+                        CREATE INDEX IX_Messages_ExpiresAt ON Messages (ExpiresAt);
+                    END
+                ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'MessagePins')
+                    BEGIN
+                        CREATE TABLE MessagePins (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            MessageId UNIQUEIDENTIFIER NOT NULL,
+                            PinnedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_MessagePins_UserId_MessageId ON MessagePins (UserId, MessageId);
+                        CREATE INDEX IX_MessagePins_UserId_ConversationId ON MessagePins (UserId, ConversationId);
+                    END
+                ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversationUserClears')
+                    BEGIN
+                        CREATE TABLE ConversationUserClears (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ClearedUpToSequence BIGINT NOT NULL,
+                            ClearedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_ConversationUserClears_ConversationId_UserId ON ConversationUserClears (ConversationId, UserId);
+                    END
+                ");
+
+                dbContext.Database.ExecuteSqlRaw(@"
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ConversationPins')
+                    BEGIN
+                        CREATE TABLE ConversationPins (
+                            Id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+                            UserId UNIQUEIDENTIFIER NOT NULL,
+                            ConversationId UNIQUEIDENTIFIER NOT NULL,
+                            PinnedAt DATETIME2 NOT NULL
+                        );
+                        CREATE UNIQUE INDEX IX_ConversationPins_UserId_ConversationId ON ConversationPins (UserId, ConversationId);
+                    END
+                ");
             }
             catch (Exception migEx)
             {
@@ -269,12 +378,17 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger (API explorer): development and the test server only (Swagger__Enabled=true there). Off on live,
+// so the full list of requests isn't public.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeptChat API v1");
-    c.RoutePrefix = "swagger";
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "DeptChat API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
 app.UseHttpsRedirection();
 

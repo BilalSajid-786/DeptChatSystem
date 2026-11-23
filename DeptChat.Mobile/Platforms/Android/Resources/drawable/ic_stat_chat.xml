@@ -1,9 +1,31 @@
+<!-- Notification icon: white support headset (Android shows it as a one-colour silhouette). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+  <!-- headband -->
+  <path
+      android:strokeColor="#FFFFFFFF"
+      android:strokeWidth="2.2"
+      android:strokeLineCap="round"
+      android:fillColor="#00000000"
+      android:pathData="M5,12.5A7,7 0,0 1,19 12.5"/>
+  <!-- ear cups -->
   <path
       android:fillColor="#FFFFFFFF"
-      android:pathData="M20,2H4C2.9,2 2,2.9 2,4v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2zM17,13H7v-2h10v2zm0,-3H7V8h10v2z"/>
+      android:pathData="M3,13.5a1.8,1.8 0,0 1,1.8 -1.8H7.6v7.6H4.8A1.8,1.8 0,0 1,3 17.5z"/>
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M21,13.5a1.8,1.8 0,0 0,-1.8 -1.8H16.4v7.6h2.8A1.8,1.8 0,0 0,21 17.5z"/>
+  <!-- microphone boom and tip -->
+  <path
+      android:strokeColor="#FFFFFFFF"
+      android:strokeWidth="1.5"
+      android:strokeLineCap="round"
+      android:fillColor="#00000000"
+      android:pathData="M19.2,19.3c0,1.6 -1.6,2.4 -4.4,2.4"/>
+  <path
+      android:fillColor="#FFFFFFFF"
+      android:pathData="M12,21.7a1.4,1.4 0,1 0,2.8 0a1.4,1.4 0,1 0,-2.8 0z"/>
 </vector>

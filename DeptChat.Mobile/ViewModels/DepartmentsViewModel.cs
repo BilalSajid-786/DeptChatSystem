@@ -252,6 +252,8 @@ public partial class DepartmentsViewModel : ObservableObject
     public bool CanAddUsers => IsAdmin || IsManager;
     public bool CanSelectRole => IsAdmin;
     public bool IsManagerOnly => !IsAdmin && IsManager;
+    // Accounts screen: admins manage managers and customers; managers only customers.
+    public string AccountsModalSubtitle => IsAdmin ? "Manage and block/unblock managers and clients" : "Reset passwords and block customers";
 
 
 
@@ -650,10 +652,9 @@ public partial class DepartmentsViewModel : ObservableObject
         if (_apiService == null) return;
 
         IsManageAccountsModalVisible = true;
-
         IsLoadingAccounts = true;
-
-        ManageAccountsTab = 0;
+        // Managers only manage customers (Users tab); admins start on Managers.
+        ManageAccountsTab = IsAdmin ? 0 : 1;
 
         OnPropertyChanged(nameof(IsManagersTabActive));
 
@@ -683,7 +684,7 @@ public partial class DepartmentsViewModel : ObservableObject
 
 
 
-            var managers = await _apiService.GetManagersAsync();
+            var managers = IsAdmin ? await _apiService.GetManagersAsync() : new List<UserSummaryDto>(); // managers list is admin-only
 
             foreach (var m in managers)
 
@@ -1069,6 +1070,24 @@ public partial class DepartmentsViewModel : ObservableObject
 
             };
 
+            // A chat was cleared (by me on another device, or for everyone by staff): previews and badges change.
+            _signalRService.OnConversationCleared += (cId, seq, forEveryone) =>
+            {
+                RequestDepartmentsReload();
+            };
+
+            // Disappearing messages: messages of a chat disappeared, so previews and badges change.
+            // Disappearing messages: an admin changed the company's time (here, on another device or the web).
+            _signalRService.OnDisappearingMessagesChanged += (seconds) =>
+            {
+                MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds));
+            };
+
+            _signalRService.OnMessagesExpired += (cId) =>
+            {
+                RequestDepartmentsReload();
+            };
+
             _signalRService.OnDepartmentAdded += (d) =>
 
             {
@@ -1142,17 +1161,82 @@ public partial class DepartmentsViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddUsers));
         OnPropertyChanged(nameof(CanSelectRole));
         OnPropertyChanged(nameof(IsManagerOnly));
+        OnPropertyChanged(nameof(AccountsModalSubtitle));
     }
 
 
 
-    [RelayCommand]
+    // ---- Disappearing messages (admins; one setting for the whole company) ----
+    private int _disappearingSeconds = -1;
 
+    [ObservableProperty]
+    private string _disappearingSummary = "Tap to choose";
+
+    [ObservableProperty]
+    private bool _isDisappearingPickerVisible;
+
+    public ObservableCollection<DisappearingOption> DisappearingOptions { get; } = new(
+        new[] { 0, 86400, 604800, 1209600, 2592000, 7776000 }.Select(s => new DisappearingOption(s, ChatRoomViewModel.DisappearingLabel(s))));
+
+    private void ApplyDisappearingSetting(int seconds)
+    {
+        _disappearingSeconds = seconds;
+        DisappearingSummary = seconds > 0
+            ? $"{ChatRoomViewModel.DisappearingLabel(seconds)} · all chats in your company"
+            : "Off · all chats in your company";
+        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == seconds;
+    }
+
+    private async Task LoadDisappearingSettingAsync()
+    {
+        if (_apiService == null || !IsAdmin) return;
+        var seconds = await _apiService.GetDisappearingMessagesAsync();
+        if (seconds.HasValue) MainThread.BeginInvokeOnMainThread(() => ApplyDisappearingSetting(seconds.Value));
+    }
+
+    [RelayCommand]
+    private void OpenDisappearingPicker()
+    {
+        if (!IsAdmin) return;
+        foreach (var option in DisappearingOptions) option.IsSelected = option.Seconds == _disappearingSeconds;
+        IsDisappearingPickerVisible = true;
+    }
+
+    [RelayCommand]
+    private void CloseDisappearingPicker() => IsDisappearingPickerVisible = false;
+
+    [RelayCommand]
+    private async Task ChooseDisappearingAsync(DisappearingOption? option)
+    {
+        if (option == null || _apiService == null || !IsAdmin) return;
+        IsDisappearingPickerVisible = false;
+        if (option.Seconds == _disappearingSeconds) return;
+
+        var confirm = await Application.Current!.MainPage!.DisplayAlertAsync("Disappearing messages",
+            option.Seconds > 0
+                ? $"New messages in every chat of your company will disappear for everyone after {option.Label}. Continue?"
+                : "Turn off disappearing messages for every chat in your company?",
+            "Yes, change it", "Cancel");
+        if (!confirm) return;
+
+        var (ok, error) = await _apiService.SetDisappearingMessagesAsync(option.Seconds);
+        if (!ok)
+        {
+            await Application.Current!.MainPage!.DisplayAlertAsync("Disappearing messages", error ?? "Please try again.", "OK");
+            return;
+        }
+        ApplyDisappearingSetting(option.Seconds);
+    }
+
+    [RelayCommand]
     public async Task LoadDepartmentsAsync()
 
     {
 
         RefreshUserInfo();
+
+        // Admins: the company's disappearing-messages time for the card on this screen.
+        _ = LoadDisappearingSettingAsync();
 
 
 
@@ -2469,7 +2553,7 @@ public partial class DepartmentsViewModel : ObservableObject
                 AdminResetNewPassword = string.Empty;
                 if (Application.Current?.MainPage != null)
                 {
-                    await Application.Current.MainPage.DisplayAlertAsync("Password Reset", $"Password for {title} has been reset successfully.", "OK");
+                    await Application.Current.MainPage.DisplayAlertAsync("Password Reset", $"Password for {title} has been reset. They stay signed in on their devices; the new password is needed at their next sign-in.", "OK");
                 }
             }
             else

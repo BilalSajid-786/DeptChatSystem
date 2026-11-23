@@ -211,7 +211,28 @@ public class AuthController : ControllerBase
 
 
 
-        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, client.Id, client.Name);
+        // A real session, like login: the token can be revoked, ends on password change, and is
+        // accepted by the session check (tokens without a session are refused).
+        if (string.IsNullOrEmpty(user.SecurityStamp))
+        {
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+        }
+        var session = new UserSession
+        {
+            UserId = user.Id,
+            DeviceName = "New sign-up",
+            DevicePlatform = "Unknown",
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            CreatedAt = DateTime.UtcNow,
+            LastActiveAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        _dbContext.UserSessions.Add(session);
+        await _dbContext.SaveChangesAsync();
+        _memoryCache.Set($"user_security_stamp_{user.Id}", user.SecurityStamp, TimeSpan.FromMinutes(10));
+        _memoryCache.Set($"user_session_active_{session.Id}", true, TimeSpan.FromMinutes(5));
+
+        var token = _jwtTokenService.GenerateToken(user.Id, user.FullName, user.Email, user.Role, client.Id, client.Name, null, user.SecurityStamp, session.Id);
 
 
 
@@ -235,7 +256,8 @@ public class AuthController : ControllerBase
 
             PhoneNumber: user.PhoneNumber,
 
-            Address: user.Address
+            Address: user.Address,
+            SessionId: session.Id
 
         );
 
@@ -311,7 +333,7 @@ public class AuthController : ControllerBase
 
         {
 
-            return Unauthorized(new { message = "Your account has been blocked by an administrator. Please contact support." });
+            return Unauthorized(new { message = UsersController.BlockedMessage });
 
         }
 
@@ -363,7 +385,9 @@ public class AuthController : ControllerBase
             PhoneNumber: user.PhoneNumber,
             Address: user.Address,
             Username: user.Username,
-            SessionId: session.Id
+            SessionId: session.Id,
+            IsPlatformAdmin: user.Role == UserRole.Admin
+                && ClientsController.IsPlatformOwnerCompany(HttpContext.RequestServices.GetRequiredService<IConfiguration>(), user.Client?.Code)
         );
 
         return Ok(response);

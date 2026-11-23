@@ -13,7 +13,8 @@ public record ConversationSummaryDto(
     int UnreadCount,
     ConversationStatus Status,
     bool IsOnline = false,
-    bool IsUserBlocked = false
+    bool IsUserBlocked = false,
+    bool IsPinned = false   // staff only: pinned by me at the top of my department chat list
 );
 
 public record ChatMessageDto(
@@ -28,8 +29,13 @@ public record ChatMessageDto(
     MessageDeliveryStatus Status,
     DateTime SentAt,
     bool IsDeleted = false,
-    bool IsForwarded = false
+    bool IsForwarded = false,
+    bool IsPinned = false, // pinned by the caller (personal pin)
+    DateTime? ExpiresAt = null // disappearing messages: hide after this time (UTC); null = never
 );
+
+/// <summary>Disappearing messages for the whole company: seconds after sending (0 = off).</summary>
+public record DisappearingMessagesSettingDto(int Seconds);
 
 public record SendMessageDto(
     Guid ConversationId,
@@ -40,7 +46,8 @@ public record SendMessageDto(
 public record ConversationSyncResponseDto(
     Guid ConversationId,
     long LastSequenceNumber,
-    List<ChatMessageDto> Messages
+    List<ChatMessageDto> Messages,
+    long ClearedUpToSequence = 0 // messages up to here are cleared for the caller: remove them locally
 );
 
 public record InAppNotificationToastDto(
@@ -64,7 +71,15 @@ public record PaginatedMessagesDto(
     long? EarliestSequenceNumber,
     long? LatestSequenceNumber,
     bool HasMore,
-    List<ChatMessageDto> Messages
+    List<ChatMessageDto> Messages,
+    long ClearedUpToSequence = 0 // messages up to here are cleared for the caller: remove them locally
+);
+
+/// <summary>Result of "clear chat": for the caller only, or for everyone (Admin/Manager).</summary>
+public record ClearChatResultDto(
+    Guid ConversationId,
+    long ClearedUpToSequence,
+    bool ForEveryone
 );
 
 public record AttachmentUploadResultDto(

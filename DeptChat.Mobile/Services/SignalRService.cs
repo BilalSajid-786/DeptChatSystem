@@ -35,6 +35,9 @@ public class SignalRService
     public event Action<DepartmentDto>? OnDepartmentAdded;
     public event Action<Guid>? OnDepartmentDeleted;
     public event Action? OnReconnected;
+    // The connection came back by a fresh start (not the automatic reconnect), e.g. after the phone
+    // was locked. The open chat screen re-enters its room so others see us online again.
+    public event Action? OnConnectionRestored;
     public event Action<Guid, Guid, bool>? OnUserPresenceChanged;
     public event Action<Guid, Guid, string, bool>? OnUserTyping;
     public event Action<Guid, bool>? OnUserOnlineStatusChanged;
@@ -42,6 +45,16 @@ public class SignalRService
     public event Action<Guid, Guid, bool>? OnDepartmentPresenceState;
     public event Action<Guid, Guid>? OnMessageDeleted;
     public event Action<Guid, Guid, Guid>? OnMessageForwarded;
+    // Clear chat: conversationId, cleared up to this sequence number, for everyone (or only for me)
+    public event Action<Guid, long, bool>? OnConversationCleared;
+    // My personal pins changed on another device: conversationId
+    public event Action<Guid>? OnPinsChanged;
+    // My pinned customer chats changed (on any of my devices or the web): departmentId
+    public event Action<Guid>? OnConversationPinsChanged;
+    // Disappearing messages: the server emptied messages of a chat whose time was up (conversationId)
+    public event Action<Guid>? OnMessagesExpired;
+    // Disappearing messages: an admin changed the company's time (seconds, 0 = off)
+    public event Action<int>? OnDisappearingMessagesChanged;
     public event Action<string>? OnErrorMessage;
     public event Action<string>? OnForceLogout;
 
@@ -159,6 +172,31 @@ public class SignalRService
             OnMessageForwarded?.Invoke(srcMsgId, targetConvId, fwdMsgId);
         });
 
+        _hubConnection.On<Guid, long, bool>("ConversationCleared", (convId, clearedUpTo, forEveryone) =>
+        {
+            OnConversationCleared?.Invoke(convId, clearedUpTo, forEveryone);
+        });
+
+        _hubConnection.On<Guid>("PinsChanged", (convId) =>
+        {
+            OnPinsChanged?.Invoke(convId);
+        });
+
+        _hubConnection.On<Guid>("ConversationPinsChanged", (deptId) =>
+        {
+            OnConversationPinsChanged?.Invoke(deptId);
+        });
+
+        _hubConnection.On<Guid>("MessagesExpired", (convId) =>
+        {
+            OnMessagesExpired?.Invoke(convId);
+        });
+
+        _hubConnection.On<int>("DisappearingMessagesChanged", (seconds) =>
+        {
+            OnDisappearingMessagesChanged?.Invoke(seconds);
+        });
+
         _hubConnection.On<string>("ErrorMessage", (error) =>
         {
             OnErrorMessage?.Invoke(error);
@@ -187,6 +225,7 @@ public class SignalRService
         try
         {
             await _hubConnection.StartAsync();
+            OnConnectionRestored?.Invoke();
         }
         catch (Exception ex)
         {
@@ -243,6 +282,7 @@ public class SignalRService
             try
             {
                 await _hubConnection.StartAsync();
+                OnConnectionRestored?.Invoke();
                 return true;
             }
             catch
