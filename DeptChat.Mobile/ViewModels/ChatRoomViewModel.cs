@@ -4149,7 +4149,6 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
     public static string DisappearingLabel(int seconds) => seconds switch
     {
         <= 0 => "Off",
-        300 => "5 minutes", // test server only
         86400 => "24 hours",
         604800 => "7 days",
         1209600 => "14 days",
