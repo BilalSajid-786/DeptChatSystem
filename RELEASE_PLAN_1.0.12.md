@@ -17,7 +17,7 @@ Database: the API adds the new tables/columns itself on start (idempotent bootst
 
 ## 2. Decisions needed before release day
 
-1. **Disappearing messages default.** Every existing company starts at **7 days** (database default). From the release on, new messages in all live chats disappear after 7 days unless an admin changes it. Options: keep 7 days (tell customers), or set live companies to **Off** right after the release with one SQL update (user runs it).
+1. **Disappearing messages default: DECIDED 2026-11-23, keep 7 days.** Every existing company starts at 7 days (database default); new messages in all live chats disappear after 7 days unless an admin changes it. Tell customers/admins with the release (release notes). Messages sent before the release never disappear.
 2. **Release window**: a quiet time; the API swap gives ~20 s of reconnecting, the web swap a few seconds.
 3. **Who checks phones** on the day (one phone still on 1.0.11 for the forced-update test).
 
@@ -46,7 +46,7 @@ Database: the API adds the new tables/columns itself on start (idempotent bootst
 | R8 | **DevPlatformCompany**: owner runs the filled SQL script (hash typed by the owner), then `platform.admin` signs in on the web and sees Companies. | Companies page lists all companies |
 | R9 | **Web**: `/opt/deptchat-web` `git fetch && git checkout feature/web-pin-and-clear`; build and restart `deptchat-web` (as in `DeptChat.Web/DEPLOYMENT.md`). | departmentchat.tech loads, login, chat, picture upload |
 | R10 | **Phone**: a phone on 1.0.11 opens the app → forced-update page → installs 1.0.12 over it → stays signed in, chats load, messages both ways with the web. | OK |
-| R11 | Decision 2.1 applied (keep 7 days or set Off). | admin card shows the value |
+| R11 | Disappearing messages: admin card shows **7 days** for live companies (decision 2.1, no action). | admin card shows 7 days |
 
 If any check fails: **rollback (section 6) first, investigate afterwards.**
 
