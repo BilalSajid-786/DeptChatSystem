@@ -1,5 +1,7 @@
 # Release Plan: DeptChat 1.0.12 (build 15)
 
+**RELEASED 2026-11-23 (about 04:43-05:10 UTC).** All steps R1-R10 done and checked; tag `v1.0.12-b15`. Details in `REGRESSION_CHECKLIST.md` Part 2 §17a. Open follow-ups: section 5.
+
 API + mobile app (forced update) + web app, released together.
 
 **Branch rule (decided 2026-11-23):** `main` is the deployment branch from now on. All work is merged into `main`; the live server runs `main`, each release gets a tag (`v1.0.12-b15`). The test server follows `origin/main` as a detached checkout (it shares the live git repository, and a branch can only be checked out in one worktree).

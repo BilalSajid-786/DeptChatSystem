@@ -173,47 +173,53 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 - **Do not break**: tenant-scoped user/session lookups, reports outside `wwwroot`, the volume in `docker-compose.yml`, the DTO parameter order (installed apps send it).
 
 
-### 18. Personal Message Pins (release 1.0.12, not live yet)
+### 17a. Release 1.0.12 (build 15), live 2026-11-23
+- Live runs `main` (tag `v1.0.12-b15` = e4adf3b) for API (image fc8170be8022) and web (image b8eb155560b3, departmentchat.tech); app 1.0.12 build 15 forced, APK sha256 `8de14dea4a4fae0be00a540d4d5dff542c55e0fc64ea6230780c9795a53b5319`. Steps and preparation: `RELEASE_PLAN_1.0.12.md`.
+- New live settings in `/opt/deptchat/.env`: `PLATFORM_OWNER_COMPANY_CODE=DEVPLATFORM`, `HUB_ENFORCE_ACCESS_CHECKS=false`. DevPlatformCompany (`DEVPLATFORM`, admin `platform.admin`) created; Swagger off. Disappearing messages default 7 days for all companies (owner decision).
+- Backups/rollback: DB `/root/backups/DeptChatDb_pre_1012_20261123.bak`; previous images `deptchat-api:rollback-pre-1012` (9b15cd5d0bf2) and `deptchat-web:rollback-pre-1012` (15511c734ef1) with `.tar.gz` copies; full rollback image `deptchat-api:rollback-b16` (263d991a6699, forces the 1.0.11 app as build 16) with `.tar.gz` copy; config copies `*.pre-1012` in `/root/backups`.
+- Checked after release: version endpoint 1.0.12/15 forced, Swagger 404, new tables/columns created, web loads, `platform.admin` sees Companies, a phone updated from 1.0.11 and chats work (owner).
+
+### 18. Personal Message Pins (live since 2026-11-23, 1.0.12 build 15)
 - Every role can pin up to 3 messages per chat; pins are personal (`MessagePins`, unique `(UserId, MessageId)`). `GET /api/conversations/{id}/pins`, `POST`/`DELETE .../messages/{messageId}/pin` (409 "You can pin up to 3 messages in a chat. Unpin one first."); `PinsChanged` hub event to `User_{id}` only. `ChatMessageDto.IsPinned` is per caller.
 - Mobile: Pin / Unpin in the long-press card, 📌 bar at the top of the chat (tap jumps to the message, then the next one, `1/3`). Web: Pin / Unpin in the message menu, pinned bar with highlight.
 - **Do not break**: pins never visible to anyone else; cleared or disappeared messages cannot be pinned (404) and their pins are removed; BF-29; BF-11 (no gesture recognizers on chat rows).
 
-### 19. Clear Chat (release 1.0.12, not live yet)
+### 19. Clear Chat (live since 2026-11-23, 1.0.12 build 15)
 - Messages are never deleted: a clear is a watermark. `Conversations.ClearedUpToSequence` (+`ClearedAt`, `ClearedByUserId`) = cleared for everyone; `ConversationUserClears` = cleared for one person. Reads hide `SequenceNumber <= max(both)`; sequence numbers keep increasing.
 - `POST /api/conversations/{id}/clear?forEveryone=true|false`: customers always clear only for themselves (the flag is ignored); admins and managers with access choose (default for everyone). Personal clear also drops the caller's own pins; clear for everyone drops everyone's pins on cleared messages and sends `ConversationCleared` to `Room_{id}`, `User_{customer}` and `Dept_{dept}`.
 - Staff lists respect a staff member's personal clear (customer list preview and unread, department previews and unread).
 - Mobile ⋮ card: customer "Clear chat"; staff "Clear chat for me" / "Clear chat for everyone" / Block. Web: "Clear chat" (customer) or "Clear chat ▾" with both options (staff). Confirmation cards.
 - **Do not break**: pending outbox messages survive a clear (`DeleteMessagesUpToAsync`); BF-08 (staff still see the chat row, "No messages yet"); forwarding a cleared message is refused; a later message appears normally for everyone.
 
-### 20. Staff Chat Pins in the Customer List (release 1.0.12, not live yet)
+### 20. Staff Chat Pins in the Customer List (live since 2026-11-23, 1.0.12 build 15)
 - Admins and managers pin customer chats at the top of their own department list (personal, no limit): `ConversationPins` (unique `(UserId, ConversationId)`), `POST`/`DELETE /api/conversations/{id}/pin` (customers 403, no access 404), `ConversationPinsChanged(departmentId)` to `User_{id}`. List order: my pins first (latest pin on top), then latest message; `ConversationSummaryDto.IsPinned`.
 - Mobile: long-press a row -> Pin / Unpin card; pinned rows are light green (`#E7F8F0`) with 📌. On Android the row uses the native click / long-click (`DepartmentConversationsPage.OnRowHandlerChanged`) because a MAUI tap gesture swallows long-press. Web: hover 📌 button, green row.
 - **Do not break**: a normal tap still opens the chat; BF-07 (no menu or modal opens by itself); BF-20 refresh rules; other staff's order unaffected.
 
-### 21. Disappearing Messages (release 1.0.12, not live yet)
+### 21. Disappearing Messages (live since 2026-11-23, 1.0.12 build 15)
 - One setting per company: `Clients.DisappearingMessagesSeconds` (default 604800 = 7 days; Off / 24 h / 7 / 14 / 30 / 90 days). `GET /api/conversations/disappearing-messages` for everyone, `PUT` admins only (managers and customers 403, other values 400); `DisappearingMessagesChanged(seconds)` to `Client_{clientId}`.
 - Each new or forwarded message gets `Messages.ExpiresAt` from the setting **at sending time**; messages sent before the release have none and never disappear; changing the setting affects only new messages.
 - Every read hides messages past `ExpiresAt` (history, sync, previews, unread counts, pins, forward). `DisappearingMessagesService` (every 2 min) empties expired messages for everyone (row kept, `Content` = ""), removes their pins, deletes their upload unless a visible message still uses it, fixes the chat preview and sends `MessagesExpired`. `ChatMessageDto.ExpiresAt` lets apps hide messages on time even offline; the phone keeps emptied rows so sync counts them as present (`_expiredSeqs`).
 - Where to change it: mobile admin card on the Departments screen; web admin main menu (both say it applies to every chat in the company). Every chat shows the banner "⏱ New messages disappear after …" (hidden when Off).
 - **Do not break**: `IX_Messages_ExpiresAt` must stay a plain index (Part 3 item 11); BF-12 (no scroll jumps when messages disappear); sequence numbers never reused; nothing disappears that was sent before the release.
 
-### 22. Card-Style Chat Menus (release 1.0.12, not live yet)
+### 22. Card-Style Chat Menus (live since 2026-11-23, 1.0.12 build 15)
 - The chat ⋮ menu and the clear / block confirmations are cards in the same style as the message long-press menu (white rounded card, dimmed background, red action button), replacing Android system dialogs. Block / unblock success shows the short toast.
 - **Do not break**: BF-05 (keyboard), BF-17 style rules for modals, Cancel and tapping outside always close without acting.
 
-### 23. Headset Icon and Branding (release 1.0.12, not live yet)
+### 23. Headset Icon and Branding (live since 2026-11-23, 1.0.12 build 15)
 - App icon, splash and login logo are a white support headset (`Resources/appiconfg.svg`, `Resources/Images/login_headset.svg`); the notification icon is the white-only headset (`ic_stat_chat.xml`, also the FCM default in `AndroidManifest.xml`).
 - Web: favicon, sign-in logo, loading-screen logo and the empty chat placeholders use the same headset (`Icon Name="headset"` in `Components/Icon.razor`, inline SVG in `wwwroot/index.html`).
 - **Do not break**: BF-06 (icon inside the adaptive safe zone, title "DeptChat"); notification icons must stay one-colour white silhouettes. When changing icons, clear the resizetizer cache first (Part 3 item 12).
 
-### 24. Web App: Loading Progress, Esc to Close a Chat, Drafts, Smaller Pictures (web, not live yet)
+### 24. Web App: Loading Progress, Esc to Close a Chat, Drafts, Smaller Pictures (web, live since 2026-11-23)
 - **Loading progress**: the loading screen shows Blazor's own progress (`--blazor-load-percentage`, CSS only, no extra script under the CSP) and "The first visit can take up to a minute on a slow connection." The first visit downloads ~1.7 MB; later visits load from the browser cache.
 - **Esc closes the open chat** like the Back button (`deptchat.escape` in `wwwroot/js/deptchat.js`, one document listener per open chat, removed when the chat closes). Only the top-most thing closes: a dialog (`[role="dialog"]`: Modal, ConfirmDialog, forward panel, photo viewer) handles Esc itself and the chat stays; an open menu (`.menu-backdrop`: message menu, Clear chat menu, main menu) closes first; otherwise the chat closes. Ignored while recording a voice message. Esc on a list does nothing.
 - **Drafts**: unsent text is kept per user and chat (`Services/DraftStore.cs`, in memory): leaving a chat (Back, Esc, another chat) and coming back restores it. Cleared when sent and on sign-out; not kept across a page reload.
 - **Smaller pictures** (BF-37): pictures over 300 KB are resized in the browser to at most 1280 px JPEG before upload, like the app (attach button, paste and drag-drop all use `ChatPane.ShrinkImageAsync`). GIFs and small pictures are sent as they are; documents are never changed.
 - **Do not break**: Enter sends / Shift+Enter new line in the composer; a draft never shows in another chat or for another user; dialogs still close with Esc when focused; the photo viewer's own Esc.
 
-### 25. Password Reset by Admins and Managers (release 1.0.12, not live yet)
+### 25. Password Reset by Admins and Managers (live since 2026-11-23, 1.0.12 build 15)
 - `POST /api/users/{id}/reset-password`: admins reset customers and managers (never admins); managers reset **customers only** (403 otherwise), the same rule as blocking. `GET /api/users` returns all users to admins and only customers to managers.
 - A reset **only changes the password** (BF-41): security stamp and sessions stay, no `ForceLogout`, so the person stays signed in on every device and staff can tell them the new password; it is needed at their next sign-in. App and web say so in the reset dialog / success message. (Their own "change password" still signs out other devices, BF-18.)
 - Web: admins use **Accounts** (Customers / Managers / Admins tabs); managers get **Customer accounts** in the main menu (same page, customers only). Mobile: admins use **Manage Accounts** (Managers / Users tabs); managers get a **Customer Accounts** card on the Departments screen (customers list only, no Managers tab).
@@ -225,14 +231,14 @@ This document is the authoritative cross-checking reference for **DeptChat**. An
 - Test server settings that live does NOT have: `Platform__OwnerCompanyCode=DEVPLATFORM` and `Swagger__Enabled=true` (in `docker-compose.test.yml`). `Hub__EnforceAccessChecks` is false there like live (log-only); start with `HUB_ENFORCE_ACCESS_CHECKS=true` in front of `docker compose ... up -d test-api` to test enforcing. Platform admin account: `platform.admin` (DevPlatformCompany, see `test-accounts.md`).
 - 2026-11-23: all test server passwords were changed and every session was ended (all devices logged out). The current password is in `test-accounts.md` on the server (`/opt/deptchat-testenv/testenv`), not in git.
 
-### 27. Company Management by the Platform Owner (release 1.0.12, not live yet)
+### 27. Company Management by the Platform Owner (live since 2026-11-23, 1.0.12 build 15)
 - **Who:** only admins of the platform-owner company (DevPlatformCompany) can list, block and unblock companies (`api/clients`). The company is chosen by its code in `Platform:OwnerCompanyCode` (server `.env`: `PLATFORM_OWNER_COMPANY_CODE`); with no setting nobody can (all 403). Every other admin (including Main Organization), managers and customers get 403 (BF-34).
 - **Block:** confirm dialog; all users of that company are logged out on every device at once (stamps rotated, sessions revoked with reason "Company Blocked", push tokens removed, `ForceLogout` to `Client_{id}`); their login then says the workspace is suspended. The platform company can't block itself. **Unblock:** they can log in again (they have to sign in again; old sessions stay revoked).
 - **Where:** web only: main menu "Companies" and the Companies tab in the admin pages, shown when the login response has `IsPlatformAdmin = true`. No mobile screen (the mobile `ChatApiService` methods for this stay unused).
 - **Swagger** (BF-35): only in Development or with `Swagger:Enabled=true`; off on live.
 - **Live setup with the 1.0.12 release** (with user approval, after the DB backup): create DevPlatformCompany (code `DEVPLATFORM`) and its admin (full name `Platform Admin`, username `platform.admin`; user decision 2026-11-22) with the new-client SQL script (password hash from `make-password-hash.ps1`, typed by the user), set `PLATFORM_OWNER_COMPANY_CODE` in `/opt/deptchat/.env` and the `Platform__OwnerCompanyCode` line in the live compose, rebuild the API, then check: platform admin sees Companies, Main Organization admin gets 403, `/swagger` is 404.
 
-### 28. Chat Hub Access Checks (release 1.0.12, log-only first)
+### 28. Chat Hub Access Checks (live since 2026-11-23 in log-only mode)
 - Code is complete (server only). No mobile app or web app change is needed; switching from log-only to enforcing is a settings change, not a code change. Code changes again only if the live log shows a real user wrongly marked "would deny".
 - Rollout in three steps: (1) release with 1.0.12 in log-only mode, (2) watch the live log for a few days, (3) with user approval switch enforcing on.
 - Ships with `Hub:EnforceAccessChecks=false`: the hub only logs who would be denied (BF-36). Live compose needs the `Hub__EnforceAccessChecks=${HUB_ENFORCE_ACCESS_CHECKS:-false}` line.
@@ -256,7 +262,7 @@ Before committing any code change, verify all 14 items:
 7. [ ] **Version Synchronization**: If bumping versions, update `DeptChat.Mobile.csproj` and `appsettings.json` together to matching build numbers.
 8. [ ] **Test vs. Release APK**: internal test APKs use `-p:DeptChatDiag=true -p:DeptChatTestLabel=vNN` (reports to `internaltesterrors`, test label shown); customer release APKs are built with neither flag (reports to `livecustomererrors`).
 9. [ ] **Release Notes**: update `AppVersion.ReleaseNotes` in `appsettings.json` with every release; it is shown on the forced-update page.
-10. [ ] **Build Numbers**: build 14 is reserved for the prepared rollback of 1.0.11 (build 13); the next release must use build 15 or higher.
+10. [ ] **Build Numbers**: live is 1.0.12 build 15; build 16 is reserved for the prepared rollback (1.0.11 code, image `deptchat-api:rollback-b16`); the next release must use build 17 or higher.
 11. [ ] **No Filtered Indexes**: never create filtered indexes (`CREATE INDEX ... WHERE ...`). They make INSERT/UPDATE fail for connections without `QUOTED_IDENTIFIER ON`, which is `sqlcmd`'s default (backup and new-client scripts).
 12. [ ] **Icon Changes**: before publishing an APK with a changed icon or image, delete `DeptChat.Mobile/obj/Release/net10.0-android/resizetizer` (it can reuse old generated images) and check `res/mipmap-xxxhdpi-v4/appicon.png` inside the APK.
 13. [ ] **Shared DTOs**: new record parameters only at the end, optional with defaults; copy `DeptChat.Shared/DTOs` changes to the web branch too.
