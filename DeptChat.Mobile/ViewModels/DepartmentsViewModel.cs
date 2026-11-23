@@ -1176,7 +1176,14 @@ public partial class DepartmentsViewModel : ObservableObject
     private bool _isDisappearingPickerVisible;
 
     public ObservableCollection<DisappearingOption> DisappearingOptions { get; } = new(
-        new[] { 0, 86400, 604800, 1209600, 2592000, 7776000 }.Select(s => new DisappearingOption(s, ChatRoomViewModel.DisappearingLabel(s))));
+        DisappearingChoices.Select(s => new DisappearingOption(s, ChatRoomViewModel.DisappearingLabel(s))));
+
+#if DEPTCHAT_DIAG
+    // Internal test builds: also 5 minutes (the test server allows it; live refuses it).
+    private static readonly int[] DisappearingChoices = { 0, 300, 86400, 604800, 1209600, 2592000, 7776000 };
+#else
+    private static readonly int[] DisappearingChoices = { 0, 86400, 604800, 1209600, 2592000, 7776000 };
+#endif
 
     private void ApplyDisappearingSetting(int seconds)
     {

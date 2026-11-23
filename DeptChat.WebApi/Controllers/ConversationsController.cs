@@ -449,6 +449,8 @@ public class ConversationsController : ControllerBase
 
     // Off, 24 hours, 7, 14, 30 and 90 days.
     private static readonly int[] AllowedDisappearingSeconds = { 0, 86400, 604800, 1209600, 2592000, 7776000 };
+    // Test server only (DisappearingMessages:AllowTestTimes=true): 5 minutes, so testers don't wait a day.
+    private const int TestDisappearingSeconds = 300;
 
     /// <summary>Everyone: the company's current disappearing-messages time (0 = off).</summary>
     [HttpGet("disappearing-messages")]
@@ -466,7 +468,9 @@ public class ConversationsController : ControllerBase
     public async Task<IActionResult> SetDisappearingMessages([FromBody] DisappearingMessagesSettingDto dto)
     {
         if (GetUserRole() != UserRole.Admin) return Forbid();
-        if (dto == null || !AllowedDisappearingSeconds.Contains(dto.Seconds))
+        var allowTestTime = dto != null && dto.Seconds == TestDisappearingSeconds
+            && HttpContext.RequestServices.GetRequiredService<IConfiguration>().GetValue<bool>("DisappearingMessages:AllowTestTimes");
+        if (dto == null || (!AllowedDisappearingSeconds.Contains(dto.Seconds) && !allowTestTime))
         {
             return BadRequest(new { message = "Choose Off, 24 hours, 7, 14, 30 or 90 days." });
         }
