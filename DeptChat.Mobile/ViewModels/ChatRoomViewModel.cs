@@ -1497,6 +1497,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         Connectivity.Current.ConnectivityChanged += HandleConnectivityChanged;
         App.AppResumed += HandleAppResumed;
+        App.AppSleeping += HandleAppSleeping;
         _isSubscribed = true;
         StartExpiryTimer();
     }
@@ -1529,6 +1530,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
 
         Connectivity.Current.ConnectivityChanged -= HandleConnectivityChanged;
         App.AppResumed -= HandleAppResumed;
+        App.AppSleeping -= HandleAppSleeping;
         _isSubscribed = false;
         _expiryTimer?.Stop();
     }
@@ -3265,12 +3267,46 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
             {
                 try
                 {
-                    await _signalRService.EnterRoomAsync(_conversationId);
+                    await EnterRoomIfForegroundAsync();
                     await SyncMissedMessagesAsync();
                     await FlushOutboxAsync();
                 }
                 catch { }
             }
+        });
+    }
+
+    // Room membership follows the screen: in the room only while this chat is on screen and the app is
+    // in the foreground. A phone in the pocket must not count as "in the chat" (no instant blue ticks,
+    // staff get notifications, the customer doesn't see the department in the chat).
+    private readonly SemaphoreSlim _roomLock = new(1, 1);
+
+    private async Task EnterRoomIfForegroundAsync()
+    {
+        if (_signalRService == null || _conversationId == Guid.Empty) return;
+        await _roomLock.WaitAsync();
+        try
+        {
+            if (App.IsInForeground && _isSubscribed)
+                await _signalRService.EnterRoomAsync(_conversationId);
+        }
+        finally { _roomLock.Release(); }
+    }
+
+    private void HandleAppSleeping()
+    {
+        if (_conversationId == Guid.Empty || _signalRService == null) return;
+        _ = Task.Run(async () =>
+        {
+            await _roomLock.WaitAsync();
+            try
+            {
+                // Skip if the app already came back (resume runs after this and re-enters).
+                if (!App.IsInForeground)
+                    await _signalRService.LeaveRoomAsync(_conversationId);
+            }
+            catch { }
+            finally { _roomLock.Release(); }
         });
     }
 
@@ -3285,8 +3321,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             try
             {
-                if (_signalRService != null)
-                    await _signalRService.EnterRoomAsync(_conversationId);
+                await EnterRoomIfForegroundAsync();
                 await SyncMissedMessagesAsync();
             }
             catch { }
@@ -3303,9 +3338,8 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
         {
             try
             {
-                // Re-enter the room too: the server may have dropped us while the phone was locked.
-                if (_signalRService != null)
-                    await _signalRService.EnterRoomAsync(_conversationId);
+                // Re-enter the room: we left it when the app went to the background.
+                await EnterRoomIfForegroundAsync();
                 await SyncMissedMessagesAsync();
             }
             catch { }
@@ -3326,7 +3360,7 @@ public partial class ChatRoomViewModel : ObservableObject, IQueryAttributable
                     }
                     if (_conversationId != Guid.Empty && _signalRService != null && _signalRService.IsConnected)
                     {
-                        await _signalRService.EnterRoomAsync(_conversationId);
+                        await EnterRoomIfForegroundAsync();
                         await SyncMissedMessagesAsync();
                         await FlushOutboxAsync();
                     }

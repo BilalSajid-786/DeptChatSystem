@@ -59,10 +59,14 @@ public partial class App : Application
     /// <summary>Raised when the app comes back to the foreground, so open lists can catch up on missed messages.</summary>
     public static event Action? AppResumed;
 
+    /// <summary>Raised when the app goes to the background (home, lock, other app), so an open chat can leave its room.</summary>
+    public static event Action? AppSleeping;
+
     protected override void OnSleep()
     {
         base.OnSleep();
         IsInForeground = false;
+        AppSleeping?.Invoke();
     }
 
     protected override void OnResume()
