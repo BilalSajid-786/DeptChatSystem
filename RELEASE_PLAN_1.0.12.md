@@ -34,6 +34,17 @@ Database: the API adds the new tables/columns itself on start (idempotent bootst
 | P5 | **Prepare the rollback** (section 6): rollback API image and rollback APK, both built and stored before release day. | Claude |
 | P6 | Fill the DevPlatformCompany values into `ops/new-client/add-client-and-admin.sql` (name DevPlatformCompany, code `DEVPLATFORM`, admin `Platform Admin` / `platform.admin`); the owner makes the hash with `make-password-hash.ps1` on the day. File is never committed. | Claude + owner |
 
+### Preparation status (2026-11-23)
+
+| Item | State |
+|---|---|
+| P1 sign-off | Owner tested BF-40/BF-41; no separate team round for v42. |
+| P2 version + notes | csproj 1.0.12/15 and `appsettings` AppVersion 1.0.12/15 forced, notes drafted; **waiting for owner approval of the notes, then commit on `main`**. |
+| P3 release APK | `F:\Projects\DeptChatSystem\DeptChat-v1.0.12-b15.apk`, sha256 `8de14dea4a4fae0be00a540d4d5dff542c55e0fc64ea6230780c9795a53b5319`; no test features, new icon checked; uploaded to `/root/release-1012/`. |
+| P4 dry run | Done on the test server: a build-13 app showed "Update Required 1.0.11 → 1.0.12"; release APK installed over it in place (versionCode 15). |
+| P5 rollback | API image `deptchat-api:rollback-b16` (263d991a6699, branch `release/rollback-b16` 186cb45 = live code 179043c + AppVersion 1.0.11 build 16 forced, rollback APK inside), copy `/root/backups/deptchat-api-rollback-b16-263d991a6699.tar.gz`, worktree `/opt/deptchat-rollback-b16`. Rollback APK `DeptChat-v1.0.11-b16-ROLLBACK.apk` (branch `release/rollback-b16-app` 0f4d26e = live app 14d9326 as build 16), sha256 `049aba6d74e66eba5e534f2c06a4ef987da70caacee62e4aaa24a3b99277c92e`, also in `/root/release-1012/`. |
+| P6 DevPlatformCompany | `ops/new-client/add-devplatform.sql` (git-ignored) prefilled; only the hash is missing. |
+
 ## 4. Release day (each step only after the owner's OK)
 
 | # | Step | Check |
@@ -42,7 +53,7 @@ Database: the API adds the new tables/columns itself on start (idempotent bootst
 | R2 | **Keep the current state**: `docker tag deptchat-api:latest deptchat-api:rollback-pre-1012`, `docker tag deptchat-web:latest deptchat-web:rollback-pre-1012`, `.tar.gz` copies in `/root/backups`; copies of `docker-compose.yml`, `Caddyfile`, `.env`. | images listed |
 | R3 | **Code**: in `/opt/deptchat`: `cp Caddyfile /root/backups/Caddyfile.pre-1012`; `git fetch`; `git checkout -- docker-compose.yml Caddyfile` (main's compose already has all live edits: 127.0.0.1 ports, JWT lines, plus the new `Platform__OwnerCompanyCode` and `Hub__EnforceAccessChecks` lines; main's Caddyfile has the web site; checked 2026-11-23); `git checkout main`; `cp /root/backups/Caddyfile.pre-1012 Caddyfile` (puts the test-server blocks back); check Caddyfile md5 host = container. | `git status`: only Caddyfile modified (test blocks) |
 | R4 | **Settings** in `/opt/deptchat/.env`: add `PLATFORM_OWNER_COMPANY_CODE=DEVPLATFORM` and `HUB_ENFORCE_ACCESS_CHECKS=false`. No Swagger setting (stays off). | keys listed (values not printed) |
-| R5 | **APK**: copy the release APK to `DeptChat.WebApi/wwwroot/apk/DeptChat.apk` (it is baked into the image). | sha256 matches P3 |
+| R5 | **APK**: `cp /root/release-1012/DeptChat-v1.0.12-b15.apk /opt/deptchat/DeptChat.WebApi/wwwroot/apk/DeptChat.apk` (and as `DeptChat-v1.0.12-b15.apk`); it is baked into the image. | sha256 matches P3 |
 | R6 | **API**: `docker compose build api` (~90 s, site still up), then `docker compose up -d --no-deps api` (~20 s reconnect). | logs: bootstrap without errors, "Now listening" |
 | R7 | **API checks**: `/api/app/version` = 1.0.12 build 15; `/swagger` not found; login, send/receive, pins, clear chat; `/api/clients` 403 for Main Organization admin; Caddyfile md5 host = container. | all OK |
 | R8 | **DevPlatformCompany**: owner runs the filled SQL script (hash typed by the owner), then `platform.admin` signs in on the web and sees Companies. | Companies page lists all companies |
@@ -66,7 +77,7 @@ If any check fails: **rollback (section 6) first, investigate afterwards.**
 
 The release changes API, app and web, so all three go back.
 
-- **API**: `docker tag deptchat-api:rollback-1012 deptchat-api:latest && cd /opt/deptchat && docker compose up -d --no-deps api`. That image (prepared in P5) is the current live code (1.0.11 + S2) with `AppVersion` set to the rollback APK and that APK baked in. Plain `rollback-pre-1012` alone is not enough: phones already on build 15 would not be moved back.
+- **API**: `docker tag deptchat-api:rollback-b16 deptchat-api:latest && cd /opt/deptchat && docker compose up -d --no-deps api`. That image (prepared in P5) is the current live code (1.0.11 + S2) with `AppVersion` 1.0.11 build 16 forced and the rollback APK baked in. Plain `rollback-pre-1012` alone is not enough: phones already on build 15 would not be moved back.
 - **App**: rollback APK = 1.0.11 app code as **build 16**, forced (phones on build 15 must get a higher build). Prepared and tested in P5.
 - **Web**: `docker tag deptchat-web:rollback-pre-1012 deptchat-web:latest` and restart `deptchat-web`.
 - **Database**: no restore needed (new tables/columns are ignored by the old code). Restore the R1 backup only if data is damaged; that loses messages sent after the backup.
