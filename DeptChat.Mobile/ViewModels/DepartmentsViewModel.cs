@@ -2553,7 +2553,7 @@ public partial class DepartmentsViewModel : ObservableObject
                 AdminResetNewPassword = string.Empty;
                 if (Application.Current?.MainPage != null)
                 {
-                    await Application.Current.MainPage.DisplayAlertAsync("Password Reset", $"Password for {title} has been reset successfully.", "OK");
+                    await Application.Current.MainPage.DisplayAlertAsync("Password Reset", $"Password for {title} has been reset. They stay signed in on their devices; the new password is needed at their next sign-in.", "OK");
                 }
             }
             else

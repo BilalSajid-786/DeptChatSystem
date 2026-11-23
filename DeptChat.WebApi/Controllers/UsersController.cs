@@ -341,34 +341,12 @@ public class UsersController : ControllerBase
             return Forbid();
         }
 
+        // Only the password changes: the person stays signed in on every device (security stamp and
+        // sessions untouched, no ForceLogout), so staff can tell them the new password first.
+        // The new password is needed at their next sign-in. (Their own "change password" still signs out.)
         targetUser.PasswordHash = _passwordHasher.HashPassword(dto.NewPassword);
-        targetUser.SecurityStamp = Guid.NewGuid().ToString("N");
-
-        // Revoke all active sessions for this target user
-        var activeSessions = await _dbContext.UserSessions
-            .Where(s => s.UserId == targetUser.Id && s.IsActive)
-            .ToListAsync();
-
-        foreach (var s in activeSessions)
-        {
-            s.IsActive = false;
-            s.RevokedAt = DateTime.UtcNow;
-            s.RevokedReason = "Password Reset By Staff";
-            _memoryCache.Remove($"user_session_active_{s.Id}");
-        }
-
         await _dbContext.SaveChangesAsync();
 
-        // Evict security stamp from memory cache
-        _memoryCache.Remove($"user_security_stamp_{targetUser.Id}");
-
-        // Broadcast real-time ForceLogout to all connected devices for this target user
-        try
-        {
-            await _hubContext.Clients.Group($"User_{targetUser.Id}").SendAsync("ForceLogout", "Your password has been reset by your admin or manager. Please log in again with your new password.");
-        }
-        catch { }
-
-        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset successfully. All their active sessions have been logged out." });
+        return Ok(new { message = $"Password for '{targetUser.FullName}' has been reset. They stay signed in on their devices; the new password is needed at their next sign-in." });
     }
 }
