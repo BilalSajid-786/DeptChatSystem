@@ -39,7 +39,7 @@ Database: the API adds the new tables/columns itself on start (idempotent bootst
 | Item | State |
 |---|---|
 | P1 sign-off | Owner tested BF-40/BF-41; no separate team round for v42. |
-| P2 version + notes | csproj 1.0.12/15 and `appsettings` AppVersion 1.0.12/15 forced, notes drafted; **waiting for owner approval of the notes, then commit on `main`**. |
+| P2 version + notes | Done: csproj 1.0.12/15 and `appsettings` AppVersion 1.0.12/15 forced, notes approved by the owner (2026-11-23), committed on `main`. |
 | P3 release APK | `F:\Projects\DeptChatSystem\DeptChat-v1.0.12-b15.apk`, sha256 `8de14dea4a4fae0be00a540d4d5dff542c55e0fc64ea6230780c9795a53b5319`; no test features, new icon checked; uploaded to `/root/release-1012/`. |
 | P4 dry run | Done on the test server: a build-13 app showed "Update Required 1.0.11 → 1.0.12"; release APK installed over it in place (versionCode 15). |
 | P5 rollback | API image `deptchat-api:rollback-b16` (263d991a6699, branch `release/rollback-b16` 186cb45 = live code 179043c + AppVersion 1.0.11 build 16 forced, rollback APK inside), copy `/root/backups/deptchat-api-rollback-b16-263d991a6699.tar.gz`, worktree `/opt/deptchat-rollback-b16`. Rollback APK `DeptChat-v1.0.11-b16-ROLLBACK.apk` (branch `release/rollback-b16-app` 0f4d26e = live app 14d9326 as build 16), sha256 `049aba6d74e66eba5e534f2c06a4ef987da70caacee62e4aaa24a3b99277c92e`, also in `/root/release-1012/`. |
